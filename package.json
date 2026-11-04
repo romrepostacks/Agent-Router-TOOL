@@ -1,0 +1,23 @@
+{
+  "name": "local-agent-router",
+  "productName": "Local Agent Router",
+  "version": "0.8.2",
+  "description": "A unified desktop app for local and cloud AI providers",
+  "author": "Local Agent Router",
+  "main": "desktop.cjs",
+  "config": {
+    "forge": "./forge.config.cjs"
+  },
+  "scripts": {
+    "start": "electron .",
+    "make": "electron-forge make"
+  },
+  "devDependencies": {
+    "@electron-forge/cli": "8.0.1",
+    "@electron-forge/maker-squirrel": "8.0.1",
+    "electron": "45.2.2"
+  },
+  "dependencies": {
+    "pdfjs-dist": "6.5.438"
+  }
+}

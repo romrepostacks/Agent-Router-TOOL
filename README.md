@@ -1,0 +1,40 @@
+# Local Agent Router
+
+A desktop app for local Colibri chat, GPT planning through the Codex CLI, Claude Code implementation, and Copilot security and GitHub workflows.
+
+## Start
+
+Install the Windows desktop app using the versioned Setup.exe in `release/make/squirrel.windows/x64/`. The app opens in its own window and starts its local-only service automatically. For development, run `npm install` once and then double-click `start.cmd`. Node.js and the provider command line tools must already be installed. Colibri should be running at `http://127.0.0.1:8000/v1`.
+
+On first launch, choose the Projects folder and confirm the Colibri model. The left side lists an **All Projects** scope plus visible folders directly inside that folder. For individual projects, providers share one workspace and a latest-task note at `.agent-router/LOCAL_AGENT_ROUTER_HANDOFF.md`; the router refreshes this note after delegated work so the next provider can pick up context. The note is router-managed and may appear as an untracked hidden project file. All Projects supports local quick questions and read-only Copilot security audits across those folders; code changes and pushes require choosing one folder. Sessions are saved separately for each scope. Search sessions by title or message, or filter to sessions with pending change previews. Sessions and their messages are stored locally in `%LOCALAPPDATA%\LocalAgentRouter\sessions.json`.
+
+## Providers
+
+- **Auto** sends each request and recent session context to GPT through the Codex CLI for route selection. The route selector uses the editable `lessons.md` guidance. Project-specific questions receive a broader read-only review of relevant documentation and source files. GPT routes ordinary questions to local Colibri, answers project-specific questions from files in read-only mode, plans coding work for Claude Code Opus, sends security audits to Copilot, and sends explicitly requested pushes to Copilot. If Claude fails, Codex is the coding fallback, followed by Copilot. This uses GPT even for route selection; choose **Colibri · Quick questions** to keep a question local. Broader cloud context can use more of the provider's quota.
+- **GPT planner** uses `codex exec --sandbox read-only` with the model configured in your Codex CLI. It selects the route and makes coding plans without editing project files.
+- **Claude Code** uses your signed-in Claude Code account with Opus. The router removes Anthropic API and endpoint overrides from Claude's process environment so it uses the official subscription login.
+- **Codex fallback** runs `codex exec --full-auto` for coding or debugging if Claude fails.
+- **Copilot Security Audit** is read-only. Copilot can also code as the final fallback.
+- **Copilot GitHub Push** is available for explicit push requests and grants only `git push` and `git status` shell commands; all commits must already exist; force-push commands are not permitted.
+
+The app does not store provider credentials. Cloud agents receive the task and can inspect files in the selected project. Keep secrets out of prompts and project folders accessible to agents.
+
+## Live work, context, and approvals
+
+Responses stream as each provider makes text available. Select **Stop** to cancel a request, or **Retry** after a stopped or failed request. Attach small text/code files, PDFs, or PNG/JPEG/WebP images, or choose up to 10 text files from the current project. PDF text is extracted locally with PDF.js and included in prompts. Images are sent only to Colibri for vision input. Attachment material stays on this computer with the session and can be reused from the transcript; avoid choosing credentials or secrets.
+
+Coding tasks run in a temporary project copy. The app shows changed, removed, and unchanged lines for each changed file. The real project is updated only after **Apply changes**; before applying, the router checks that the original files still match the preview. Security reviews, quick questions, and explicit GitHub pushes keep their existing behavior.
+
+## Shared skills
+
+The categorized [skills.md](skills.md) index lists 84 workflows transferred from Claude Code, Claude plugins, Codex, and a local skills folder. Full instructions live in linked Markdown files. Add more from the app's **Shared skills** panel. In Settings, approve skills to include them automatically and set the per-request limit: `-1` means unlimited, `0` sends no skills, and a positive number sets the maximum. Approved skills are considered before task-selected skills. Imported skills retain source attribution, and providers are told to adapt tool-specific steps to their available tools. Rate answer quality and whether Auto chose the right route; both stay local and aggregate counts inform future GPT routing prompts. Provider status checks show installed and sign-in readiness without displaying credentials.
+
+## Settings
+
+The desktop uses a three-area layout: projects and sessions on the left, the conversation in the center, and a task details panel on the right. The details panel shows the current provider status, the project scope, selected files, skills, and how the active route uses them. Collapse it with **Hide details**.
+
+The **Routing & models** settings tab offers provider/model dropdowns populated from Colibri's live model endpoint, Codex's model catalog, and supported Claude Code and Copilot CLI choices when those tools are installed. Configure a preferred provider/model and a cross-provider fallback for Route Planning, Long Term Project planning, Coding, Reviewing, Security audit, UI Designer, Art Asset generation, GitHub requests, and Quick questions. A selected fallback is tried after a provider error; when a usage limit is reached and no fallback is selected, the router chooses another available provider/model. Colibri is offered only for route planning and quick questions because it cannot read or edit project files through this app. The art role creates project-ready assets such as SVG where supported; these CLI providers do not expose a shared raster image-generation endpoint. Provider plan limits can apply across models, so retries may still fail. **General** lets you set a system-wide keyboard shortcut to open the app and focus the message box, or turn it off. The default shortcut is `Control+Shift+Space`.
+
+Set `AGENT_ROUTER_PROJECTS_ROOT` to change the folder shown as the project list. Set `COLIBRI_BASE_URL` or `COLIBRI_MODEL` to override Colibri's local endpoint or model. The internal service listens only on this computer; the desktop app embeds the interface and does not open Chrome.
+
+Run `node evaluate-routing.mjs` to score the GPT route selector against synthetic engineering and everyday prompts. The evaluator is read-only and does not invoke Claude or Copilot.

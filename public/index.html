@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light dark">
+    <title>Local Agent Router</title>
+    <link rel="stylesheet" href="/style.css">
+    <script src="/app.js" defer></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand"><div class="brand-title"><img class="brand-mark" src="/brand.svg" alt=""><span>Local Agent Router</span></div><button id="open-settings" type="button" class="settings-button sidebar-settings" title="Settings" aria-label="Settings"><span aria-hidden="true">⚙</span><span>Settings</span></button></div>
+        <section class="side-section">
+          <div class="section-heading"><span>Projects</span><button id="refresh-projects" class="icon-button" title="Refresh projects" aria-label="Refresh projects">↻</button></div>
+          <div id="projects" class="project-list"><div class="muted">Loading projects…</div></div>
+        </section>
+        <section class="side-section sessions-section">
+          <div class="section-heading"><span>Sessions</span><button id="new-session" class="icon-button add-button" title="New session" aria-label="New session">+</button></div>
+          <input id="session-search" type="search" placeholder="Search sessions" aria-label="Search sessions">
+          <label class="pending-toggle"><input id="pending-only" type="checkbox"> Pending reviews</label>
+          <div id="sessions" class="session-list"><div class="muted">Choose a project to see its sessions.</div></div>
+        </section>
+        <div class="sidebar-footer">Your chat history and ratings stay on this computer. Auto sends only aggregate rating counts to GPT.</div>
+      </aside>
+
+      <main class="main-panel">
+        <header class="topbar">
+          <div class="current-project">
+            <div class="eyebrow">CURRENT PROJECT</div>
+            <div id="project-name" class="project-name">Choose a project</div>
+            <div id="project-path" class="project-path"></div>
+          </div>
+          <label class="mode-picker">Routing
+            <select id="mode">
+              <option value="auto" title="Auto uses your Route Planning provider to choose among the configured task-specific providers.">Auto · Routes tasks</option>
+              <option value="colibri">Colibri · Quick questions</option>
+              <option value="claude">GPT plans → Claude codes</option>
+              <option value="codex">Codex · Coding fallback</option>
+              <option value="copilot">Copilot · Security audit</option>
+              <option value="push">Copilot · GitHub push</option>
+            </select>
+          </label>
+          <button id="toggle-inspector" type="button" class="settings-button" aria-expanded="true">Hide details</button>
+        </header>
+
+        <div class="status-row" id="status-row" aria-live="polite">
+          <span id="colibri-status" class="status-item"><i class="status-dot"></i>Checking Colibri…</span>
+          <span id="cli-status" class="status-item" title="Installation is checked; sign-in is confirmed when you use a provider."></span>
+        </div>
+
+        <div id="messages" class="messages">
+          <div id="empty-state" class="empty-state">
+            <div class="empty-icon"><img src="/brand.svg" alt=""></div>
+            <h1>What are we working on?</h1>
+            <p>Auto uses your configured Route Planning provider, then sends the task to the provider selected for its category. Use Routing &amp; models in Settings to set a preferred provider/model and a cross-provider backup for each task. Choose Colibri directly to keep a question local.</p>
+            <div class="suggestions">
+              <button data-prompt="Explain the main parts of this project.">Explain this project</button>
+              <button data-prompt="Review the current changes for bugs and risks.">Review current changes</button>
+              <button data-prompt="Help me debug the current issue: ">Debug an issue</button>
+            </div>
+          </div>
+        </div>
+
+        <form id="prompt-form" class="composer">
+          <details class="skills-panel">
+            <summary><span>Shared skills</span><span id="skills-count">Loading…</span></summary>
+            <p class="skills-help">Choose relevant skills for this task. The shared-skill limit in Settings controls how many are sent; always-on approvals take priority.</p>
+            <div id="skills-list" class="skills-list"></div>
+            <button id="add-skill-toggle" class="skill-add-button" type="button">Add a shared skill</button>
+            <div id="skill-form" class="skill-form" hidden>
+              <label>Skill name<input id="skill-name" maxlength="60" placeholder="e.g. Concise summaries"></label>
+              <label>Category<input id="skill-category" list="skill-categories" maxlength="40" value="General"><datalist id="skill-categories"></datalist></label>
+              <label>Instructions<textarea id="skill-instructions" rows="4" maxlength="12000" placeholder="Write provider-neutral guidance for this skill."></textarea></label>
+              <div class="skill-form-actions"><button id="save-skill" type="button">Save skill</button><button id="cancel-skill" type="button">Cancel</button><span id="skill-form-status" aria-live="polite"></span></div>
+              <small>Skills appear by category in skills.md, with full instructions in linked files under skills/.</small>
+            </div>
+          </details>
+          <div class="context-tools">
+            <label class="attach-button" for="attachment-files">Attach files</label>
+            <input id="attachment-files" type="file" multiple accept=".c,.cc,.cfg,.conf,.cpp,.cs,.css,.csv,.go,.h,.hpp,.html,.java,.js,.json,.jsx,.md,.mjs,.ps1,.py,.rb,.rs,.sh,.sql,.toml,.ts,.tsx,.txt,.xml,.yaml,.yml,.pdf,image/png,image/jpeg,image/webp">
+            <button id="choose-context" type="button" class="context-button">Choose project files</button>
+            <span id="context-count" class="context-count">No extra context</span>
+            <div id="attachment-list" class="attachment-list"></div>
+          </div>
+          <textarea id="prompt" rows="3" placeholder="Describe a task for Colibri…" aria-label="Task for Colibri"></textarea>
+          <div class="composer-bottom">
+            <span id="workspace-note">Choose a project before asking a question.</span>
+            <button id="send" class="send-button" type="submit" disabled><span>Send</span><span aria-hidden="true">↑</span></button>
+          </div>
+        </form>
+        <div class="privacy-note">PDF text is extracted on this computer. Images are sent only to Colibri. Text context may be included in cloud prompts; keep credentials and secrets out of context. Saved attachments stay on this computer.</div>
+      </main>
+      <aside id="inspector" class="inspector-panel" aria-label="Task details and permissions">
+        <div class="inspector-heading"><span>Task details</span><span class="inspector-live">LIVE</span></div>
+        <section class="inspector-section"><h2>Current run</h2><p id="run-state">Ready when you are.</p></section>
+        <section class="inspector-section"><h2>Preferred models</h2><ul id="model-summary"></ul></section>
+        <section class="inspector-section"><h2>Data &amp; permissions</h2><p id="permission-summary"></p></section>
+        <section class="inspector-section"><h2>Included context</h2><ul id="included-context"></ul></section>
+        <section class="inspector-section"><h2>Skills for this task</h2><ul id="included-skills"></ul></section>
+      </aside>
+    </div>
+    <dialog id="context-dialog" class="context-dialog">
+      <form method="dialog" class="context-dialog-inner">
+        <div class="context-dialog-header"><div><h2>Choose project context</h2><p>Select up to 10 text files to include with your next request.</p></div><button class="icon-button" value="cancel" aria-label="Close">×</button></div>
+        <input id="context-search" type="search" placeholder="Find a file" aria-label="Find a project file">
+        <div id="context-file-list" class="context-file-list"></div>
+        <div class="context-dialog-footer"><span id="context-dialog-status" aria-live="polite"></span><button value="cancel" class="context-button">Done</button></div>
+      </form>
+    </dialog>
+    <dialog id="proposal-dialog" class="context-dialog proposal-dialog">
+      <div class="context-dialog-inner">
+        <div class="context-dialog-header"><div><h2>Review proposed changes</h2><p id="proposal-summary">Nothing has been applied yet.</p></div><button id="close-proposal" type="button" class="icon-button" aria-label="Close">×</button></div>
+        <div id="proposal-files" class="proposal-files"></div>
+        <div class="context-dialog-footer"><span id="proposal-status" aria-live="polite"></span><button id="apply-proposal" type="button" class="send-button">Apply changes</button></div>
+      </div>
+    </dialog>
+    <dialog id="settings-dialog" class="context-dialog settings-dialog">
+      <div class="context-dialog-inner">
+        <div class="context-dialog-header"><div><h2>Settings</h2><p>Personalize your workspace and provider choices.</p></div><button id="close-settings" type="button" class="icon-button" aria-label="Close">×</button></div>
+        <nav class="settings-tabs" aria-label="Settings sections">
+          <button type="button" class="settings-tab active" data-settings-tab="general">General</button>
+          <button type="button" class="settings-tab" data-settings-tab="routing">Routing &amp; models</button>
+          <button type="button" class="settings-tab" data-settings-tab="skills">Shared skills</button>
+        </nav>
+        <div class="settings-scroll">
+          <section class="settings-section settings-page" data-settings-page="general">
+            <h3>Appearance</h3>
+            <label class="settings-field">Theme<select id="theme-choice"><option value="system">Follow Windows</option><option value="light">Light</option><option value="dark">Dark</option></select></label>
+            <p class="settings-help">Follow Windows updates automatically when you change its theme or accent color.</p>
+          </section>
+          <section class="settings-section settings-page" data-settings-page="general">
+            <h3>Workspace</h3>
+            <label class="settings-field">Projects folder<input id="projects-root" type="text" placeholder="C:\\Users\\you\\Projects"></label>
+          </section>
+          <section class="settings-section settings-page" data-settings-page="routing" hidden>
+            <h3>Provider by task</h3>
+            <p class="settings-help">Choose a provider and model for each kind of work. Every backup can use a different provider.</p>
+            <div class="model-catalog-tools"><button id="refresh-models" type="button" class="context-button">Refresh model list</button><span id="model-catalog-status" aria-live="polite">Loading available models…</span></div>
+            <div class="model-role"><h4>Route Planning</h4><label class="settings-field">Preferred provider and model<select id="routePlanning-primary"></select></label><label class="settings-field">Fallback provider and model<select id="routePlanning-fallback"></select></label></div>
+            <div class="model-role"><h4>Long Term Project planning</h4><label class="settings-field">Preferred provider and model<select id="longTermPlanning-primary"></select></label><label class="settings-field">Fallback provider and model<select id="longTermPlanning-fallback"></select></label></div>
+            <div class="model-role"><h4>Coding</h4><label class="settings-field">Preferred provider and model<select id="coding-primary"></select></label><label class="settings-field">Fallback provider and model<select id="coding-fallback"></select></label></div>
+            <div class="model-role"><h4>Reviewing</h4><label class="settings-field">Preferred provider and model<select id="review-primary"></select></label><label class="settings-field">Fallback provider and model<select id="review-fallback"></select></label></div>
+            <div class="model-role"><h4>Security audit</h4><label class="settings-field">Preferred provider and model<select id="security-primary"></select></label><label class="settings-field">Fallback provider and model<select id="security-fallback"></select></label></div>
+            <div class="model-role"><h4>UI Designer</h4><label class="settings-field">Preferred provider and model<select id="ui-primary"></select></label><label class="settings-field">Fallback provider and model<select id="ui-fallback"></select></label></div>
+            <div class="model-role"><h4>Art Asset generation</h4><label class="settings-field">Preferred provider and model<select id="art-primary"></select></label><label class="settings-field">Fallback provider and model<select id="art-fallback"></select></label></div>
+            <div class="model-role"><h4>GitHub requests</h4><label class="settings-field">Preferred provider and model<select id="github-primary"></select></label><label class="settings-field">Fallback provider and model<select id="github-fallback"></select></label></div>
+            <div class="model-role"><h4>Quick questions</h4><label class="settings-field">Preferred provider and model<select id="quick-primary"></select></label><label class="settings-field">Fallback provider and model<select id="quick-fallback"></select></label></div>
+            <p class="settings-help">On a provider usage-limit error, the selected fallback is retried. If no fallback is selected, another installed provider is picked automatically. Account-wide limits may still prevent a retry.</p>
+          </section>
+          <section class="settings-section settings-page" data-settings-page="general" hidden>
+            <h3>Keyboard shortcut</h3>
+            <p class="settings-help">Set a system-wide shortcut to open the app and jump to the message box.</p>
+            <div class="shortcut-row"><input id="shortcut-key" readonly aria-label="Global keyboard shortcut" value="Control+Shift+Space"><button id="record-shortcut" type="button" class="context-button">Change</button><button id="clear-shortcut" type="button" class="context-button">Turn off</button></div>
+            <p id="shortcut-help" class="settings-help" aria-live="polite">Press Change, then press your key combination.</p>
+          </section>
+          <section class="settings-section settings-page" data-settings-page="skills" hidden>
+            <h3>Shared-skill limit</h3>
+            <label class="settings-field">Maximum skills per request<input id="skills-limit" type="number" min="-1" step="1" value="-1" aria-describedby="skills-limit-help"></label>
+            <p id="skills-limit-help" class="settings-help">−1 means unlimited, 0 sends no skills, and a positive number sets the maximum. Always-on skills are considered before task-selected skills.</p>
+          </section>
+          <section class="settings-section settings-page" data-settings-page="skills" hidden>
+            <h3>Always-on shared skills</h3>
+            <p class="settings-help">Approved skills are included automatically with every provider, up to the limit above. You can approve any number; when the limit is smaller, approvals are used first in the order selected.</p>
+            <input id="approved-skill-search" type="search" placeholder="Find a skill" aria-label="Find an always-on skill">
+            <div id="approved-skills" class="approved-skills"></div>
+          </section>
+        </div>
+        <div class="settings-footer"><span id="settings-status" aria-live="polite"></span><button id="save-settings" type="button" class="send-button">Save settings</button></div>
+      </div>
+    </dialog>
+  </body>
+</html>

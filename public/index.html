@@ -37,12 +37,16 @@
           </div>
           <label class="mode-picker">Routing
             <select id="mode">
-              <option value="auto" title="Auto uses your Route Planning provider to choose among the configured task-specific providers.">Auto · Routes tasks</option>
-              <option value="colibri">Colibri · Quick questions</option>
-              <option value="claude">GPT plans → Claude codes</option>
-              <option value="codex">Codex · Coding fallback</option>
-              <option value="copilot">Copilot · Security audit</option>
-              <option value="push">Copilot · GitHub push</option>
+              <option value="auto" title="Route Planning picks the route, then the provider you set for that route runs it.">Auto · Routes tasks</option>
+              <option value="route">Route Planning</option>
+              <option value="longterm">Long Term Project planning</option>
+              <option value="code">Coding</option>
+              <option value="review">Reviewing</option>
+              <option value="security">Security audit</option>
+              <option value="ui">UI Designer</option>
+              <option value="art">Art Asset generation</option>
+              <option value="github">GitHub requests</option>
+              <option value="quick">Quick questions</option>
             </select>
           </label>
           <button id="open-settings" type="button" class="settings-button" title="Settings"><span aria-hidden="true">⚙</span> Settings</button>

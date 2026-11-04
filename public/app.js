@@ -38,12 +38,16 @@ function renderInspector() {
   const mode = $("mode").value;
   const scope = state.project?.scope === "all" ? "All visible project folders" : state.project?.path || "No project selected";
   const summaries = {
-    auto: "Your request and recent messages go to GPT for routing. Depending on the route, Colibri may answer locally, GPT may inspect the selected project read-only, coding providers may work in a private copy, or Copilot may perform an audit or requested push.",
-    colibri: "Your request, recent messages, selected text or PDF files, and images go to Colibri at its local endpoint on this computer.",
-    claude: "GPT makes a read-only plan from a private project copy; Claude Code uses your signed-in subscription to implement in that copy. Changes wait for your review and approval.",
-    codex: "Codex works in a private copy of the selected project and can propose edits. The original folder changes only after you apply the review.",
-    copilot: "Copilot CLI may read the selected project for a security review. Write and shell tools are blocked.",
-    push: "Copilot receives the push request, may read the selected project, and is limited to git status and git push. It cannot create commits or force-push."
+    auto: "Route Planning reads your request and recent messages, picks a route, and the provider you set for that route in Settings runs it.",
+    route: "Route Planning only reports which route it would choose. Nothing else runs.",
+    longterm: "The Long Term Project planning provider reads the selected project and writes a phased plan. It cannot edit files.",
+    code: "The Coding provider works in a private copy of the selected project. Changes wait for your review before they touch the real folder.",
+    review: "The Reviewing provider reads the selected project and reports findings. It cannot edit files.",
+    security: "The Security audit provider reads the selected project and reports risks. It cannot edit files or run commands.",
+    ui: "The UI Designer provider works in a private copy of the selected project. Changes wait for your review.",
+    art: "The Art Asset provider creates assets in a private copy of the selected project. Changes wait for your review.",
+    github: "The GitHub provider can read the project and run only git status, log, diff, branch, remote, push (never force) and gh issue/pr commands. Codex and Colibri can only advise here.",
+    quick: "The Quick questions provider answers without project access. Images are sent only when Colibri is that provider."
   };
   $("run-state").textContent = state.lastRunStatus;
   $("permission-summary").textContent = `${summaries[mode]}\n\nProject access: ${scope}.`;
@@ -619,11 +623,11 @@ async function selectProject(id) {
   $("workspace-note").textContent = allProjects
     ? "Read-only review across visible project folders. Choose one folder to code or push."
     : state.project ? "All providers share this folder and its latest handoff note." : "Choose a project before asking a question.";
-  for (const value of ["claude", "codex", "push"]) {
+  for (const value of ["code", "ui", "art", "github"]) {
     const option = $("mode").querySelector(`option[value="${value}"]`);
     if (option) option.disabled = allProjects;
   }
-  if (allProjects && ["claude", "codex", "push"].includes($("mode").value)) $("mode").value = "auto";
+  if (allProjects && ["code", "ui", "art", "github"].includes($("mode").value)) $("mode").value = "auto";
   renderProjects();
   renderMessages();
   setBusy(false);
@@ -948,7 +952,7 @@ async function loadModelChoices(settings = {}, refresh = true, useCurrent = fals
     const catalog = state.modelCatalog || {};
     const roles = ["routePlanning", "longTermPlanning", "coding", "review", "security", "ui", "art", "github", "quick"];
     for (const role of roles) {
-      const choices = ["quick", "routePlanning"].includes(role) ? catalog.all : catalog.project;
+      const choices = catalog.all;
       fillModelSelect(`${role}-primary`, choices, saved[`${role}Primary`], "Use this task's default provider");
       fillModelSelect(`${role}-fallback`, choices, saved[`${role}Fallback`], "Automatically choose another provider/model");
     }

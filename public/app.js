@@ -1040,11 +1040,48 @@ document.addEventListener("keydown", (event) => {
   if (recordingShortcut && event.key === "Escape") { event.preventDefault(); recordingShortcut = false; $("shortcut-help").textContent = "Shortcut change cancelled."; return; }
   captureShortcut(event);
 });
-$("toggle-inspector").addEventListener("click", () => {
-  const hidden = document.body.classList.toggle("inspector-hidden");
-  $("toggle-inspector").textContent = hidden ? "Show details" : "Hide details";
-  $("toggle-inspector").setAttribute("aria-expanded", String(!hidden));
-});
+const layout = (() => { try { return JSON.parse(localStorage.getItem("agent-router-layout")) || {}; } catch { return {}; } })();
+const panels = { left: { button: "toggle-sidebar", bodyClass: "sidebar-hidden", label: "projects" }, right: { button: "toggle-inspector", bodyClass: "inspector-hidden", label: "details" } };
+function applyLayout() {
+  for (const [side, panel] of Object.entries(panels)) {
+    if (layout[`${side}Width`]) document.documentElement.style.setProperty(`--${side}-w`, `${layout[`${side}Width`]}px`);
+    else document.documentElement.style.removeProperty(`--${side}-w`);
+    const hidden = Boolean(layout[`${side}Hidden`]);
+    document.body.classList.toggle(panel.bodyClass, hidden);
+    $(panel.button).textContent = `${hidden ? "Show" : "Hide"} ${panel.label}`;
+    $(panel.button).setAttribute("aria-expanded", String(!hidden));
+  }
+}
+function saveLayout() {
+  try { localStorage.setItem("agent-router-layout", JSON.stringify(layout)); } catch {}
+  applyLayout();
+}
+function resizePanel(side, width) {
+  layout[`${side}Width`] = Math.round(Math.min(520, Math.max(180, width)));
+  saveLayout();
+}
+for (const side of Object.keys(panels)) {
+  $(panels[side].button).addEventListener("click", () => { layout[`${side}Hidden`] = !layout[`${side}Hidden`]; saveLayout(); });
+}
+for (const handle of document.querySelectorAll(".resizer")) {
+  const side = handle.dataset.side;
+  const current = () => layout[`${side}Width`] || (side === "left" ? 250 : 290);
+  handle.addEventListener("pointerdown", (event) => {
+    handle.setPointerCapture(event.pointerId);
+    handle.classList.add("dragging");
+    const move = (moveEvent) => resizePanel(side, side === "left" ? moveEvent.clientX : window.innerWidth - moveEvent.clientX);
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("pointerup", () => { handle.removeEventListener("pointermove", move); handle.classList.remove("dragging"); }, { once: true });
+  });
+  handle.addEventListener("keydown", (event) => {
+    const step = { ArrowLeft: -16, ArrowRight: 16 }[event.key];
+    if (!step) return;
+    event.preventDefault();
+    resizePanel(side, current() + (side === "left" ? step : -step));
+  });
+  handle.addEventListener("dblclick", () => { delete layout[`${side}Width`]; saveLayout(); });
+}
+applyLayout();
 $("mode").addEventListener("change", renderInspector);
 $("approved-skill-search").addEventListener("input", renderApprovedSkills);
 $("theme-choice").addEventListener("change", () => applyTheme($("theme-choice").value));

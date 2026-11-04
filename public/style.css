@@ -21,8 +21,15 @@
 body { margin: 0; color: var(--ink); background: var(--canvas); }
 button, textarea, select { font: inherit; }
 button { cursor: pointer; }
-.app-shell { display: grid; grid-template-columns: 250px minmax(420px, 1fr) 290px; height: 100vh; min-height: 560px; }
-body.inspector-hidden .app-shell { grid-template-columns: 250px minmax(0, 1fr); }
+.app-shell { position: relative; display: grid; grid-template-columns: var(--left-w, 250px) minmax(320px, 1fr) var(--right-w, 290px); height: 100vh; min-height: 560px; }
+body.sidebar-hidden .app-shell { grid-template-columns: minmax(320px, 1fr) var(--right-w, 290px); }
+body.sidebar-hidden.inspector-hidden .app-shell { grid-template-columns: minmax(0, 1fr); }
+body.sidebar-hidden .sidebar, body.sidebar-hidden .resizer-left, body.inspector-hidden .resizer-right { display: none; }
+.resizer { position: absolute; top: 0; bottom: 0; z-index: 5; width: 6px; cursor: col-resize; }
+.resizer:hover, .resizer:focus-visible, .resizer.dragging { background: var(--line); outline: none; }
+.resizer-left { left: calc(var(--left-w, 250px) - 3px); }
+.resizer-right { right: calc(var(--right-w, 290px) - 3px); }
+body.inspector-hidden .app-shell { grid-template-columns: var(--left-w, 250px) minmax(0, 1fr); }
 body.inspector-hidden .inspector-panel { display: none; }
 .sidebar { display: flex; flex-direction: column; min-height: 0; padding: 20px 14px 14px; background: var(--sidebar); border-right: 1px solid var(--line); }
 .brand { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 3px 8px 25px; font-size: 14px; font-weight: 700; letter-spacing: -.02em; }
@@ -240,6 +247,7 @@ html[data-theme="dark"] .diff-line.added { color: #8ce0ad; background: #193c30; 
 html[data-theme="dark"] .diff-line.removed { color: #ffaaa4; background: #482829; }
 
 @media (max-width: 760px) {
+  .resizer { display: none; }
   .app-shell { grid-template-columns: 210px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; }
   .inspector-panel { grid-column: 1 / -1; max-height: 260px; border-top: 1px solid var(--line); border-left: 0; }
   .sidebar { padding: 15px 9px; }

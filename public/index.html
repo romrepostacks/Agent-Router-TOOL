@@ -10,6 +10,8 @@
   </head>
   <body>
     <div class="app-shell">
+      <div class="resizer resizer-left" data-side="left" role="separator" aria-orientation="vertical" aria-label="Resize projects panel" tabindex="0"></div>
+      <div class="resizer resizer-right" data-side="right" role="separator" aria-orientation="vertical" aria-label="Resize details panel" tabindex="0"></div>
       <aside class="sidebar">
         <div class="brand"><div class="brand-title"><img class="brand-mark" src="/brand.svg" alt=""><span>Local Agent Router</span></div></div>
         <section class="side-section">
@@ -27,6 +29,7 @@
 
       <main class="main-panel">
         <header class="topbar">
+          <button id="toggle-sidebar" type="button" class="settings-button" aria-expanded="true">Hide projects</button>
           <div class="current-project">
             <div class="eyebrow">CURRENT PROJECT</div>
             <div id="project-name" class="project-name">Choose a project</div>

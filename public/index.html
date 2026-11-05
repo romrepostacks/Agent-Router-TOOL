@@ -19,9 +19,10 @@
           <div id="projects" class="project-list"><div class="muted">Loading projects…</div></div>
         </section>
         <section class="side-section sessions-section">
-          <div class="section-heading"><span>Sessions</span><button id="new-session" class="icon-button add-button" title="New session" aria-label="New session">+</button></div>
+          <div class="section-heading"><span>Sessions</span><span class="heading-actions"><button id="import-sessions" class="icon-button" title="Import Claude Code and Codex sessions from this computer and Codex Cloud" aria-label="Import CLI sessions">⤓</button><button id="teleport-session" class="icon-button" title="Pull a Claude Code cloud session (claude.ai/code) into this project" aria-label="Pull a Claude Code cloud session">☁</button><button id="merge-sessions" class="icon-button" title="Merge all listed sessions into one" aria-label="Merge listed sessions">⇊</button><button id="new-session" class="icon-button add-button" title="New session" aria-label="New session">+</button></span></div>
           <input id="session-search" type="search" placeholder="Search sessions" aria-label="Search sessions">
           <label class="pending-toggle"><input id="pending-only" type="checkbox"> Pending reviews</label>
+          <div id="import-status" class="import-status muted" aria-live="polite"></div>
           <div id="sessions" class="session-list"><div class="muted">Choose a project to see its sessions.</div></div>
         </section>
         <div class="sidebar-footer">Your chat history and ratings stay on this computer. Auto sends only aggregate rating counts to GPT.</div>

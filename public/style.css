@@ -55,6 +55,14 @@ body.inspector-hidden .inspector-panel { display: none; }
 .delete-session { flex: 0 0 26px; height: 27px; border: 0; border-radius: 7px; color: #98a39e; background: transparent; font-size: 17px; opacity: 0; }
 .session-row:hover .delete-session, .delete-session:focus-visible { opacity: 1; }
 .delete-session:hover { color: var(--red); background: #fbefee; }
+.heading-actions { display: flex; gap: 2px; }
+.heading-actions .icon-button { font-size: 15px; }
+.import-status { padding: 0 7px 6px; font-size: 11px; }
+.import-status:empty { display: none; }
+.merge-session { flex: 0 0 26px; height: 27px; border: 0; border-radius: 7px; color: #98a39e; background: transparent; font-size: 14px; opacity: 0; }
+.session-row:hover .merge-session, .merge-session:focus-visible { opacity: 1; }
+.merge-session:hover { color: var(--green); background: var(--green-light); }
+.session-source { margin-right: 4px; color: #84948e; font-size: 10px; }
 .session-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .session-date { flex: 0 0 auto; color: #93a09b; font-size: 10px; padding-top: 2px; }
 .muted { padding: 7px 8px; color: #9aa5a1; font-size: 12px; }

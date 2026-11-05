@@ -21,6 +21,16 @@ Run `npm install` once, then `start.cmd` (or `npm start`). Build the installer w
 
 The left side lists an **All Projects** scope plus visible folders directly inside that folder. For individual projects, providers share one workspace and a latest-task note at `.agent-router/LOCAL_AGENT_ROUTER_HANDOFF.md`; the router refreshes this note after delegated work so the next provider can pick up context. The note is router-managed and may appear as an untracked hidden project file. All Projects supports local quick questions and read-only Copilot security audits across those folders; code changes and pushes require choosing one folder. Sessions are saved separately for each scope. Search sessions by title or message, or filter to sessions with pending change previews. Sessions and their messages are stored locally in `%LOCALAPPDATA%\LocalAgentRouterData\sessions.json`.
 
+### Bring in CLI and cloud sessions
+
+Chats you had in Claude Code or Codex before (or outside) this app show up too. On start, and whenever you press **⤓** above the session list, the app reads the history those tools keep on this computer (`%USERPROFILE%\.claude\projects`, `%USERPROFILE%\.codex\sessions`) and, if Codex is signed in with ChatGPT, your Codex Cloud tasks. Each one lands in the project folder it was run in (Codex Cloud tasks are matched by repository name), or under **All Projects** when it ran somewhere else. Only the text of the conversation is imported; tool output is left out. Deleting an imported session keeps it out of later imports.
+
+Claude Code web sessions (claude.ai/code) live in the cloud until Claude Code pulls them down. Choose a project, press **☁**, pick the session in the window that opens, then press **⤓**.
+
+### Merge sessions
+
+To combine work on the same project, open one session, hover another and press **⇲** to fold it in, or press **⇊** to merge every listed session (narrow the list with search first). Messages are combined in time order and the other sessions are removed. Only sessions in the same project can be merged.
+
 ## Routing and providers
 
 The **Routing** menu offers **Auto** plus one entry per route: Route Planning, Long Term Project planning, Coding, Reviewing, Security audit, UI Designer, Art Asset generation, GitHub requests, and Quick questions. Auto asks the Route Planning provider to pick a route (using the editable `lessons.md` guidance), then runs it. Choosing a route directly skips that step. Choosing **Route Planning** only reports which route it would pick.

@@ -46,8 +46,8 @@ function renderInspector() {
     security: "The Security audit provider reads the selected project and reports risks. It cannot edit files or run commands.",
     ui: "The UI Designer provider works in a private copy of the selected project. Changes wait for your review.",
     art: "The Art Asset provider creates assets in a private copy of the selected project. Changes wait for your review.",
-    github: "The GitHub provider can read the project and run only git status, log, diff, branch, remote, push (never force) and gh issue/pr commands. Codex and Colibri can only advise here.",
-    quick: "The Quick questions provider answers without project access. Images are sent only when Colibri is that provider."
+    github: "The GitHub provider can read the project and run only git status, log, diff, branch, remote, push (never force) and gh issue/pr commands. Codex, local models and API-key models can only advise here.",
+    quick: "The Quick questions provider answers without project access. Images are sent when that provider is a local or API-key model."
   };
   $("run-state").textContent = state.lastRunStatus;
   $("permission-summary").textContent = `${summaries[mode]}\n\nProject access: ${scope}.`;
@@ -56,14 +56,16 @@ function renderInspector() {
   for (const [label, key] of [["Route Planning", "routePlanningPrimary"], ["Long Term Project planning", "longTermPlanningPrimary"], ["Coding", "codingPrimary"], ["Reviewing", "reviewPrimary"], ["Security audit", "securityPrimary"], ["UI Designer", "uiPrimary"], ["Art Asset generation", "artPrimary"], ["GitHub requests", "githubPrimary"], ["Quick questions", "quickPrimary"]]) {
     const item = document.createElement("li");
     const choice = state.modelPrefs[key] || "Provider default";
-    const readable = state.modelCatalog?.all?.find((model) => model.id === choice)?.name || choice.replace("::", " — ");
+    const [provider, model] = choice.split("::");
+    const providerNames = { colibri: "Local model", claude: "Claude Code", codex: "Codex", copilot: "Copilot", openai: "OpenAI API", anthropic: "Anthropic API" };
+    const readable = state.modelCatalog?.all?.find((entry) => entry.id === choice)?.name || (providerNames[provider] ? `${providerNames[provider]}${model ? ` — ${model}` : ""}` : choice);
     item.textContent = `${label}: ${readable}`;
     modelList.append(item);
   }
   const context = $("included-context");
   context.replaceChildren();
   const files = [
-    ...state.attachments.map((file) => `${file.name}${file.mimeType?.startsWith("image/") ? " (image: Colibri only)" : " (text included)"}`),
+    ...state.attachments.map((file) => `${file.name}${file.mimeType?.startsWith("image/") ? " (image: local/API models only)" : " (text included)"}`),
     ...state.contextIds.map((id) => { const file = state.contextFiles.find((item) => item.id === id); return file ? `${file.projectName}/${file.path}` : id; })
   ];
   if (!files.length) files.push("No extra files selected.");
@@ -101,7 +103,7 @@ function setBusy(busy) {
   $("send").title = busy ? "Stop this response" : "Send message";
   $("new-session").disabled = busy || !state.project;
   $("choose-context").disabled = busy || !state.project;
-  $("prompt").placeholder = !state.project ? "Choose a project first…" : state.project.scope === "all" ? "Ask a quick question or request an all-projects audit…" : "Ask Colibri or describe a coding task…";
+  $("prompt").placeholder = !state.project ? "Choose a project first…" : state.project.scope === "all" ? "Ask a quick question or request an all-projects audit…" : "Ask a question or describe a coding task…";
   renderInspector();
 }
 
@@ -186,7 +188,7 @@ function renderMessages() {
     const heading = document.createElement("h1");
     heading.textContent = "What are we working on?";
     const description = document.createElement("p");
-    description.textContent = "Colibri handles everyday chat locally and calls a coding CLI only when the task needs it.";
+    description.textContent = "Ask anything. Each request goes to the AI tool you set up for that kind of work.";
     const suggestions = document.createElement("div");
     suggestions.className = "suggestions";
     for (const prompt of ["Explain the main parts of this project.", "Review the current changes for bugs and risks.", "Help me debug the current issue: "]) {
@@ -667,16 +669,17 @@ async function refreshStatus() {
     const dot = document.createElement("i");
     dot.className = `status-dot ${result.colibri.online ? "online" : "offline"}`;
     const selectedAvailable = result.colibri.models.some((model) => model === result.colibri.selectedModel) || result.colibri.models.some((model) => /qwen3\.6|qwen36/i.test(model) && /35b.*a3b/i.test(model));
-    colibri.replaceChildren(dot, document.createTextNode(result.colibri.online ? `Colibri · ${result.colibri.selectedModel}${selectedAvailable ? " ready" : " · desired model not listed"}` : "Colibri offline"));
-    const labels = { claude: "Claude coder", codex: "GPT planner / Codex fallback", copilot: "Copilot audit / push" };
-    cli.textContent = Object.keys(labels).map((id) => `${labels[id]}: ${result.commands[id]?.signIn || (result.commands[id]?.available ? "installed · sign-in unknown" : "not installed")}`).join("  ·  ");
+    colibri.replaceChildren(dot, document.createTextNode(result.colibri.online ? `Local model · ${result.colibri.selectedModel || "ready"}` : "Local model offline"));
+    const labels = { claude: "Claude Code", codex: "Codex", copilot: "Copilot" };
+    const apis = Object.entries({ openai: "OpenAI API", anthropic: "Anthropic API" }).filter(([id]) => result.apis?.[id]).map(([, name]) => `${name}: key saved`);
+    cli.textContent = [...Object.keys(labels).map((id) => `${labels[id]}: ${result.commands[id]?.signIn || (result.commands[id]?.available ? "installed · sign-in unknown" : "not installed")}`), ...apis].join("  ·  ");
     cli.title = "Sign-in check only reports readiness; credentials are never shown.";
     const settings = await request("/api/settings");
     state.modelPrefs = settings;
     renderInspector();
-    if (!settings.configured && !state.settingsPrompted) {
+    if (!settings.setupComplete && !state.settingsPrompted) {
       state.settingsPrompted = true;
-      await openSettings();
+      await openSetup(true);
     }
   } catch (error) {
     colibri.textContent = `Status unavailable: ${error.message}`;
@@ -1129,6 +1132,180 @@ $("apply-proposal").addEventListener("click", applyProposal);
 
 loadProjects().catch((error) => { $("projects").textContent = error.message; });
 loadSkills().catch((error) => { $("skills-list").textContent = error.message; });
+// ---- First-run setup ----
+const setup = { step: 0, data: null, skipped: new Set(), firstRun: false };
+const SETUP_STEPS = [
+  { title: "Welcome to Local Agent Router", subtitle: "Let's get you set up. This takes a few minutes." },
+  { title: "Where are your projects?", subtitle: "Each folder inside this one shows up as a project." },
+  { title: "Connect your AI tools", subtitle: "Install and sign in to the tools you have subscriptions for. Skip any you don't use." },
+  { title: "Local model (optional)", subtitle: "Run a model on this PC for private quick questions. Skip if you don't have one." },
+  { title: "API keys (optional)", subtitle: "Use an OpenAI or Anthropic API key instead of, or alongside, the tools above." },
+  { title: "Review and finish", subtitle: "Here's which tool will handle each kind of work. You can change any of these later in Settings." },
+];
+const ROLE_LABELS = { routePlanning: "Route Planning", longTermPlanning: "Long Term Project planning", coding: "Coding", review: "Reviewing", security: "Security audit", ui: "UI Designer", art: "Art Asset generation", github: "GitHub requests", quick: "Quick questions" };
+
+function el(tag, props = {}, ...children) {
+  const node = document.createElement(tag);
+  for (const [key, value] of Object.entries(props)) {
+    if (key === "class") node.className = value;
+    else if (key.startsWith("on")) node.addEventListener(key.slice(2), value);
+    else if (value !== undefined && value !== false) node.setAttribute(key, value === true ? "" : value);
+  }
+  node.append(...children.flat().filter((child) => child !== null && child !== undefined && child !== false));
+  return node;
+}
+
+async function openSetup(firstRun = false) {
+  setup.firstRun = firstRun;
+  setup.step = 0;
+  $("setup-dialog").showModal();
+  $("setup-status").textContent = "Checking this PC…";
+  try { setup.data = await request("/api/setup"); $("setup-status").textContent = ""; }
+  catch (error) { $("setup-status").textContent = error.message; }
+  renderSetup();
+}
+
+async function refreshSetup(message = "Checking again…") {
+  $("setup-status").textContent = message;
+  try { setup.data = await request("/api/setup"); $("setup-status").textContent = ""; }
+  catch (error) { $("setup-status").textContent = error.message; }
+  renderSetup();
+}
+
+async function setupPost(url, body) {
+  return request(url, { method: "POST", body: JSON.stringify(body) });
+}
+
+function toolStatus(tool) {
+  if (!tool.installed) return ["Not installed", "missing"];
+  if (tool.signIn === "signed in") return ["Ready", "ready"];
+  if (tool.signIn === "sign-in needed") return ["Sign-in needed", "warn"];
+  return ["Installed", "ready"];
+}
+
+async function openSetupTerminal(tool, action) {
+  try {
+    const result = await setupPost("/api/setup/terminal", { tool, action });
+    $("setup-status").textContent = `A setup window opened. ${result.hint || "Follow it, then press Check again."}`;
+  } catch (error) { $("setup-status").textContent = error.message; }
+}
+
+function setupToolCard(tool, isNode = false) {
+  const [label, tone] = isNode ? (tool.installed ? ["Installed", "ready"] : ["Not installed", "missing"]) : toolStatus(tool);
+  const skipped = setup.skipped.has(tool.id || "node");
+  const id = tool.id || "node";
+  return el("div", { class: `setup-card${skipped ? " skipped" : ""}` },
+    el("div", { class: "setup-card-head" }, el("strong", {}, tool.name), el("span", { class: `setup-pill ${skipped ? "" : tone}` }, skipped ? "Skipped" : label)),
+    el("p", {}, tool.why),
+    skipped ? null : el("div", { class: "setup-card-actions" },
+      !tool.installed ? el("button", { type: "button", class: "send-button", onclick: () => openSetupTerminal(id, "install") }, "Install") : null,
+      !isNode && tool.installed && tool.signIn !== "signed in" ? el("button", { type: "button", class: "send-button", onclick: () => openSetupTerminal(id, "login") }, "Sign in") : null,
+      el("a", { href: tool.guide, target: "_blank", rel: "noopener", class: "context-button" }, "Setup guide"),
+      !tool.installed && tool.needsNode && !setup.data.node.installed ? el("span", { class: "setup-note" }, "Install Node.js first.") : null),
+    el("button", { type: "button", class: "setup-skip", onclick: () => { skipped ? setup.skipped.delete(id) : setup.skipped.add(id); renderSetup(); } },
+      skipped ? "Undo skip" : tool.installed ? "Skip, I'll leave this as is" : "Skip, I don't use this"),
+    tool.install && !tool.installed && !skipped ? el("code", { class: "setup-command" }, tool.install) : null);
+}
+
+function renderSetup() {
+  const step = SETUP_STEPS[setup.step];
+  const data = setup.data;
+  $("setup-title").textContent = step.title;
+  $("setup-subtitle").textContent = step.subtitle;
+  $("setup-step-count").textContent = `Step ${setup.step + 1} of ${SETUP_STEPS.length}`;
+  $("setup-back").hidden = setup.step === 0;
+  $("setup-next").textContent = setup.step === SETUP_STEPS.length - 1 ? "Finish setup" : setup.step === 0 ? "Get started" : "Next";
+  const container = $("setup-body");
+  container.replaceChildren();
+  const body = { append: (...nodes) => container.append(...nodes.filter(Boolean)) };
+  if (!data) return;
+  if (setup.step === 0) {
+    body.append(
+      el("p", {}, "Local Agent Router sends each request to the AI tool that's best at it: planning, coding, reviews, security audits, design, GitHub and quick questions."),
+      el("p", {}, "You'll choose your projects folder, then connect whichever AI tools you already pay for. Every step can be skipped and changed later in Settings."),
+      el("ul", { class: "setup-list" },
+        el("li", {}, "Command-line tools: Claude Code, Codex, GitHub Copilot"),
+        el("li", {}, "A local model app such as Ollama or LM Studio (optional)"),
+        el("li", {}, "OpenAI or Anthropic API keys (optional)")));
+  } else if (setup.step === 1) {
+    body.append(
+      el("label", { class: "settings-field" }, "Projects folder", el("input", { id: "setup-root", type: "text", value: setup.root ?? data.projectsRoot, oninput: (event) => { setup.root = event.target.value; } })),
+      el("label", { class: "setup-check" }, el("input", { id: "setup-create", type: "checkbox", checked: true }), " Create this folder if it doesn't exist"),
+      el("p", { class: "settings-help" }, "AI tools only see the project you pick, and coding changes wait for your review before they touch your files."));
+  } else if (setup.step === 2) {
+    const needNode = !data.node.installed && data.tools.some((tool) => tool.needsNode && !tool.installed);
+    body.append(el("div", { class: "setup-toolbar" }, el("button", { type: "button", class: "context-button", onclick: () => refreshSetup() }, "Check again"), el("span", { class: "settings-help" }, "Install opens a PowerShell window that runs the command shown. Sign in opens the tool so you can log in.")));
+    if (needNode) body.append(setupToolCard(data.node, true));
+    for (const tool of data.tools) body.append(setupToolCard(tool));
+  } else if (setup.step === 3) {
+    const local = data.local;
+    body.append(
+      el("div", { class: "setup-toolbar" }, ...local.presets.map((preset) => el("button", { type: "button", class: "context-button", onclick: () => { $("setup-local-url").value = preset.url; } }, preset.name))),
+      el("label", { class: "settings-field" }, "Local model address", el("input", { id: "setup-local-url", type: "text", value: local.baseUrl })),
+      el("div", { class: "setup-toolbar" },
+        el("button", { type: "button", class: "send-button", onclick: async () => {
+          $("setup-status").textContent = "Connecting…";
+          try { setup.data = await setupPost("/api/setup/local", { baseUrl: $("setup-local-url").value, model: "" }); $("setup-status").textContent = setup.data.local.online ? "Connected." : "Nothing is answering at that address yet. Start the app and try again."; renderSetup(); }
+          catch (error) { $("setup-status").textContent = error.message; }
+        } }, "Connect"),
+        el("span", { class: `setup-pill ${local.online ? "ready" : "missing"}` }, local.online ? `Connected · ${local.models.length} model${local.models.length === 1 ? "" : "s"}` : "Not connected")),
+      local.online && local.models.length ? el("label", { class: "settings-field" }, "Model to use", el("select", { id: "setup-local-model", onchange: async (event) => {
+        try { setup.data = await setupPost("/api/setup/local", { baseUrl: local.baseUrl, model: event.target.value }); $("setup-status").textContent = "Saved."; } catch (error) { $("setup-status").textContent = error.message; }
+      } }, el("option", { value: "" }, "First available model"), ...local.models.map((model) => el("option", { value: model, selected: model === local.model }, model)))) : null,
+      el("p", { class: "settings-help" }, "Don't have one? Ollama is the easiest: ", el("a", { href: "https://ollama.com/download", target: "_blank", rel: "noopener" }, "download Ollama"), ", run ", el("code", {}, "ollama pull llama3.2"), ", then press Ollama and Connect."));
+  } else if (setup.step === 4) {
+    if (!data.canStoreKeys) body.append(el("p", { class: "settings-help" }, "API keys can only be saved in the installed desktop app."));
+    for (const [id, name, hint] of [["openai", "OpenAI API key", "https://platform.openai.com/api-keys"], ["anthropic", "Anthropic API key", "https://console.anthropic.com/settings/keys"]]) {
+      body.append(el("label", { class: "settings-field" }, `${name} ${data.apiKeys[id] ? "(saved)" : ""}`, el("input", { id: `setup-key-${id}`, type: "password", autocomplete: "off", placeholder: data.apiKeys[id] ? "Saved. Paste a new key to replace it." : "Paste your key" })),
+        el("p", { class: "settings-help" }, el("a", { href: hint, target: "_blank", rel: "noopener" }, `Get an ${name}`)));
+    }
+    body.append(el("p", { class: "settings-help" }, "Keys are encrypted by Windows and stored only on this PC. API use is billed by the provider."));
+  } else {
+    const names = data.providerNames;
+    const rows = Object.entries(ROLE_LABELS).map(([role, label]) => {
+      const choice = data.assignment[role] || "";
+      const provider = choice.split("::")[0];
+      return el("tr", {}, el("td", {}, label), el("td", { class: provider ? "" : "setup-missing" }, provider ? names[provider] : "No tool available"));
+    });
+    const none = !Object.values(data.assignment).some(Boolean);
+    body.append(
+      none ? el("p", { class: "setup-warning" }, "No AI tool is set up yet. Go back and install at least one, or finish now and run setup again later from Settings.") : null,
+      el("table", { class: "setup-table" }, el("tbody", {}, rows)),
+      el("p", { class: "settings-help" }, "If a tool stops working or isn't installed, the app automatically uses the next one that is."));
+  }
+}
+
+async function setupNext() {
+  const button = $("setup-next");
+  button.disabled = true;
+  try {
+    if (setup.step === 1) setup.createFolder = $("setup-create").checked;
+    if (setup.step === 4) {
+      const keys = Object.fromEntries(["openai", "anthropic"].map((id) => [id, $(`setup-key-${id}`).value.trim()]).filter(([, value]) => value));
+      if (Object.keys(keys).length) setup.data = await setupPost("/api/setup/keys", keys);
+      else setup.data = await request("/api/setup");
+    }
+    if (setup.step === SETUP_STEPS.length - 1) {
+      await setupPost("/api/setup/finish", { projectsRoot: setup.root ?? setup.data.projectsRoot, createFolder: setup.createFolder !== false });
+      $("setup-dialog").close();
+      state.settingsConfigured = true;
+      await loadProjects();
+      await refreshStatus();
+      return;
+    }
+    setup.step += 1;
+    $("setup-status").textContent = "";
+    renderSetup();
+  } catch (error) {
+    $("setup-status").textContent = error.message;
+  } finally { button.disabled = false; }
+}
+
+$("setup-next").addEventListener("click", setupNext);
+$("setup-back").addEventListener("click", () => { setup.step = Math.max(0, setup.step - 1); $("setup-status").textContent = ""; renderSetup(); });
+$("setup-dialog").addEventListener("cancel", (event) => { if (setup.firstRun) event.preventDefault(); });
+$("run-setup").addEventListener("click", () => { $("settings-dialog").close(); openSetup(false); });
+
 refreshStatus();
 refreshWindowsAccent();
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { if (state.theme === "system") applyTheme("system"); });

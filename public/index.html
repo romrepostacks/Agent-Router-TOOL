@@ -54,7 +54,7 @@
         </header>
 
         <div class="status-row" id="status-row" aria-live="polite">
-          <span id="colibri-status" class="status-item"><i class="status-dot"></i>Checking Colibri…</span>
+          <span id="colibri-status" class="status-item"><i class="status-dot"></i>Checking local model…</span>
           <span id="cli-status" class="status-item" title="Installation is checked; sign-in is confirmed when you use a provider."></span>
         </div>
 
@@ -92,13 +92,13 @@
             <span id="context-count" class="context-count">No extra context</span>
             <div id="attachment-list" class="attachment-list"></div>
           </div>
-          <textarea id="prompt" rows="3" placeholder="Describe a task for Colibri…" aria-label="Task for Colibri"></textarea>
+          <textarea id="prompt" rows="3" placeholder="Describe a task…" aria-label="Task"></textarea>
           <div class="composer-bottom">
             <span id="workspace-note">Choose a project before asking a question.</span>
             <button id="send" class="send-button" type="submit" disabled><span>Send</span><span aria-hidden="true">↑</span></button>
           </div>
         </form>
-        <div class="privacy-note">PDF text is extracted on this computer. Images are sent only to Colibri. Text context may be included in cloud prompts; keep credentials and secrets out of context. Saved attachments stay on this computer.</div>
+        <div class="privacy-note">PDF text is extracted on this computer. Images are sent only to the Quick questions provider. Text context may be included in cloud prompts; keep credentials and secrets out of context. Saved attachments stay on this computer.</div>
       </main>
       <aside id="inspector" class="inspector-panel" aria-label="Task details and permissions">
         <div class="inspector-heading"><span>Task details</span><span class="inspector-live">LIVE</span></div>
@@ -124,6 +124,13 @@
         <div class="context-dialog-footer"><span id="proposal-status" aria-live="polite"></span><button id="apply-proposal" type="button" class="send-button">Apply changes</button></div>
       </div>
     </dialog>
+    <dialog id="setup-dialog" class="context-dialog setup-dialog" aria-labelledby="setup-title">
+      <div class="context-dialog-inner">
+        <div class="context-dialog-header"><div><h2 id="setup-title">Welcome</h2><p id="setup-subtitle"></p></div><span id="setup-step-count" class="setup-step-count"></span></div>
+        <div id="setup-body" class="setup-body"></div>
+        <div class="context-dialog-footer"><span id="setup-status" aria-live="polite"></span><div class="setup-actions"><button id="setup-back" type="button" class="context-button">Back</button><button id="setup-next" type="button" class="send-button">Next</button></div></div>
+      </div>
+    </dialog>
     <dialog id="settings-dialog" class="context-dialog settings-dialog">
       <div class="context-dialog-inner">
         <div class="context-dialog-header"><div><h2>Settings</h2><p>Personalize your workspace and provider choices.</p></div><button id="close-settings" type="button" class="icon-button" aria-label="Close">×</button></div>
@@ -141,6 +148,8 @@
           <section class="settings-section settings-page" data-settings-page="general">
             <h3>Workspace</h3>
             <label class="settings-field">Projects folder<input id="projects-root" type="text" placeholder="C:\\Users\\you\\Projects"></label>
+            <p class="settings-help">Install or sign in to AI tools, connect a local model, or add API keys.</p>
+            <button id="run-setup" type="button" class="context-button">Run setup again</button>
           </section>
           <section class="settings-section settings-page" data-settings-page="routing" hidden>
             <h3>Provider by task</h3>

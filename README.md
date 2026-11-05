@@ -1,12 +1,25 @@
 # Local Agent Router
 
-A desktop app for local Colibri chat, GPT planning through the Codex CLI, Claude Code implementation, and Copilot security and GitHub workflows.
+A Windows desktop app that sends each request to the AI tool best suited for it: Claude Code, Codex, GitHub Copilot, a local model (Ollama, LM Studio, Colibri), or an OpenAI / Anthropic API key.
 
-## Start
+## Install (for anyone, starting from nothing)
 
-Install the Windows desktop app using the versioned Setup.exe in `release/make/squirrel.windows/x64/`. The app opens in its own window and starts its local-only service automatically. For development, run `npm install` once and then double-click `start.cmd`. Node.js and the provider command line tools must already be installed. Colibri should be running at `http://127.0.0.1:8000/v1`.
+1. Run `Local Agent Router-<version> Setup.exe` (in `release/make/squirrel.windows/x64/` after a build). Windows may show a SmartScreen warning until the installer is code-signed: choose **More info → Run anyway**. The app installs, adds Start-menu and desktop shortcuts, and opens.
+2. A setup guide walks through:
+   - **Projects folder** – created for you if it doesn't exist.
+   - **AI tools** – for Claude Code, Codex and Copilot it shows whether each is installed and signed in. **Install** opens a PowerShell window running the official install command (Node.js is offered first if Codex or Copilot need it); **Sign in** opens the tool so you can log in; **Skip** if you already have it set up or don't use it. **Check again** re-detects without restarting.
+   - **Local model (optional)** – one-click addresses for Ollama, LM Studio and Colibri, a Connect test, and a model picker.
+   - **API keys (optional)** – OpenAI and Anthropic keys, encrypted by Windows and stored only on that PC.
+   - **Review** – shows which tool will handle each route, picked from what is actually set up.
+3. Run setup again any time from **Settings → General → Run setup again**.
 
-On first launch, choose the Projects folder and confirm the Colibri model. The left side lists an **All Projects** scope plus visible folders directly inside that folder. For individual projects, providers share one workspace and a latest-task note at `.agent-router/LOCAL_AGENT_ROUTER_HANDOFF.md`; the router refreshes this note after delegated work so the next provider can pick up context. The note is router-managed and may appear as an untracked hidden project file. All Projects supports local quick questions and read-only Copilot security audits across those folders; code changes and pushes require choosing one folder. Sessions are saved separately for each scope. Search sessions by title or message, or filter to sessions with pending change previews. Sessions and their messages are stored locally in `%LOCALAPPDATA%\LocalAgentRouterData\sessions.json`.
+If a route's tool is missing or not set up, the app automatically uses the next available tool for that route.
+
+## Develop
+
+Run `npm install` once, then `start.cmd` (or `npm start`). Build the installer with `npm run make`. To code-sign, set `WINDOWS_CERTIFICATE_FILE` and `WINDOWS_CERTIFICATE_PASSWORD` before `npm run make`. See `AGENTS.md` for conventions and `PROJECT_STATUS.md` for current state.
+
+The left side lists an **All Projects** scope plus visible folders directly inside that folder. For individual projects, providers share one workspace and a latest-task note at `.agent-router/LOCAL_AGENT_ROUTER_HANDOFF.md`; the router refreshes this note after delegated work so the next provider can pick up context. The note is router-managed and may appear as an untracked hidden project file. All Projects supports local quick questions and read-only Copilot security audits across those folders; code changes and pushes require choosing one folder. Sessions are saved separately for each scope. Search sessions by title or message, or filter to sessions with pending change previews. Sessions and their messages are stored locally in `%LOCALAPPDATA%\LocalAgentRouterData\sessions.json`.
 
 ## Routing and providers
 
@@ -21,7 +34,7 @@ Every installed provider (Colibri, Codex, Claude Code, Copilot) can be assigned 
 | Coding, UI Designer, Art Asset generation | Edit files in a private copy; you review and apply the diff |
 | GitHub requests | Read files and run only `git status/log/diff/branch/remote/push` (never force) and `gh issue`, `gh pr`, `gh repo view` |
 
-Claude Code and Copilot enforce these with their tool permissions, Codex with its sandbox. Codex cannot be limited to git commands, so on the GitHub route it runs read-only and tells you the commands to run. Colibri has no file tools, so it receives the project's file list, key docs and any files your request names inline; for editing routes it returns whole files that the router writes into the private copy. Claude Code always uses your signed-in subscription (API key overrides are removed from its environment).
+Claude Code and Copilot enforce these with their tool permissions, Codex with its sandbox. Codex cannot be limited to git commands, so on the GitHub route it runs read-only and tells you the commands to run. Local models and API-key models have no file tools, so they receive the project's file list, key docs and any files your request names inline; for editing routes it returns whole files that the router writes into the private copy. Claude Code always uses your signed-in subscription (API key overrides are removed from its environment).
 
 The app does not store provider credentials. Cloud agents receive the task and can inspect files in the selected project. Keep secrets out of prompts and project folders accessible to agents.
 

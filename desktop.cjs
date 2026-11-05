@@ -1,9 +1,24 @@
-const { app, BrowserWindow, Menu, dialog, nativeTheme, globalShortcut } = require("electron");
+const { app, BrowserWindow, Menu, dialog, nativeTheme, globalShortcut, safeStorage, shell } = require("electron");
+const { spawn } = require("node:child_process");
 const { access, copyFile, cp, mkdir, readFile, writeFile } = require("node:fs/promises");
 const path = require("node:path");
 
-const gotLock = app.requestSingleInstanceLock();
-if (!gotLock) app.quit();
+// Squirrel (the Windows installer) starts the app with these flags to add or remove shortcuts.
+function handleSquirrelEvent() {
+  if (process.platform !== "win32") return false;
+  const event = process.argv[1];
+  const update = path.resolve(process.execPath, "..", "..", "Update.exe");
+  const exe = path.basename(process.execPath);
+  const run = (args) => spawn(update, args, { detached: true, stdio: "ignore" }).on("close", () => app.quit());
+  if (event === "--squirrel-install" || event === "--squirrel-updated") { run(["--createShortcut", exe]); return true; }
+  if (event === "--squirrel-uninstall") { run(["--removeShortcut", exe]); return true; }
+  if (event === "--squirrel-obsolete") { app.quit(); return true; }
+  return false;
+}
+
+const squirrelEvent = handleSquirrelEvent();
+const gotLock = !squirrelEvent && app.requestSingleInstanceLock();
+if (!gotLock && !squirrelEvent) app.quit();
 
 let router;
 let window;
@@ -37,6 +52,10 @@ async function openApp() {
   } catch {}
   globalThis.setRouterTheme = (theme) => { nativeTheme.themeSource = theme; };
   globalThis.setRouterShortcut = setRouterShortcut;
+  if (safeStorage.isEncryptionAvailable()) {
+    globalThis.routerEncrypt = (text) => safeStorage.encryptString(text).toString("base64");
+    globalThis.routerDecrypt = (text) => safeStorage.decryptString(Buffer.from(text, "base64"));
+  }
   const userData = app.getPath("userData");
   await mkdir(userData, { recursive: true });
   const skillsFile = path.join(userData, "skills.md");
@@ -68,6 +87,11 @@ async function openApp() {
       nodeIntegration: false,
       sandbox: true,
     },
+  });
+  // Setup guide links open in the normal browser, never inside the app.
+  window.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https:\/\//.test(url)) shell.openExternal(url);
+    return { action: "deny" };
   });
   window.loadURL(`http://127.0.0.1:${port}`);
   window.on("closed", () => { window = null; });

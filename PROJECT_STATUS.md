@@ -9,6 +9,8 @@
 - **UI:** Settings in the top bar; resizable, collapsible side panels; Routing menu = Auto + each route.
 - **Clean-PC fixes (0.10.1):** Node.js install falls back to the download page when winget is missing (Windows Sandbox, older Windows); install/sign-in windows launch PowerShell directly with an encoded command, so no quoting breaks.
 - **Clean-install test:** `test/clean-install.wsb` opens Windows Sandbox (a throwaway fresh Windows) with the built installer mapped in and runs it. Needs Windows 10/11 Pro, virtualization on, and the "Windows Sandbox" feature enabled.
+- **Skills are per-user (0.10.1):** the skill index and files now live in `%LOCALAPPDATA%\LocalAgentRouterData\` (`skills.md`, `skills/`), survive updates, and are no longer in the repo or the installer. The repo history was cleaned of the previously imported personal skills before publishing.
+- **GitHub:** being published as a public repo with v0.10.1 as the first release (installer attached).
 - Repo is under git (`main`). Agent conventions live in `AGENTS.md`.
 
 ## Next steps

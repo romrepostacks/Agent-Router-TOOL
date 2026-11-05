@@ -12,8 +12,7 @@ Guidance for any AI agent (Claude Code, Codex, Copilot, etc.) working on this re
 - `server.mjs` – local-only HTTP server (127.0.0.1) holding all logic: routes, providers, settings, setup, staging/diff proposals.
 - `route-rules.mjs` – route-selector prompt and parser. `lessons.md` – extra routing hints.
 - `public/` – vanilla JS UI (`app.js`, `index.html`, `style.css`). No framework, no build step.
-- `skills.md`, `skills/` – shared skill library copied to the user data folder on first run.
-- User data: `%LOCALAPPDATA%\LocalAgentRouterData\` (settings, sessions, proposals).
+- User data: `%LOCALAPPDATA%\LocalAgentRouterData\` (settings, sessions, proposals, and the user's own `skills.md` + `skills/`). Skills are personal and never committed or bundled.
 
 ## How routing works
 - Routes: route planning, quick, project, longterm, code, review, security, ui, art, github/push.

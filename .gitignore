@@ -3,3 +3,6 @@ out/
 release/
 *.tmp
 .agent-router/
+
+skills/
+skills.md

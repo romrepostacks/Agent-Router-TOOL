@@ -46,7 +46,7 @@ Coding tasks run in a temporary project copy. The app shows changed, removed, an
 
 ## Shared skills
 
-The categorized [skills.md](skills.md) index lists 84 workflows transferred from Claude Code, Claude plugins, Codex, and a local skills folder. Full instructions live in linked Markdown files. Add more from the app's **Shared skills** panel. In Settings, approve skills to include them automatically and set the per-request limit: `-1` means unlimited, `0` sends no skills, and a positive number sets the maximum. Approved skills are considered before task-selected skills. Imported skills retain source attribution, and providers are told to adapt tool-specific steps to their available tools. Rate answer quality and whether Auto chose the right route; both stay local and aggregate counts inform future GPT routing prompts. Provider status checks show installed and sign-in readiness without displaying credentials.
+Skills are your own: they live in `%LOCALAPPDATA%\LocalAgentRouterData\skills.md` (the index) and `skills\` (one Markdown file per skill), so they survive updates and are never shipped with the app. Add more from the app's **Shared skills** panel. In Settings, approve skills to include them automatically and set the per-request limit: `-1` means unlimited, `0` sends no skills, and a positive number sets the maximum. Approved skills are considered before task-selected skills. Imported skills retain source attribution, and providers are told to adapt tool-specific steps to their available tools. Rate answer quality and whether Auto chose the right route; both stay local and aggregate counts inform future GPT routing prompts. Provider status checks show installed and sign-in readiness without displaying credentials.
 
 ## Settings
 

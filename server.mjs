@@ -5,6 +5,7 @@ import http from "node:http";
 import path from "node:path";
 import Anthropic from "@anthropic-ai/sdk";
 import { buildRoutePrompt, parseRoute } from "./route-rules.mjs";
+import { MAX_MESSAGES, fetchCodexCloudSessions, mergeMessages, scanLocalCliSessions } from "./import-sessions.mjs";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 
@@ -408,6 +409,69 @@ async function writeSessions(sessions) {
   const temp = `${SESSIONS_FILE}.${process.pid}.tmp`;
   await writeFile(temp, JSON.stringify(sessions, null, 2), "utf8");
   await rename(temp, SESSIONS_FILE);
+}
+
+// Brings in Claude Code / Codex chats kept on this computer (cloud sessions included once the CLI has pulled
+// them down) plus Codex Cloud tasks. Sessions are matched to a project folder by working directory or repo name.
+async function importCliSessions() {
+  const projects = (await listProjects()).filter((project) => project.scope === "single");
+  const remotes = new Map(await Promise.all(projects.map(async (project) => [project.id, (await readFile(path.join(project.path, ".git", "config"), "utf8").catch(() => "")).toLowerCase()])));
+  const byCwd = (cwd) => {
+    const relative = cwd ? path.relative(PROJECTS_ROOT, path.resolve(cwd)) : "..";
+    const first = relative.split(/[\\/]/)[0].toLowerCase();
+    if (!first || first === ".." || path.isAbsolute(relative)) return null;
+    return projects.find((project) => project.id.toLowerCase() === first)?.id || null;
+  };
+  const byLabel = (label) => {
+    const name = String(label || "").toLowerCase();
+    if (!name) return null;
+    return projects.find((project) => project.id.toLowerCase() === name.split("/").pop() || remotes.get(project.id).includes(name))?.id || null;
+  };
+  const stagingDir = path.join(DATA_DIR, "staging").toLowerCase();
+  // The app's own provider runs are headless (`claude -p`, `codex exec`); they're already in the app's sessions.
+  const skip = (source, parsed) => (source === "claude" ? parsed.entrypoint === "sdk-cli" : parsed.originator === "codex_exec") || path.resolve(parsed.cwd || "/").toLowerCase().startsWith(stagingDir);
+  const found = await scanLocalCliSessions({ skip });
+  const cloud = (await cliAvailable(CLI.codex)) ? await fetchCodexCloudSessions(CLI.codex).catch(() => []) : [];
+  const ignored = new Set((await rawSettings()).ignoredImports || []);
+  const sessions = await readSessions();
+  const known = new Map(sessions.flatMap((session) => (session.sources || []).map((key) => [key, session])));
+  let added = 0, updated = 0;
+  for (const item of [...found, ...cloud]) {
+    const key = `${item.source}:${item.sourceId}`;
+    if (ignored.has(key)) continue;
+    const projectId = (item.label ? byLabel(item.label) : byCwd(item.cwd)) || "__all_projects__";
+    const existing = known.get(key);
+    if (!existing) {
+      sessions.push({ id: randomUUID(), title: item.title, projectId, createdAt: item.createdAt, updatedAt: item.updatedAt, sources: [key], importedFrom: item.source, messages: item.messages });
+      added++;
+    } else if (existing.sources.length === 1 && existing.importedFrom && existing.updatedAt < item.updatedAt) {
+      // Untouched import that kept going in the CLI: refresh it. Merged or continued sessions are left alone.
+      Object.assign(existing, { messages: item.messages, updatedAt: item.updatedAt });
+      updated++;
+    }
+  }
+  if (added || updated) await writeSessions(sessions);
+  return { added, updated, scanned: found.length + cloud.length, cloud: cloud.length };
+}
+
+async function mergeSessions(ids) {
+  const sessions = await readSessions();
+  const picked = ids.map((id) => sessions.find((session) => session.id === id)).filter(Boolean);
+  if (picked.length < 2) throw new Error("Pick at least two sessions to merge.");
+  if (new Set(picked.map((session) => session.projectId)).size > 1) throw new Error("Only sessions from the same project can be merged.");
+  const [target] = picked;
+  const all = mergeMessages(picked);
+  Object.assign(target, {
+    messages: all.slice(-MAX_MESSAGES),
+    sources: [...new Set(picked.flatMap((session) => session.sources || []))],
+    createdAt: picked.map((session) => session.createdAt).sort()[0],
+    updatedAt: new Date().toISOString(),
+    merged: true,
+  });
+  delete target.importedFrom;
+  const drop = new Set(picked.slice(1).map((session) => session.id));
+  await writeSessions(sessions.filter((session) => !drop.has(session.id)));
+  return { ...target, droppedMessages: Math.max(0, all.length - MAX_MESSAGES) };
 }
 
 async function projectFor(id) {
@@ -1307,12 +1371,25 @@ const server = http.createServer(async (req, res) => {
         (!pendingOnly || (session.messages || []).some((message) => pendingIds.has(message.proposalId))) &&
         (!query || `${session.title || ""} ${(session.messages || []).map((message) => message.content).join(" ")}`.toLowerCase().includes(query)))
         .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-        .map(({ id, title, projectId: project, createdAt, updatedAt, messages }) => ({ id, title, projectId: project, createdAt, updatedAt, messageCount: messages.length, hasPendingReview: messages.some((message) => pendingIds.has(message.proposalId)) })));
+        .map(({ id, title, projectId: project, createdAt, updatedAt, messages, importedFrom, merged }) => ({ id, title, projectId: project, createdAt, updatedAt, importedFrom, merged: Boolean(merged), messageCount: messages.length, hasPendingReview: messages.some((message) => pendingIds.has(message.proposalId)) })));
     }
     if (req.method === "GET" && url.pathname.startsWith("/api/sessions/")) {
       const id = url.pathname.split("/").pop();
       const session = (await readSessions()).find((item) => item.id === id);
       return session ? json(res, 200, session) : json(res, 404, { error: "Session not found." });
+    }
+    if (req.method === "POST" && url.pathname === "/api/sessions/import") return json(res, 200, await importCliSessions());
+    if (req.method === "POST" && url.pathname === "/api/sessions/merge") {
+      const data = await bodyJson(req);
+      if (!Array.isArray(data.ids) || data.ids.some((id) => typeof id !== "string")) return json(res, 400, { error: "Session ids are invalid." });
+      return json(res, 200, await mergeSessions(data.ids));
+    }
+    if (req.method === "POST" && url.pathname === "/api/sessions/teleport") {
+      const project = await projectFor((await bodyJson(req)).projectId);
+      if (!project || project.scope !== "single") return json(res, 400, { error: "Choose a project folder first." });
+      // Fixed command, no page input: Claude Code shows its own picker of claude.ai/code sessions.
+      openTerminal("Pull a Claude Code cloud session", `Set-Location -LiteralPath '${project.path.replace(/'/g, "''")}'; & '${CLI.claude.replace(/'/g, "''")}' --teleport`);
+      return json(res, 200, { opened: true });
     }
     if (req.method === "POST" && url.pathname === "/api/sessions") {
       const data = await bodyJson(req);
@@ -1347,7 +1424,8 @@ const server = http.createServer(async (req, res) => {
       session.messages.push({ role: "assistant", content: data.assistant, route: String(data.route || "Colibri"), ...(typeof data.proposalId === "string" ? { proposalId: data.proposalId } : {}), createdAt: now });
       if (session.title === "New session") session.title = data.user.replace(/\s+/g, " ").slice(0, 64) || "New session";
       session.updatedAt = now;
-      session.messages = session.messages.slice(-80);
+      session.messages = session.messages.slice(-MAX_MESSAGES);
+      delete session.importedFrom; // continued here, so a later import must not overwrite it
       await writeSessions(sessions);
       return json(res, 200, session);
     }
@@ -1374,6 +1452,9 @@ const server = http.createServer(async (req, res) => {
       const sessions = await readSessions();
       const remaining = sessions.filter((item) => item.id !== id);
       if (remaining.length === sessions.length) return json(res, 404, { error: "Session not found." });
+      const gone = sessions.find((item) => item.id === id).sources || [];
+      // Remember deleted imports so the next import doesn't bring them back.
+      if (gone.length) await writeSettings({ ignoredImports: [...new Set([...((await rawSettings()).ignoredImports || []), ...gone])].slice(-5000) });
       await writeSessions(remaining);
       return json(res, 200, { deleted: true });
     }

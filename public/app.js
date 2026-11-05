@@ -155,6 +155,12 @@ function renderSessions() {
     const title = document.createElement("span");
     title.className = "session-title";
     title.textContent = session.title || "New session";
+    if (session.importedFrom || session.merged) {
+      const source = document.createElement("span");
+      source.className = "session-source";
+      source.textContent = session.merged ? "merged" : { claude: "Claude", codex: "Codex", "codex-cloud": "Codex Cloud" }[session.importedFrom] || session.importedFrom;
+      title.prepend(source);
+    }
     const date = document.createElement("span");
     date.className = "session-date";
     date.textContent = session.hasPendingReview ? "Review" : new Date(session.updatedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" });
@@ -170,7 +176,18 @@ function renderSessions() {
       event.stopPropagation();
       deleteSession(session.id);
     });
-    row.append(button, remove);
+    const merge = document.createElement("button");
+    merge.type = "button";
+    merge.className = "merge-session";
+    merge.title = "Merge into the open session";
+    merge.setAttribute("aria-label", `Merge ${session.title || "session"} into the open session`);
+    merge.textContent = "⇲";
+    merge.hidden = !state.session || state.session.id === session.id;
+    merge.addEventListener("click", (event) => {
+      event.stopPropagation();
+      mergeSessions([state.session.id, session.id]);
+    });
+    row.append(button, merge, remove);
     list.append(row);
   }
 }
@@ -653,6 +670,33 @@ async function newSession() {
   $("prompt").focus();
 }
 
+async function importSessions({ quiet = false } = {}) {
+  const status = $("import-status");
+  if (!quiet) status.textContent = "Looking for Claude Code and Codex sessions…";
+  try {
+    const result = await request("/api/sessions/import", { method: "POST", body: "{}" });
+    if (!quiet || result.added) status.textContent = result.added || result.updated
+      ? `Imported ${result.added} new and refreshed ${result.updated} CLI sessions. Ones outside your project folders are under All Projects.`
+      : "No new CLI sessions found.";
+    if (state.project) await loadSessions();
+  } catch (error) {
+    if (!quiet) status.textContent = `Could not import: ${error.message}`;
+  }
+}
+
+async function mergeSessions(ids) {
+  if (state.busy || ids.length < 2) return;
+  if (!confirm(`Merge ${ids.length} sessions into one? Their messages are combined in time order and the others are removed.`)) return;
+  try {
+    const merged = await request("/api/sessions/merge", { method: "POST", body: JSON.stringify({ ids }) });
+    $("import-status").textContent = merged.droppedMessages ? `Merged. The oldest ${merged.droppedMessages} messages didn't fit and were left out.` : "Merged.";
+    await loadSessions();
+    await selectSession(merged.id);
+  } catch (error) {
+    $("import-status").textContent = error.message;
+  }
+}
+
 async function deleteSession(id) {
   if (!confirm("Delete this local session?")) return;
   await request(`/api/sessions/${encodeURIComponent(id)}`, { method: "DELETE" });
@@ -1034,6 +1078,19 @@ $("prompt").addEventListener("keydown", (event) => {
   }
 });
 $("new-session").addEventListener("click", newSession);
+$("import-sessions").addEventListener("click", () => importSessions());
+$("merge-sessions").addEventListener("click", () => {
+  const ids = state.session && state.sessions.some((item) => item.id === state.session.id) ? [state.session.id, ...state.sessions.filter((item) => item.id !== state.session.id).map((item) => item.id)] : state.sessions.map((item) => item.id);
+  if (ids.length < 2) { $("import-status").textContent = "There's only one session here to merge."; return; }
+  mergeSessions(ids);
+});
+$("teleport-session").addEventListener("click", async () => {
+  if (state.project?.scope !== "single") { $("import-status").textContent = "Choose a project folder first."; return; }
+  try {
+    await request("/api/sessions/teleport", { method: "POST", body: JSON.stringify({ projectId: state.project.id }) });
+    $("import-status").textContent = "Pick the cloud session in the window that opened. When it has loaded, close the window and press ⤓ to import it.";
+  } catch (error) { $("import-status").textContent = error.message; }
+});
 $("session-search").addEventListener("input", refreshSessionSearch);
 $("pending-only").addEventListener("change", () => loadSessions().catch(() => {}));
 $("open-settings").addEventListener("click", () => openSettings().catch((error) => { $("settings-status").textContent = error.message; $("settings-dialog").showModal(); }));
@@ -1130,7 +1187,7 @@ $("attachment-files").addEventListener("change", async (event) => {
 $("close-proposal").addEventListener("click", () => $("proposal-dialog").close());
 $("apply-proposal").addEventListener("click", applyProposal);
 
-loadProjects().catch((error) => { $("projects").textContent = error.message; });
+loadProjects().then(() => importSessions({ quiet: true })).catch((error) => { $("projects").textContent = error.message; });
 loadSkills().catch((error) => { $("skills-list").textContent = error.message; });
 // ---- First-run setup ----
 const setup = { step: 0, data: null, skipped: new Set(), firstRun: false };

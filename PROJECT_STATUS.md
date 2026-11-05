@@ -10,7 +10,7 @@
 - **Clean-PC fixes (0.10.1):** Node.js install falls back to the download page when winget is missing (Windows Sandbox, older Windows); install/sign-in windows launch PowerShell directly with an encoded command, so no quoting breaks.
 - **Clean-install test:** `test/clean-install.wsb` opens Windows Sandbox (a throwaway fresh Windows) with the built installer mapped in and runs it. Needs Windows 10/11 Pro, virtualization on, and the "Windows Sandbox" feature enabled.
 - **Skills are per-user (0.10.1):** the skill index and files now live in `%LOCALAPPDATA%\LocalAgentRouterData\` (`skills.md`, `skills/`), survive updates, and are no longer in the repo or the installer. The repo history was cleaned of the previously imported personal skills before publishing.
-- **GitHub:** public at https://github.com/romrepostacks/Agent-Router-TOOL. Releases carry the Windows installer (`Setup.exe`); v0.10.1 is the first. To release: bump `version` in package.json, `npm run make`, commit, push, then create a GitHub release `vX.Y.Z` with `release\make\squirrel.windows\x64\*Setup.exe` attached.
+- **GitHub:** public at https://github.com/romrepostacks/Agent-Router-TOOL. Releases carry the Windows installer (`Setup.exe`); v0.10.1 is the first. To release: bump `version` in package.json, `npm run make`, commit, push, add a section to `RELEASE_NOTES.md`, then create a GitHub release `vX.Y.Z` with `release\make\squirrel.windows\x64\*Setup.exe` attached.
 - Repo is under git (`main`). Agent conventions live in `AGENTS.md`.
 
 ## Next steps

@@ -1,5 +1,14 @@
 # Release notes
 
+## 0.11.0
+
+### What's new
+- **Import your existing history:** Claude Code and Codex CLI sessions, plus Codex Cloud tasks, show up as app sessions, matched to their project. Import runs on start and from the ⤓ button in the Sessions header.
+- **Claude Code web sessions:** ☁ pulls a web session into the project with `claude --teleport`; the next import picks it up.
+- **Merge sessions:** ⇲ on a row folds it into the open session, and ⇊ merges every listed session. Only sessions in the same project are merged, and messages are combined in time order.
+- **Fixed:** installed app failed to start looking for a bundled skills.md.
+- **Fixed:** the installer left out the app's runtime packages (Anthropic SDK, PDF viewer), so the installed app could not start.
+
 ## 0.10.1
 
 First public release of Local Agent Router, a Windows desktop app that sends each request to the AI tool best suited for it: Claude Code, Codex, Copilot, a local model, or OpenAI and Anthropic API keys.

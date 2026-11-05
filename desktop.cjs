@@ -1,6 +1,6 @@
 const { app, BrowserWindow, Menu, dialog, nativeTheme, globalShortcut, safeStorage, shell } = require("electron");
 const { spawn } = require("node:child_process");
-const { access, copyFile, cp, mkdir, readFile, writeFile } = require("node:fs/promises");
+const { mkdir, readFile, writeFile } = require("node:fs/promises");
 const path = require("node:path");
 
 // Squirrel (the Windows installer) starts the app with these flags to add or remove shortcuts.
@@ -58,17 +58,6 @@ async function openApp() {
   }
   const userData = app.getPath("userData");
   await mkdir(userData, { recursive: true });
-  const skillsFile = path.join(userData, "skills.md");
-  try {
-    await copyFile(path.join(__dirname, "skills.md"), skillsFile, require("node:fs").constants.COPYFILE_EXCL);
-  } catch (error) {
-    if (error.code !== "EEXIST") throw error;
-  }
-  const skillsDir = path.join(userData, "skills");
-  try { await access(skillsDir); }
-  catch { await cp(path.join(__dirname, "skills"), skillsDir, { recursive: true }); }
-  process.env.AGENT_ROUTER_SKILLS_FILE = skillsFile;
-  process.env.AGENT_ROUTER_SKILLS_DIR = skillsDir;
 
   const { startServer } = await import("./server.mjs");
   router = await startServer(0);

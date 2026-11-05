@@ -1070,7 +1070,7 @@ async function refreshWindowsPath() {
 
 // What the setup screen offers for each command-line tool. Commands are fixed here; nothing from the page is run.
 const SETUP_TOOLS = {
-  node: { name: "Node.js", why: "Needed to install Codex and Copilot.", install: "winget install -e --id OpenJS.NodeJS.LTS", guide: "https://nodejs.org/en/download" },
+  node: { name: "Node.js", why: "Needed to install Codex and Copilot.", install: "if (Get-Command winget -ErrorAction SilentlyContinue) { winget install -e --id OpenJS.NodeJS.LTS --accept-source-agreements --accept-package-agreements } else { Write-Host 'winget is not available. Opening the Node.js download page; run the installer, then press Check again.'; Start-Process https://nodejs.org/en/download }", guide: "https://nodejs.org/en/download" },
   claude: { name: "Claude Code", why: "Coding and UI work with your Claude subscription.", install: "irm https://claude.ai/install.ps1 | iex", login: "claude", loginHint: "Type /login if it doesn't ask you to sign in, then close the window.", guide: "https://docs.claude.com/en/docs/claude-code/setup" },
   codex: { name: "Codex", why: "Route planning, reviews and planning with your ChatGPT plan.", install: "npm install -g @openai/codex", login: "codex login", needsNode: true, guide: "https://github.com/openai/codex" },
   copilot: { name: "GitHub Copilot", why: "Security audits and GitHub requests with your Copilot plan.", install: "npm install -g @github/copilot", login: "copilot", loginHint: "Type /login and follow the steps, then close the window.", needsNode: true, guide: "https://docs.github.com/copilot/how-tos/set-up/install-copilot-cli" },
@@ -1084,7 +1084,8 @@ const LOCAL_PRESETS = [
 function openTerminal(title, command) {
   if (process.platform !== "win32") throw new Error("Opening a setup window is only supported on Windows. Run this command yourself: " + command);
   const script = `$Host.UI.RawUI.WindowTitle = '${title.replace(/'/g, "")}'; Write-Host '${title.replace(/'/g, "")}' -ForegroundColor Cyan; Write-Host '> ${command.replace(/'/g, "''")}'; ${command}; Write-Host ''; Write-Host 'Done. You can close this window and press Check again in Local Agent Router.' -ForegroundColor Green`;
-  spawn("cmd.exe", ["/c", "start", "", "powershell.exe", "-NoExit", "-ExecutionPolicy", "Bypass", "-Command", script], { detached: true, stdio: "ignore", windowsHide: true }).unref();
+  // -EncodedCommand avoids every quoting layer; detached gives PowerShell its own visible console window.
+  spawn("powershell.exe", ["-NoExit", "-NoProfile", "-ExecutionPolicy", "Bypass", "-EncodedCommand", Buffer.from(script, "utf16le").toString("base64")], { detached: true, stdio: "ignore", windowsHide: false }).unref();
 }
 
 async function setupState() {

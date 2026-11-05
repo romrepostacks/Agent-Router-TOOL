@@ -1,7 +1,7 @@
 {
   "name": "local-agent-router",
   "productName": "Local Agent Router",
-  "version": "0.10.0",
+  "version": "0.10.1",
   "description": "A unified desktop app for local and cloud AI providers",
   "author": "Local Agent Router",
   "main": "desktop.cjs",

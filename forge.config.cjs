@@ -6,7 +6,7 @@ module.exports = {
     asar: true,
     executableName: "LocalAgentRouter",
     icon: path.join(__dirname, "assets", "icon.ico"),
-    ignore: [/^\/out($|\/)/, /^\/release($|\/)/,/^\/\.git($|\/)/, /^\/skills($|\/)/, /^\/skills\.md$/],
+    ignore: [/^\/out($|\/)/, /^\/release($|\/)/,/^\/\.git($|\/)/, /^\/skills($|\/)/, /^\/skills\.md$/, /\.exe$/, /^\/test($|\/)/, /^\/\.agent-router($|\/)/],
   },
   makers: [
     {

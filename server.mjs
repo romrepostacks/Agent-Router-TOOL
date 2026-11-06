@@ -587,7 +587,9 @@ async function availableModelCatalog(force = false) {
 }
 
 async function queryColibri(messages, tools = [], { signal, onDelta, model: requestedModel, maxTokens = 1600 } = {}) {
-  const modelList = await fetch(`${COLIBRI_BASE_URL}/models`, { signal: signal || AbortSignal.timeout(3500) });
+  // Node's fetch only says "fetch failed" when nothing answers; say which address.
+  const modelList = await fetch(`${COLIBRI_BASE_URL}/models`, { signal: signal || AbortSignal.timeout(3500) })
+    .catch((error) => { throw signal?.aborted ? error : new Error(`Can't reach the local model at ${COLIBRI_BASE_URL} (${error.cause?.code || error.message}). Start it, or change its address in Settings.`); });
   if (!modelList.ok) throw new Error(`The local model app is not answering at ${COLIBRI_BASE_URL}. Start it, or change its address in Settings.`);
   const modelData = await modelList.json();
   const models = Array.isArray(modelData.data) ? modelData.data : [];
@@ -613,7 +615,7 @@ async function queryColibri(messages, tools = [], { signal, onDelta, model: requ
       stream: Boolean(onDelta),
     }),
     signal: signal || AbortSignal.timeout(180_000),
-  });
+  }).catch((error) => { throw signal?.aborted ? error : new Error(`The local model at ${COLIBRI_BASE_URL} dropped the request (${error.cause?.code || error.message}).`); });
   if (!response.ok) {
     const detail = (await response.text()).slice(0, 700);
     throw new Error(`Local model request failed (${response.status}): ${detail}`);
@@ -825,8 +827,16 @@ function cleanClaudeEnvironment() {
   return env;
 }
 
+// Only the last lines count: CLIs like `codex exec` echo the whole prompt to stderr before the error,
+// and a prompt that mentions limits must not look like a usage limit. Whole words only ("architecture" is not "hit").
 function isUsageLimitError(error) {
-  return /(?:usage|request|premium request|ai credit|quota|credit|token|message)[ -]?(?:limit|quota|cap)[^\n]*(?:reached|exceeded|exhausted|reset|wait)|(?:hit|reached|exceeded)[^\n]{0,80}(?:your )?(?:usage|monthly|weekly|daily|request|premium request|ai credit|credit|quota)?[ -]?(?:limit|quota|cap)|insufficient_quota|resource_exhausted|billing_hard_limit|rate.?limit[^\n]*(?:reached|exceeded)|429[^\n]*(?:quota|credit|usage|limit)/i.test(String(error?.message || error));
+  const tail = String(error?.message || error).split("\n").slice(-12).join("\n");
+  return /\b(?:usage|request|premium request|ai credit|credit|message)s? (?:limit|quota|cap)\b[^\n]*\b(?:reached|exceeded|exhausted|resets?|wait|try again)\b|\b(?:hit|reached|exceeded|out of)\b[^\n]{0,80}\b(?:usage|monthly|weekly|daily|request|premium request|ai credit|credit|rate)[ -]?(?:limits?|quota|cap)\b|\binsufficient_quota\b|\bresource_exhausted\b|\bbilling_hard_limit\b|\brate.?limit[^\n]*\b(?:reached|exceeded)\b|\b429\b[^\n]*\b(?:quota|credit|usage|limit)/i.test(tail);
+}
+
+// Last few non-empty lines of an error, for status lines and combined errors.
+function errorTail(error, lines = 3) {
+  return String(error?.message || error).split("\n").map((line) => line.trim()).filter(Boolean).slice(-lines).join(" · ").slice(-600);
 }
 
 
@@ -969,7 +979,9 @@ async function runRoleTask(role, defaultChoice, prompt, project, kind, options =
   }
   try { return await invoke(choices.primary); }
   catch (error) {
-    if (!isUsageLimitError(error) && !choices.fallback) throw error;
+    if (options.signal?.aborted) throw error;
+    const limited = isUsageLimitError(error);
+    if (!limited && !choices.fallback) throw error;
     let alternate = choices.fallback;
     if (!alternate) {
       const catalog = await availableModelCatalog();
@@ -982,8 +994,15 @@ async function runRoleTask(role, defaultChoice, prompt, project, kind, options =
       alternate = entries.find((entry) => choiceParts(entry.id).provider !== primary.provider)?.id || entries[0]?.id || "";
     }
     if (!alternate || alternate === choices.primary) throw error;
-    options.onStatus?.(`${role} reached a usage limit; retrying with ${choiceParts(alternate).provider}…`);
-    return invoke(alternate);
+    const name = (choice) => PROVIDER_NAMES[choiceParts(choice).provider] || choiceParts(choice).provider;
+    // A fallback that isn't running would only hide the real error behind its own (e.g. "fetch failed").
+    if (!(await providerReady(choiceParts(alternate).provider))) throw new Error(`${name(choices.primary)} failed: ${errorTail(error, 6)}\n(Fallback ${name(alternate)} isn't available, so it wasn't tried.)`);
+    options.onStatus?.(`${name(choices.primary)} ${limited ? "reached a usage limit" : `failed (${errorTail(error, 1)})`}; retrying with ${name(alternate)}…`);
+    try { return await invoke(alternate); }
+    catch (second) {
+      if (options.signal?.aborted) throw second;
+      throw new Error(`${name(choices.primary)} failed: ${errorTail(error)}\nFallback ${name(alternate)} failed too: ${errorTail(second)}`);
+    }
   }
 }
 

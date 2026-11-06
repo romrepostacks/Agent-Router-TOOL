@@ -612,7 +612,9 @@ async function queryColibri(messages, tools = [], { signal, onDelta, model: requ
       }),
       ...(tools.length ? { tools, parallel_tool_calls: false } : {}),
       max_tokens: maxTokens,
-      stream: Boolean(onDelta),
+      // Always stream plain chats: a long prompt can take minutes before the first token, and Node's fetch
+      // gives up after 300 s without response headers ("fetch failed", UND_ERR_HEADERS_TIMEOUT).
+      stream: !tools.length,
     }),
     signal: signal || AbortSignal.timeout(180_000),
   }).catch((error) => { throw signal?.aborted ? error : new Error(`The local model at ${COLIBRI_BASE_URL} dropped the request (${error.cause?.code || error.message}).`); });
@@ -620,7 +622,7 @@ async function queryColibri(messages, tools = [], { signal, onDelta, model: requ
     const detail = (await response.text()).slice(0, 700);
     throw new Error(`Local model request failed (${response.status}): ${detail}`);
   }
-  if (onDelta) {
+  if (!tools.length) {
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
@@ -636,7 +638,7 @@ async function queryColibri(messages, tools = [], { signal, onDelta, model: requ
         let chunk;
         try { chunk = JSON.parse(line.slice(6)); } catch { continue; }
         const text = chunk.choices?.[0]?.delta?.content;
-        if (typeof text === "string") { content += text; onDelta(text); }
+        if (typeof text === "string") { content += text; onDelta?.(text); }
       }
     }
     return { model: chosen, content, toolCalls: [] };
@@ -907,7 +909,9 @@ async function runProviderTask(choice, prompt, project, kind, options = {}) {
   }
   const command = CLI[provider];
   if (!command || !(await cliAvailable(command))) throw new Error(`${provider} CLI is not installed.`);
-  const cwd = project?.path || path.dirname(PUBLIC_DIR);
+  // No project (Route Planning, Quick): run in the data folder. The app folder is inside app.asar once packaged,
+  // which Windows can't use as a working directory, so every CLI spawn there failed.
+  const cwd = project?.path || DATA_DIR;
   if (provider === "claude") {
     const instruction = "Use the signed-in Claude Code subscription. Do not use an API key or custom API endpoint.";
     const permissions = access === "edit" ? ["--permission-mode", "acceptEdits"]

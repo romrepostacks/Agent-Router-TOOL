@@ -1,0 +1,10 @@
+{
+  "name": "Local Agent Router",
+  "short_name": "Agent Router",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#eef1f8",
+  "theme_color": "#eef1f8"
+}

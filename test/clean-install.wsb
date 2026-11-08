@@ -2,12 +2,12 @@
   <!-- Windows Sandbox: a throwaway clean Windows. Double-click this file after `npm run make`. -->
   <MappedFolders>
     <MappedFolder>
-      <HostFolder>C:\Users\ADMIN\Projects\agent-router\release\make\squirrel.windows\x64</HostFolder>
+      <HostFolder>C:\Users\ADMIN\Projects\agent-router\release</HostFolder>
       <SandboxFolder>C:\Users\WDAGUtilityAccount\Desktop\installer</SandboxFolder>
       <ReadOnly>true</ReadOnly>
     </MappedFolder>
   </MappedFolders>
   <LogonCommand>
-    <Command>powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process (Get-ChildItem C:\Users\WDAGUtilityAccount\Desktop\installer\*Setup.exe | Select-Object -First 1).FullName"</Command>
+    <Command>powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process (Get-ChildItem C:\Users\WDAGUtilityAccount\Desktop\installer\LocalAgentRouter-Setup-*.exe | Sort-Object LastWriteTime | Select-Object -Last 1).FullName"</Command>
   </LogonCommand>
 </Configuration>

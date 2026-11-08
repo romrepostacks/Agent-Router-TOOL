@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Agent Router mobile · device templates</title>
+    <style>
+      body { margin: 0; min-height: 100vh; display: flex; flex-wrap: wrap; gap: 48px; align-items: flex-start; justify-content: center; padding: 40px; background: #1b1d24; font: 14px system-ui, sans-serif; color: #c9ccd6; }
+      figure { margin: 0; display: grid; gap: 14px; justify-items: center; }
+      .device { position: relative; padding: 14px; background: #0c0c0f; box-shadow: 0 0 0 2px #3a3b42, 0 30px 80px rgba(0, 0, 0, .6); }
+      .device iframe { display: block; border: 0; background: #eef1f8; }
+      /* iPhone 16 Pro Max, iOS 26: 440 × 956 pt, Dynamic Island, 62pt top / 34pt bottom safe areas. */
+      .iphone { border-radius: 76px; }
+      .iphone iframe { width: 440px; height: 956px; border-radius: 62px; }
+      .iphone::after { content: ""; position: absolute; top: 25px; left: 50%; width: 126px; height: 37px; margin-left: -63px; border-radius: 20px; background: #000; }
+      /* Galaxy Note20: 412 × 915 dp, centre punch-hole camera, gesture navigation. */
+      .note { border-radius: 42px; }
+      .note iframe { width: 412px; height: 915px; border-radius: 30px; }
+      .note::after { content: ""; position: absolute; top: 24px; left: 50%; width: 12px; height: 12px; margin-left: -6px; border-radius: 50%; background: #000; }
+    </style>
+  </head>
+  <body>
+    <figure><div class="device iphone"><iframe src="www/index.html?device=iphone" title="iPhone 16 Pro Max"></iframe></div><figcaption>iPhone 16 Pro Max · iOS 26 · 440 × 956</figcaption></figure>
+    <figure><div class="device note"><iframe src="www/index.html?device=note20" title="Galaxy Note20"></iframe></div><figcaption>Galaxy Note20 · Android · 412 × 915</figcaption></figure>
+  </body>
+</html>

@@ -1,6 +1,6 @@
 const $ = (id) => document.getElementById(id);
 let recordingShortcut = false;
-const state = { projects: [], project: null, sessions: [], session: null, busy: false, abortController: null, skills: [], categories: [], selectedSkills: loadSelectedSkills(), preapprovedSkillIds: [], pendingPreapprovedSkillIds: [], skillsLimit: -1, pendingSkillsLimit: -1, theme: "system", settingsRoot: "", settingsConfigured: false, settingsPrompted: false, attachments: [], contextIds: [], contextFiles: [], contextProjectId: null, retryRequest: null, proposal: null, proposals: {}, lastRunStatus: "Ready when you are.", modelPrefs: {}, modelCatalog: null };
+const state = { projects: [], project: null, sessions: [], session: null, busy: false, runs: new Map(), skills: [], categories: [], selectedSkills: loadSelectedSkills(), preapprovedSkillIds: [], pendingPreapprovedSkillIds: [], skillsLimit: -1, pendingSkillsLimit: -1, theme: "system", settingsRoot: "", settingsConfigured: false, settingsPrompted: false, attachments: [], contextIds: [], contextFiles: [], contextProjectId: null, proposal: null, proposals: {}, lastRunStatus: "Ready when you are.", modelPrefs: {}, modelCatalog: null };
 
 function applyTheme(theme) {
   state.theme = theme;
@@ -41,25 +41,25 @@ function renderInspector() {
     auto: "Route Planning reads your request and recent messages, picks a route, and the provider you set for that route in Settings runs it.",
     route: "Route Planning only reports which route it would choose. Nothing else runs.",
     longterm: "The Long Term Project planning provider reads the selected project and writes a phased plan. It cannot edit files.",
-    code: "The Coding provider works in a private copy of the selected project. Changes wait for your review before they touch the real folder.",
+    chain: "Planning splits requests into build tasks, then parallel review and security checks. Results arrive together. Shared files run sequentially; staged mode produces one preview.",
+    code: "The Coding provider edits the selected project directly and lists the files it changed. Ask for a staged copy to review changes before they're applied.",
     review: "The Reviewing provider reads the selected project and reports findings. It cannot edit files.",
     security: "The Security audit provider reads the selected project and reports risks. It cannot edit files or run commands.",
-    ui: "The UI Designer provider works in a private copy of the selected project. Changes wait for your review.",
-    art: "The Art Asset provider creates assets in a private copy of the selected project. Changes wait for your review.",
+    ui: "The UI Designer provider edits the selected project directly. Ask for a staged copy to review first.",
+    art: "The Art Asset provider creates assets in the selected project. Ask for a staged copy to review first.",
     github: "The GitHub provider can read the project and run only git status, log, diff, branch, remote, push (never force) and gh issue/pr commands. Codex, local models and API-key models can only advise here.",
     quick: "The Quick questions provider answers without project access. Images are sent when that provider is a local or API-key model."
   };
-  $("run-state").textContent = state.lastRunStatus;
-  $("permission-summary").textContent = `${summaries[mode]}\n\nProject access: ${scope}.`;
+  $("route-label").textContent = $("mode").selectedOptions[0]?.textContent.replace(/ ·.*/, "") || "Auto";
+  $("run-state").textContent = viewedRun()?.status || state.lastRunStatus;
+  const linkedNames = state.project?.linked?.length ? `\nLinked folders (read-only): ${state.project.linked.join(", ")}.` : "";
+  $("permission-summary").textContent = `${summaries[mode]}\n\nProject access: ${scope}.${linkedNames}`;
+  renderLinkedFolders();
   const modelList = $("model-summary");
   modelList.replaceChildren();
   for (const [label, key] of [["Route Planning", "routePlanningPrimary"], ["Long Term Project planning", "longTermPlanningPrimary"], ["Coding", "codingPrimary"], ["Reviewing", "reviewPrimary"], ["Security audit", "securityPrimary"], ["UI Designer", "uiPrimary"], ["Art Asset generation", "artPrimary"], ["GitHub requests", "githubPrimary"], ["Quick questions", "quickPrimary"]]) {
     const item = document.createElement("li");
-    const choice = state.modelPrefs[key] || "Provider default";
-    const [provider, model] = choice.split("::");
-    const providerNames = { colibri: "Local model", claude: "Claude Code", codex: "Codex", copilot: "Copilot", openai: "OpenAI API", anthropic: "Anthropic API" };
-    const readable = state.modelCatalog?.all?.find((entry) => entry.id === choice)?.name || (providerNames[provider] ? `${providerNames[provider]}${model ? ` — ${model}` : ""}` : choice);
-    item.textContent = `${label}: ${readable}`;
+    item.textContent = `${label}: ${readableChoice(key)}`;
     modelList.append(item);
   }
   const context = $("included-context");
@@ -79,6 +79,177 @@ function renderInspector() {
   for (const item of skillNames) { const li = document.createElement("li"); li.textContent = item; skills.append(li); }
 }
 
+function readableChoice(key) {
+  const choice = state.modelPrefs[key] || "Provider default";
+  const [provider, model] = choice.split("::");
+  const providerNames = { colibri: "Local model", claude: "Claude Code", codex: "Codex", copilot: "Copilot", openai: "OpenAI API", anthropic: "Anthropic API" };
+  return state.modelCatalog?.all?.find((entry) => entry.id === choice)?.name || (providerNames[provider] ? `${providerNames[provider]}${model ? ` — ${model}` : ""}` : choice);
+}
+
+// Route picker: a ChatGPT-style menu over the hidden #mode select, which stays the source of truth.
+const ROUTE_INFO = {
+  auto: ["Picks the best route for each task", null],
+  route: ["Only shows which route Auto would pick", "routePlanningPrimary"],
+  longterm: ["Writes a phased plan · read-only", "longTermPlanningPrimary"],
+  chain: ["Plans, builds, then reviews with configured providers", "longTermPlanningPrimary"],
+  code: ["Edits files in this project", "codingPrimary"],
+  review: ["Finds bugs and risks · read-only", "reviewPrimary"],
+  security: ["Security findings · read-only", "securityPrimary"],
+  ui: ["Edits the interface in this project", "uiPrimary"],
+  art: ["Creates image and design assets", "artPrimary"],
+  github: ["Git status, push, issues and PRs", "githubPrimary"],
+  quick: ["Fast answers, no project access", "quickPrimary"],
+};
+
+function setRouteMenu(open) {
+  const menu = $("route-menu");
+  if (open) {
+    menu.replaceChildren();
+    for (const option of $("mode").options) {
+      const [description, key] = ROUTE_INFO[option.value] || ["", null];
+      const item = document.createElement("button");
+      item.type = "button";
+      item.className = "route-item";
+      item.setAttribute("role", "menuitemradio");
+      item.setAttribute("aria-checked", String(option.selected));
+      item.disabled = option.disabled;
+      const name = document.createElement("span");
+      name.className = "route-item-name";
+      name.textContent = option.textContent.replace(/ ·.*/, "");
+      const detail = document.createElement("span");
+      detail.className = "route-item-detail";
+      detail.textContent = key ? `${description} · ${readableChoice(key)}` : description;
+      const check = document.createElement("span");
+      check.className = "route-check";
+      check.setAttribute("aria-hidden", "true");
+      check.textContent = option.selected ? "✓" : "";
+      item.append(name, check, detail);
+      item.addEventListener("click", () => {
+        $("mode").value = option.value;
+        $("mode").dispatchEvent(new Event("change"));
+        setRouteMenu(false);
+        $("route-button").focus();
+      });
+      menu.append(item);
+    }
+  }
+  menu.hidden = !open;
+  $("route-button").setAttribute("aria-expanded", String(open));
+  if (open) (menu.querySelector("[aria-checked='true']:not(:disabled)") || menu.querySelector(".route-item:not(:disabled)"))?.focus();
+}
+
+// Linked folders live in the composer's + menu: other projects as checkboxes, plus any outside folders picked with Link a folder….
+function renderLinkedFolders() {
+  const box = $("linked-folders");
+  box.replaceChildren();
+  $("pick-folder").disabled = state.busy || state.project?.scope !== "single";
+  if (state.project?.scope !== "single") { box.textContent = "Choose one project folder to link others."; return; }
+  const projectIds = state.projects.filter((item) => item.scope === "single" && !item.parent && item.id !== state.project.id).map((item) => item.id);
+  // Saved entries that aren't project names are absolute paths from the folder picker.
+  const outside = state.project.linked.filter((id) => !projectIds.includes(id));
+  if (!outside.length && !projectIds.length) { box.textContent = "Nothing linked yet. Use Link a folder…"; return; }
+  for (const id of [...outside, ...projectIds]) {
+    const label = document.createElement("label");
+    label.className = "linked-folder";
+    label.title = id;
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.checked = state.project.linked.includes(id);
+    input.disabled = state.busy;
+    input.addEventListener("change", async () => {
+      const next = input.checked ? [...state.project.linked, id] : state.project.linked.filter((other) => other !== id);
+      try { updateLinked((await request("/api/projects/linked", { method: "POST", body: JSON.stringify({ projectId: state.project.id, linked: next }) })).linked); }
+      catch (error) { input.checked = !input.checked; state.lastRunStatus = error.message; renderInspector(); }
+    });
+    const name = outside.includes(id) ? id.split(/[\\/]/).filter(Boolean).pop() || id : id;
+    label.append(input, ` ${name}`);
+    if (outside.includes(id)) { const where = document.createElement("small"); where.textContent = ` ${id}`; label.append(where); }
+    box.append(label);
+  }
+}
+
+function updateLinked(linked) {
+  state.project.linked = linked;
+  state.contextProjectId = null;
+  loadContextFiles().catch(() => {});
+  renderInspector();
+}
+
+// Each session keeps its own run: live log, status, in-progress messages, and a retry request after a failure.
+// The server owns each run; this page mirrors it and reattaches after a reload (reattachRuns).
+const viewedRun = () => (state.session ? state.runs.get(state.session.id) : undefined);
+const activeRuns = () => [...state.runs.values()].filter((run) => run.active);
+const LIVE_PLACEHOLDER = "Output from the running agent shows up here as it works.";
+
+function showLive() {
+  const pane = $("live-output");
+  pane.textContent = viewedRun()?.live || LIVE_PLACEHOLDER;
+  pane.scrollTop = pane.scrollHeight;
+}
+
+// ponytail: rewrites the whole pane per chunk, capped at 200k chars per run; switch to appending text nodes if it gets slow.
+function appendLive(run, text) {
+  run.live = (run.live + text).slice(-200_000);
+  if (state.session?.id !== run.sessionId) return;
+  const pane = $("live-output");
+  const atBottom = pane.scrollHeight - pane.scrollTop - pane.clientHeight < 40;
+  pane.textContent = run.live;
+  if (atBottom) pane.scrollTop = pane.scrollHeight;
+}
+
+function renderActiveRuns() {
+  const runs = activeRuns();
+  $("active-runs-section").hidden = !runs.length;
+  $("active-runs-count").textContent = runs.length ? `Running (${runs.length})` : "Running";
+  const list = $("active-runs");
+  list.replaceChildren();
+  for (const run of runs) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `session-button active-run${state.session?.id === run.sessionId ? " selected" : ""}`;
+    button.dataset.sessionId = run.sessionId;
+    button.title = `Open ${run.title} in ${run.projectName}`;
+    const text = document.createElement("span");
+    text.className = "active-run-text";
+    const title = document.createElement("span");
+    title.className = "session-title";
+    title.textContent = run.title;
+    const where = document.createElement("span");
+    where.className = "active-run-status";
+    where.textContent = `${run.projectName} · ${run.status}`;
+    text.append(title, where);
+    const dot = document.createElement("i");
+    dot.className = "run-dot";
+    dot.setAttribute("aria-hidden", "true");
+    button.append(dot, text);
+    button.addEventListener("click", () => openRun(run));
+    list.append(button);
+  }
+}
+
+// Status ticks update text in place so a focused button in the list keeps focus.
+function updateRunStatus(run) {
+  const item = [...$("active-runs").children].find((child) => child.dataset.sessionId === run.sessionId);
+  const where = item?.querySelector(".active-run-status");
+  if (where) where.textContent = `${run.projectName} · ${run.status}`;
+}
+
+async function openRun(run) {
+  if (state.project?.id !== run.projectId) await selectProject(run.projectId);
+  await selectSession(run.sessionId);
+}
+
+function renderRunIndicators() {
+  renderActiveRuns();
+  renderProjects();
+  renderSessions();
+}
+
+function setPlusMenu(open) {
+  $("plus-menu").hidden = !open;
+  $("plus-button").setAttribute("aria-expanded", String(open));
+}
+
 function loadContextIds(projectId) {
   try {
     const value = JSON.parse(localStorage.getItem(`agent-router-context-${projectId}`) || "[]");
@@ -96,13 +267,109 @@ async function request(url, options = {}) {
   return data;
 }
 
-function setBusy(busy) {
+// state.busy means "the open session is running"; other sessions can run at the same time.
+// A CLI provider asked before using a tool (its own settings require approval). Cards for the open session show above
+// the composer; the run waits for an answer. Every page following the run sees it.
+//   Always allow — the provider saves a permission rule in its own settings (Claude Code's permission suggestions),
+//                  then allows this request. The router never answers later cards itself.
+//   Allow        — this request only.        Deny — this request only.
+// POST /api/runs/<session>/approvals/<card> { decision }. A server or provider that can't save the rule answers 4xx
+// (`unsupported: true`) and leaves the card pending, so Allow or Deny still work. `card.canAlwaysAllow === false` means
+// the provider offered no rule to save. Per-card UI state survives re-renders.
+const APPROVAL_CHOICES = [
+  { decision: "always", label: "Always allow", className: "always", busy: "Saving rule…" },
+  { decision: "allow", label: "Allow", className: "approve", busy: "Allowing…" },
+  { decision: "deny", label: "Deny", className: "decline", busy: "Denying…" },
+];
+const approvalUi = new Map(); // card id -> { busy: decision | "", message, error, unsupported }
+
+// Kept identical in mobile/www/app.js; test/approval-ui.test.mjs checks both copies.
+// Always allow sends no `allow` flag, so a server that doesn't know `decision` rejects it instead of allowing once.
+function approvalBody(decision) {
+  return decision === "always" ? { decision } : { decision, allow: decision === "allow" };
+}
+function approvalResult(decision, status, data = {}) {
+  if (status >= 200 && status < 300 && (decision !== "always" || data.decision === "always")) {
+    return { done: true, message: { always: "Always allowed. The provider saved the rule in its own settings.", allow: "Allowed once.", deny: "Denied." }[decision] };
+  }
+  if (decision === "always" && (data.unsupported || [400, 409, 501].includes(status) || (status >= 200 && status < 300))) {
+    return { unsupported: true, error: true, message: data.unsupported && data.error ? data.error : "This provider can't save a permanent rule for this request. Choose Allow or Deny." };
+  }
+  return { error: true, message: data.error || `Couldn't send your answer (${status}).` };
+}
+
+async function answerApproval(run, card, decision) {
+  approvalUi.set(card.id, { ...approvalUi.get(card.id), busy: decision, error: false, message: "" });
+  renderApprovals();
+  try {
+    const response = await fetch(`/api/runs/${encodeURIComponent(run.sessionId)}/approvals/${encodeURIComponent(card.id)}`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(approvalBody(decision)),
+    });
+    const result = approvalResult(decision, response.status, await response.json().catch(() => ({})));
+    approvalUi.set(card.id, { ...(result.unsupported ? {} : approvalUi.get(card.id)), ...result, busy: "" });
+  } catch (error) {
+    approvalUi.set(card.id, { ...approvalUi.get(card.id), busy: "", error: true, message: `Couldn't reach the router: ${error.message}` });
+  }
+  renderApprovals();
+}
+
+function renderApprovals() {
+  const box = $("approval-cards");
+  const run = viewedRun();
+  const cards = run?.approvals || [];
+  const open = new Set([...state.runs.values()].flatMap((r) => (r.approvals || []).map((c) => c.id)));
+  for (const id of approvalUi.keys()) if (!open.has(id)) approvalUi.delete(id);
+  box.hidden = !cards.length;
+  box.replaceChildren(...cards.map((card) => {
+    const ui = approvalUi.get(card.id) || {};
+    const item = document.createElement("article");
+    item.className = "approval-card";
+    item.setAttribute("aria-busy", String(Boolean(ui.busy)));
+    const titleId = `approval-${card.id}`;
+    item.setAttribute("aria-labelledby", titleId);
+    const title = document.createElement("h3");
+    title.id = titleId;
+    title.textContent = card.title || `Allow ${card.tool}?`;
+    const reason = document.createElement("p");
+    reason.textContent = card.reason || "The provider's settings ask before this tool runs.";
+    const detail = document.createElement("pre");
+    detail.textContent = card.detail;
+    const actions = document.createElement("div");
+    actions.className = "approval-actions";
+    const alwaysBlocked = card.canAlwaysAllow === false || ui.unsupported;
+    for (const choice of APPROVAL_CHOICES) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = choice.className;
+      button.textContent = ui.busy === choice.decision ? choice.busy : choice.label;
+      button.disabled = Boolean(ui.busy) || (choice.decision === "always" && alwaysBlocked);
+      if (choice.decision === "always") button.title = alwaysBlocked
+        ? "This provider can't save a permanent rule for this request."
+        : "Saves a permission rule in the provider's own settings, then allows this request.";
+      else button.title = choice.decision === "allow" ? "Allow this request only." : "Deny this request only.";
+      button.addEventListener("click", () => answerApproval(run, card, choice.decision));
+      actions.append(button);
+    }
+    const note = document.createElement("p");
+    note.className = "approval-status" + (ui.error ? " error" : "");
+    note.setAttribute("role", ui.error ? "alert" : "status");
+    note.textContent = ui.message || (card.canAlwaysAllow === false ? "Always allow isn't available: the provider offered no rule to save for this request." : "");
+    item.append(title, reason, detail, actions, note);
+    return item;
+  }));
+}
+
+function refreshRunControls() {
+  const busy = Boolean(viewedRun()?.active);
   state.busy = busy;
   $("send").disabled = busy ? false : !state.project;
   $("send").querySelector("span").textContent = busy ? "Stop" : "Send";
-  $("send").title = busy ? "Stop this response" : "Send message";
-  $("new-session").disabled = busy || !state.project;
-  $("choose-context").disabled = busy || !state.project;
+  $("send").title = busy ? "Stop this session's response" : "Send message";
+  $("new-session").disabled = !state.project;
+  $("choose-context").disabled = !state.project;
+  $("inspector-live").hidden = !busy;
+  renderApprovals();
+  renderActiveRuns();
   $("prompt").placeholder = !state.project ? "Choose a project first…" : state.project.scope === "all" ? "Ask a quick question or request an all-projects audit…" : "Ask a question or describe a coding task…";
   renderInspector();
 }
@@ -116,7 +383,20 @@ function renderProjects() {
     return;
   }
   list.className = "project-list";
-  for (const project of state.projects) {
+  const iconButton = (className, text, title, onClick) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = className;
+    button.textContent = text;
+    button.title = title;
+    button.setAttribute("aria-label", title);
+    button.addEventListener("click", (event) => { event.stopPropagation(); onClick(); });
+    return button;
+  };
+  // Folders merged into a parent project are listed under it; their sessions live with the parent.
+  for (const project of state.projects.filter((item) => !item.parent)) {
+    const row = document.createElement("div");
+    row.className = "session-row";
     const button = document.createElement("button");
     button.className = `project-button${state.project?.id === project.id ? " selected" : ""}`;
     button.type = "button";
@@ -126,10 +406,61 @@ function renderProjects() {
     const name = document.createElement("span");
     name.textContent = project.name;
     button.append(symbol, name);
+    const running = activeRuns().filter((run) => run.projectId === project.id).length;
+    if (running) {
+      const badge = document.createElement("span");
+      badge.className = "run-badge";
+      badge.textContent = `${running} running`;
+      button.append(badge);
+    }
     button.addEventListener("click", () => selectProject(project.id));
-    list.append(button);
+    row.append(button);
+    if (project.scope === "single" && state.project?.scope === "single" && state.project.id !== project.id) {
+      row.append(iconButton("merge-session", "⇲", `Merge ${project.name} into ${state.project.name}`, () => mergeProject(state.project.id, project.id)));
+    }
+    list.append(row);
+    for (const member of project.members || []) {
+      const memberRow = document.createElement("div");
+      memberRow.className = "session-row project-member";
+      const label = document.createElement("span");
+      label.className = "project-button";
+      label.textContent = `↳ ${member}`;
+      label.title = `Part of ${project.name}: its sessions are here and its files are read-only context`;
+      memberRow.append(label, iconButton("delete-session", "⇱", `Split ${member} out of ${project.name}`, () => splitProject(member)));
+      list.append(memberRow);
+    }
   }
   renderInspector();
+}
+
+function blockedByRuns() {
+  if (!activeRuns().length) return false;
+  $("import-status").textContent = "Wait for running sessions to finish, or stop them, before merging or splitting projects.";
+  return true;
+}
+
+async function mergeProject(parentId, childId) {
+  if (blockedByRuns()) return;
+  if (!confirm(`Merge ${childId} into ${parentId}? ${childId}'s sessions move to ${parentId}, new imports about it go there too, and its files become read-only context. The folder itself isn't touched.`)) return;
+  try {
+    const result = await request("/api/projects/merge", { method: "POST", body: JSON.stringify({ parentId, childId }) });
+    $("import-status").textContent = `Merged ${childId} into ${result.parentId}${result.moved ? `, moving ${result.moved} sessions` : ""}. Press ⟳ to merge sessions on the same topic.`;
+    await reloadProjects(result.parentId);
+  } catch (error) { $("import-status").textContent = error.message; }
+}
+
+async function splitProject(childId) {
+  if (blockedByRuns()) return;
+  try {
+    await request("/api/projects/split", { method: "POST", body: JSON.stringify({ childId }) });
+    $("import-status").textContent = `${childId} is its own project again. Its old sessions stay where they are.`;
+    await reloadProjects(state.project?.id);
+  } catch (error) { $("import-status").textContent = error.message; }
+}
+
+async function reloadProjects(selectId) {
+  state.projects = await request("/api/projects");
+  await selectProject(state.projects.some((project) => project.id === selectId) ? selectId : state.projects[0].id);
 }
 
 function renderSessions() {
@@ -164,6 +495,10 @@ function renderSessions() {
     const date = document.createElement("span");
     date.className = "session-date";
     date.textContent = session.hasPendingReview ? "Review" : new Date(session.updatedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+    if (state.runs.get(session.id)?.active) {
+      button.classList.add("running");
+      date.textContent = "Running";
+    }
     button.append(title, date);
     button.addEventListener("click", () => selectSession(session.id));
     const remove = document.createElement("button");
@@ -193,6 +528,8 @@ function renderSessions() {
 }
 
 function renderMessages() {
+  $("thread-access").value = state.session?.accessLimit || "";
+  $("permission-mode").value = state.session?.permissionMode || state.claudeDefaultMode || "default";
   const list = $("messages");
   list.replaceChildren();
   if (!state.session?.messages?.length) {
@@ -285,7 +622,7 @@ function addMessage(list, message, messageIndex) {
     button.addEventListener("click", () => openProposal(proposalId));
     body.append(button);
   }
-  if (role === "assistant" && route === "Router error" && state.retryRequest) {
+  if (role === "assistant" && route === "Router error" && viewedRun()?.retryRequest && !viewedRun().active) {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "retry-button";
@@ -406,6 +743,8 @@ async function loadSkills() {
   const available = new Set(state.skills.map((skill) => skill.id));
   state.skillsLimit = Number.isSafeInteger(settings.skillsLimit) ? settings.skillsLimit : -1;
   state.modelPrefs = settings;
+  state.claudeDefaultMode = settings.claudeDefaultMode || "default";
+  $("permission-mode").value = state.session?.permissionMode || state.claudeDefaultMode;
   state.pendingSkillsLimit = state.skillsLimit;
   state.preapprovedSkillIds = settings.preapprovedSkillIds.filter((id) => available.has(id));
   state.pendingPreapprovedSkillIds = [...state.preapprovedSkillIds];
@@ -484,6 +823,71 @@ async function saveSkill() {
     renderSkills();
   } catch (error) {
     status.textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
+}
+
+let skillScan = null;
+
+function resetSkillScan(message = "") {
+  skillScan = null;
+  $("skill-scan-result").hidden = true;
+  $("skill-scan-status").textContent = message;
+}
+
+async function scanSkill(event) {
+  event.preventDefault();
+  const button = $("scan-skill");
+  resetSkillScan("Scanning…");
+  button.disabled = true;
+  try {
+    skillScan = await request("/api/skills/scan", { method: "POST", body: JSON.stringify({ url: $("skill-url").value }) });
+    $("scan-name").textContent = skillScan.name;
+    $("scan-source").textContent = skillScan.source;
+    $("scan-purpose").textContent = skillScan.purpose || "The skill does not say what it is for. Read the full skill before installing.";
+    $("scan-instructions").textContent = skillScan.instructions;
+    const levels = { high: "High risk", medium: "Check", info: "Note" };
+    const warnings = [...skillScan.warnings].sort((a, b) => Object.keys(levels).indexOf(a.level) - Object.keys(levels).indexOf(b.level));
+    $("scan-warnings").replaceChildren(...(warnings.length ? warnings.map((warning) => {
+      const item = document.createElement("li");
+      item.className = `scan-warning ${warning.level}`;
+      const badge = document.createElement("strong");
+      badge.textContent = levels[warning.level] || warning.level;
+      item.append(badge, document.createTextNode(" " + warning.title));
+      if (warning.example) {
+        const example = document.createElement("code");
+        example.textContent = warning.example;
+        item.append(example);
+      }
+      return item;
+    }) : [Object.assign(document.createElement("li"), { className: "scan-warning clean", textContent: "No warnings found. This is a pattern check, so still read the skill if you don't know its author." })]));
+    $("skill-scan-result").hidden = false;
+    $("skill-scan-status").textContent = "";
+  } catch (error) {
+    resetSkillScan(error.message);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function installScannedSkill() {
+  if (!skillScan) return;
+  const button = $("install-skill");
+  button.disabled = true;
+  $("skill-scan-status").textContent = "Installing…";
+  try {
+    const result = await request("/api/skills/install", { method: "POST", body: JSON.stringify({ scanId: skillScan.scanId, category: $("scan-category").value }) });
+    state.skills = result.skills;
+    state.categories = result.categories;
+    state.preapprovedSkillIds = result.preapprovedSkillIds;
+    if (!state.pendingPreapprovedSkillIds.includes(result.skill.id)) state.pendingPreapprovedSkillIds.push(result.skill.id);
+    $("skill-url").value = "";
+    resetSkillScan(`Installed ${result.skill.name} and pre-approved it for every provider.`);
+    renderSkills();
+    renderApprovedSkills();
+  } catch (error) {
+    $("skill-scan-status").textContent = error.message;
   } finally {
     button.disabled = false;
   }
@@ -628,8 +1032,11 @@ function refreshSessionSearch() {
   sessionSearchTimer = setTimeout(() => loadSessions().catch(() => {}), 220);
 }
 
+// Bumped on every project/session switch so a slow fetch can't open a session the user has already left.
+let selectTicket = 0;
+
 async function selectProject(id) {
-  if (state.busy) return;
+  selectTicket++;
   state.project = state.projects.find((project) => project.id === id) || null;
   state.contextIds = state.project ? loadContextIds(id) : [];
   state.contextProjectId = null;
@@ -647,36 +1054,50 @@ async function selectProject(id) {
     if (option) option.disabled = allProjects;
   }
   if (allProjects && ["code", "ui", "art", "github"].includes($("mode").value)) $("mode").value = "auto";
+  state.lastRunStatus = "Ready when you are.";
   renderProjects();
   renderMessages();
-  setBusy(false);
+  showLive();
+  refreshRunControls();
   await loadSessions();
   if (state.project) loadContextFiles().catch((error) => { $("context-count").textContent = error.message; });
 }
 
 async function selectSession(id) {
-  if (state.busy) return;
+  const ticket = ++selectTicket;
   const session = await request(`/api/sessions/${encodeURIComponent(id)}`);
+  if (ticket !== selectTicket) return;
+  // A running or failed run holds messages the server hasn't saved yet (the live answer, or the error with Retry).
+  const run = state.runs.get(id);
+  if (run?.messages) session.messages = run.messages;
   state.session = session;
+  state.lastRunStatus = "Ready when you are.";
   renderSessions();
   renderMessages();
+  showLive();
+  refreshRunControls();
 }
 
 async function newSession() {
-  if (!state.project || state.busy) return;
+  if (!state.project) return;
+  selectTicket++;
   state.session = await request("/api/sessions", { method: "POST", body: JSON.stringify({ projectId: state.project.id }) });
+  state.lastRunStatus = "Ready when you are.";
   await loadSessions();
   renderMessages();
+  showLive();
+  refreshRunControls();
   $("prompt").focus();
 }
 
-async function importSessions({ quiet = false } = {}) {
+async function importSessions({ quiet = false, reindex = false } = {}) {
   const status = $("import-status");
-  if (!quiet) status.textContent = "Looking for Claude Code and Codex sessions…";
+  if (!quiet) status.textContent = reindex ? "Re-filing imported sessions by project and topic…" : "Looking for Claude Code and Codex sessions…";
   try {
-    const result = await request("/api/sessions/import", { method: "POST", body: "{}" });
-    if (!quiet || result.added) status.textContent = result.added || result.updated
-      ? `Imported ${result.added} new and refreshed ${result.updated} CLI sessions. Ones outside your project folders are under All Projects.`
+    const result = await request("/api/sessions/import", { method: "POST", body: JSON.stringify({ reindex }) });
+    if (reindex) status.textContent = `Re-filed imported sessions: ${result.added} new, ${result.updated} moved to a better project, ${result.merged} merged into topic threads.`;
+    else if (!quiet || result.added) status.textContent = result.added || result.updated
+      ? `Imported ${result.added} new and updated ${result.updated} CLI sessions, each in the project it works on or mentions most.${result.merged ? ` ${result.merged} joined a thread on the same topic.` : ""} Ones that match no project are under All Projects.`
       : "No new CLI sessions found.";
     if (state.project) await loadSessions();
   } catch (error) {
@@ -685,7 +1106,11 @@ async function importSessions({ quiet = false } = {}) {
 }
 
 async function mergeSessions(ids) {
-  if (state.busy || ids.length < 2) return;
+  if (ids.length < 2) return;
+  if (ids.some((id) => state.runs.get(id)?.active)) {
+    $("import-status").textContent = "A session you picked is still running. Wait for it to finish, or stop it, before merging.";
+    return;
+  }
   if (!confirm(`Merge ${ids.length} sessions into one? Their messages are combined in time order and the others are removed.`)) return;
   try {
     const merged = await request("/api/sessions/merge", { method: "POST", body: JSON.stringify({ ids }) });
@@ -698,11 +1123,18 @@ async function mergeSessions(ids) {
 }
 
 async function deleteSession(id) {
+  if (state.runs.get(id)?.active) {
+    $("import-status").textContent = "This session is still running. Stop it before deleting it.";
+    return;
+  }
   if (!confirm("Delete this local session?")) return;
   await request(`/api/sessions/${encodeURIComponent(id)}`, { method: "DELETE" });
+  state.runs.delete(id);
   if (state.session?.id === id) state.session = null;
   await loadSessions();
   renderMessages();
+  showLive();
+  refreshRunControls();
 }
 
 async function refreshStatus() {
@@ -730,13 +1162,9 @@ async function refreshStatus() {
   }
 }
 
-async function streamChat(payload, signal, onEvent) {
-  const response = await fetch("/api/chat/stream", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-    signal,
-  });
+// Reads a run's event stream: a new run (POST /api/chat/stream) or one this page reattaches to (GET /api/runs/<id>/stream).
+async function streamChat(responsePromise, onEvent) {
+  const response = await responsePromise;
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
     throw new Error(error.error || `Request failed (${response.status}).`);
@@ -759,7 +1187,11 @@ async function streamChat(payload, signal, onEvent) {
       }
       if (!data.length) continue;
       const value = JSON.parse(data.join("\n"));
-      if (name === "error") throw new Error(value.error || "The request failed.");
+      if (name === "error") {
+        const error = new Error(value.error || "The request failed.");
+        if (value.cancelled) error.name = "AbortError";
+        throw error;
+      }
       if (name === "done") result = value;
       else onEvent(name, value);
     }
@@ -770,38 +1202,120 @@ async function streamChat(payload, signal, onEvent) {
 }
 
 async function submitRequest(requestData) {
-  if (state.busy || !state.project) return;
+  if (!state.project || viewedRun()?.active) return;
   if (!state.session) await newSession();
   if (!state.session) return;
-  const before = requestData.before;
   const attachmentNames = [...requestData.attachments.map((file) => file.name), ...requestData.contextIds.map((id) => {
     const file = state.contextFiles.find((item) => item.id === id);
     return file ? `${file.projectName}/${file.path}` : id;
   })];
+  const sessionId = state.session.id;
+  const payload = {
+    message: requestData.message,
+    projectId: requestData.projectId,
+    sessionId,
+    mode: requestData.mode,
+    history: requestData.before.map(({ role, content }) => ({ role, content })),
+    skillIds: requestData.skillIds,
+    contextIds: requestData.contextIds,
+    attachments: requestData.attachments,
+    attachmentNames,
+  };
+  // The composer is free for the next task right away; this run keeps its own copy of the attachments for Retry.
+  $("prompt").value = "";
+  state.attachments = [];
+  $("attachment-files").value = "";
+  renderContextControls();
+  await followRun({
+    sessionId,
+    projectName: state.project.name,
+    title: (state.session.title || requestData.message).slice(0, 60),
+    requestData,
+    attachmentNames,
+    response: fetch("/api/chat/stream", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }),
+  });
+}
+
+// Runs belong to the server, so after a reload the page picks up every run still going (and any that failed or
+// were stopped while it was away, so their error and Retry show again).
+async function reattachRuns() {
+  const runs = await request("/api/runs?all").catch(() => []);
+  await Promise.all(runs.filter((run) => !state.runs.get(run.sessionId)?.active).map(async (run) => {
+    const session = await request(`/api/sessions/${encodeURIComponent(run.sessionId)}`).catch(() => null);
+    // Not found: the run finished (and saved) between the list and now.
+    const response = session && await fetch(`/api/runs/${encodeURIComponent(run.sessionId)}/stream`).catch(() => null);
+    if (!response?.ok) return;
+    const asked = run.request || {};
+    followRun({ // not awaited: it resolves only when the run ends
+      sessionId: run.sessionId,
+      projectName: state.projects.find((project) => project.id === run.projectId)?.name || run.projectId || "All Projects",
+      title: (session.title !== "New session" ? session.title : asked.message || "Session").slice(0, 60),
+      requestData: {
+        message: asked.message || "",
+        projectId: run.projectId,
+        mode: asked.mode || "auto",
+        skillIds: asked.skillIds || [],
+        contextIds: asked.contextIds || [],
+        attachments: asked.attachments || [],
+        before: session.messages,
+      },
+      attachmentNames: asked.attachmentNames || [],
+      response,
+    });
+  }));
+}
+
+async function followRun({ sessionId, projectName, title, requestData, attachmentNames, response }) {
+  const before = requestData.before;
   const userMessage = { role: "user", content: requestData.message, attachments: attachmentNames };
   const assistantMessage = { role: "assistant", content: "", route: "", status: "Starting…", temporary: true };
-  state.session.messages = [...before, userMessage, assistantMessage];
+  const run = {
+    sessionId,
+    projectId: requestData.projectId,
+    projectName,
+    title,
+    active: true,
+    status: "Starting…",
+    live: "",
+    messages: [...before, userMessage, assistantMessage],
+    retryRequest: requestData,
+    approvals: [],
+  };
+  state.runs.set(sessionId, run);
+  const viewing = () => state.session?.id === sessionId;
+  if (viewing()) state.session.messages = run.messages;
   renderMessages();
-  $("prompt").value = "";
-  state.lastRunStatus = "Starting…";
-  renderInspector();
-  state.retryRequest = requestData;
-  state.abortController = new AbortController();
-  setBusy(true);
+  showLive();
+  refreshRunControls();
+  renderRunIndicators();
   try {
-    const payload = {
-      message: requestData.message,
-      projectId: requestData.projectId,
-      mode: requestData.mode,
-      history: before.map(({ role, content }) => ({ role, content })),
-      skillIds: requestData.skillIds,
-      contextIds: requestData.contextIds,
-      attachments: requestData.attachments,
-    };
-    const result = await streamChat(payload, state.abortController.signal, (event, value) => {
+    const result = await streamChat(response, (event, value) => {
+      if (event === "snapshot") {
+        // Everything that happened before this page attached.
+        assistantMessage.content = value.content;
+        assistantMessage.status = run.status = value.status;
+        run.live = value.live;
+        run.approvals = value.approvals || [];
+        updateRunStatus(run);
+        if (viewing()) { renderMessages(); showLive(); renderInspector(); renderApprovals(); }
+        return;
+      }
+      if (event === "approval" || event === "approved") {
+        run.approvals = event === "approval" ? [...run.approvals, value] : run.approvals.filter((card) => card.id !== value.id);
+        if (viewing()) renderApprovals();
+        renderRunIndicators();
+        return;
+      }
+      if (event === "activity") return appendLive(run, value.text);
       if (event === "reset") assistantMessage.content = "";
       if (event === "delta") assistantMessage.content += value.text;
-      if (event === "status") { assistantMessage.status = value.status; state.lastRunStatus = value.status; renderInspector(); }
+      if (event === "status") {
+        assistantMessage.status = run.status = value.status;
+        appendLive(run, `• ${value.status}\n`);
+        updateRunStatus(run);
+        if (viewing()) renderInspector();
+      }
+      if (!viewing()) return;
       if (event === "delta" || event === "reset") {
         const text = $("messages").lastElementChild?.querySelector(".message-text");
         if (text) text.textContent = assistantMessage.content;
@@ -811,34 +1325,43 @@ async function submitRequest(requestData) {
         if (status) status.textContent = assistantMessage.status;
       }
     });
-    state.lastRunStatus = result.route || "Completed";
+    run.status = result.route || "Completed";
+    appendLive(run, `\n✓ Done${result.route ? ` · ${result.route}` : ""}\n`);
     if (result.proposal) state.proposals[result.proposal.id] = result.proposal.status;
-    await request(`/api/sessions/${encodeURIComponent(state.session.id)}/messages`, {
-      method: "POST",
-      body: JSON.stringify({ user: requestData.message, attachments: attachmentNames, materials: requestData.attachments, assistant: result.content, route: result.route, proposalId: result.proposal?.id }),
-    });
-    state.session = await request(`/api/sessions/${encodeURIComponent(state.session.id)}`);
-    state.retryRequest = null;
-    state.attachments = [];
-    $("attachment-files").value = "";
-    renderContextControls();
+    // The server saved the exchange when the run finished. Keep only the live log so it's still there on return.
+    run.messages = null;
+    run.retryRequest = null;
+    if (viewing()) {
+      const saved = await request(`/api/sessions/${encodeURIComponent(sessionId)}`);
+      if (viewing()) state.session = saved;
+    }
   } catch (error) {
     const stopped = error.name === "AbortError";
-    state.lastRunStatus = stopped ? "Stopped" : `Could not complete: ${error.message}`;
-    state.retryRequest = requestData;
-    state.session.messages = [...before, userMessage, { role: "assistant", content: stopped ? "Stopped. You can retry this request." : error.message, route: "Router error" }];
+    run.status = stopped ? "Stopped" : `Could not complete: ${error.message}`;
+    appendLive(run, `\n✕ ${run.status}\n`);
+    run.retryRequest = requestData;
+    run.messages = [...before, userMessage, { role: "assistant", content: stopped ? "Stopped. You can retry this request." : error.message, route: "Router error" }];
+    if (viewing()) state.session.messages = run.messages;
   } finally {
-    state.abortController = null;
-    setBusy(false);
-    renderMessages();
-    await loadSessions();
+    run.active = false;
+    run.approvals = [];
+    if (viewing()) {
+      renderMessages();
+      refreshRunControls();
+    }
+    renderRunIndicators();
+    await loadSessions().catch(() => {});
   }
-  renderInspector();
 }
 
 async function sendMessage(event) {
   event.preventDefault();
-  if (state.busy) { state.abortController?.abort(); return; }
+  const running = viewedRun();
+  // Stop goes through the server: closing a stream only detaches this page from the run.
+  if (running?.active) {
+    await request(`/api/runs/${encodeURIComponent(running.sessionId)}/cancel`, { method: "POST" }).catch(() => {});
+    return;
+  }
   const message = $("prompt").value.trim();
   if (!message || !state.project) return;
   await submitRequest({
@@ -853,7 +1376,8 @@ async function sendMessage(event) {
 }
 
 async function retryLastRequest() {
-  if (state.retryRequest && !state.busy) await submitRequest(state.retryRequest);
+  const run = viewedRun();
+  if (run?.retryRequest && !run.active) await submitRequest(run.retryRequest);
 }
 
 async function openProposal(id) {
@@ -868,16 +1392,45 @@ async function openProposal(id) {
 }
 
 function lineDiff(before, after) {
-  const a = (before || "").split("\n");
-  const b = (after || "").split("\n");
-  if (a.length * b.length > 180_000) return [...a.map((line) => ["-", line]), ...b.map((line) => ["+", line])];
-  const rows = Array.from({ length: a.length + 1 }, () => new Uint32Array(b.length + 1));
-  for (let i = a.length - 1; i >= 0; i--) for (let j = b.length - 1; j >= 0; j--) rows[i][j] = a[i] === b[j] ? rows[i + 1][j + 1] + 1 : Math.max(rows[i + 1][j], rows[i][j + 1]);
+  const allA = (before || "").split("\n");
+  const allB = (after || "").split("\n");
+  // Strip shared head and tail first so large files with small edits stay under the LCS budget.
+  let head = 0;
+  while (head < allA.length && head < allB.length && allA[head] === allB[head]) head++;
+  let tail = 0;
+  while (tail < allA.length - head && tail < allB.length - head && allA[allA.length - 1 - tail] === allB[allB.length - 1 - tail]) tail++;
+  const a = allA.slice(head, allA.length - tail);
+  const b = allB.slice(head, allB.length - tail);
+  const out = allA.slice(0, head).map((line) => [" ", line]);
+  if (a.length * b.length > 180_000) out.push(...a.map((line) => ["-", line]), ...b.map((line) => ["+", line]));
+  else {
+    const rows = Array.from({ length: a.length + 1 }, () => new Uint32Array(b.length + 1));
+    for (let i = a.length - 1; i >= 0; i--) for (let j = b.length - 1; j >= 0; j--) rows[i][j] = a[i] === b[j] ? rows[i + 1][j + 1] + 1 : Math.max(rows[i + 1][j], rows[i][j + 1]);
+    for (let i = 0, j = 0; i < a.length || j < b.length;) {
+      if (i < a.length && j < b.length && a[i] === b[j]) out.push([" ", a[i++]]), j++;
+      else if (i < a.length && (j === b.length || rows[i + 1][j] >= rows[i][j + 1])) out.push(["-", a[i++]]);
+      else out.push(["+", b[j++]]);
+    }
+  }
+  out.push(...allA.slice(allA.length - tail).map((line) => [" ", line]));
+  return collapseUnchanged(out);
+}
+
+// Show 3 lines of context around each change; long unchanged runs become one "…" row.
+function collapseUnchanged(rows, context = 3) {
+  const near = new Uint8Array(rows.length);
+  rows.forEach(([kind], index) => {
+    if (kind === " ") return;
+    for (let k = Math.max(0, index - context); k <= Math.min(rows.length - 1, index + context); k++) near[k] = 1;
+  });
   const out = [];
-  for (let i = 0, j = 0; i < a.length || j < b.length;) {
-    if (i < a.length && j < b.length && a[i] === b[j]) out.push([" ", a[i++]]), j++;
-    else if (i < a.length && (j === b.length || rows[i + 1][j] >= rows[i][j + 1])) out.push(["-", a[i++]]);
-    else out.push(["+", b[j++]]);
+  for (let index = 0; index < rows.length;) {
+    if (rows[index][0] !== " " || near[index]) { out.push(rows[index++]); continue; }
+    let end = index;
+    while (end < rows.length && rows[end][0] === " " && !near[end]) end++;
+    if (end - index > 1) out.push(["…", `${end - index} unchanged lines`]);
+    else out.push(rows[index]);
+    index = end;
   }
   return out;
 }
@@ -942,7 +1495,7 @@ async function loadProjects() {
   renderProjects();
   if (!state.projects.length) return;
   const saved = localStorage.getItem("agent-router-project");
-  const preferred = state.projects.find((project) => project.id === saved) ||
+  const preferred = state.projects.find((project) => project.id === saved && !project.parent) ||
     state.projects.find((project) => project.id === "ai-router-vscode") || state.projects[0];
   await selectProject(preferred.id);
 }
@@ -958,6 +1511,7 @@ async function openSettings() {
   $("theme-choice").value = settings.theme || "system";
   $("skills-limit").value = state.pendingSkillsLimit;
   $("shortcut-key").value = settings.shortcut ?? "Control+Shift+Space";
+  $("auto-merge-imports").checked = Boolean(settings.autoMergeImports);
   applyTheme($("theme-choice").value);
   selectSettingsTab("general");
   renderApprovedSkills();
@@ -1015,9 +1569,91 @@ function selectSettingsTab(name) {
     const selected = button.dataset.settingsTab === name;
     button.classList.toggle("active", selected);
     button.setAttribute("aria-selected", String(selected));
+    button.tabIndex = selected ? 0 : -1;
   });
   document.querySelectorAll("[data-settings-page]").forEach((page) => { page.hidden = page.dataset.settingsPage !== name; });
+  if (name === "remote") loadRemote();
 }
+
+// Settings → Remote access: GET/POST /api/remote, POST /api/remote/devices (token shown once), DELETE …/devices/<id>.
+// Only the page on the server PC reaches these; a remote device gets 403.
+function renderRemote(info) {
+  $("remote-enabled").checked = info.enabled;
+  $("remote-port").value = info.port;
+  $("remote-status").textContent = info.error ? info.error
+    : info.listening ? `On. Devices connect to ${info.url}`
+    : info.enabled ? "On, but not listening yet." : "Off. Paired devices can't connect.";
+  $("remote-status").classList.toggle("error-text", Boolean(info.error));
+  const list = $("remote-devices");
+  if (!info.devices.length) {
+    const empty = document.createElement("li");
+    empty.textContent = "No devices paired yet.";
+    return list.replaceChildren(empty);
+  }
+  list.replaceChildren(...info.devices.map((device) => {
+    const item = document.createElement("li");
+    const text = document.createElement("span");
+    text.textContent = device.name;
+    const meta = document.createElement("small");
+    meta.textContent = `Added ${new Date(device.createdAt).toLocaleDateString()} · ${device.lastSeenAt ? `last seen ${new Date(device.lastSeenAt).toLocaleString()}` : "not seen since the router started"}`;
+    text.append(meta);
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "context-button";
+    remove.textContent = "Remove";
+    remove.setAttribute("aria-label", `Remove ${device.name}`);
+    remove.addEventListener("click", async () => {
+      if (!confirm(`Remove ${device.name}? It is cut off immediately and needs a new token to reconnect.`)) return;
+      remove.disabled = true;
+      try { await request(`/api/remote/devices/${encodeURIComponent(device.id)}`, { method: "DELETE" }); await loadRemote(); }
+      catch (error) { $("remote-status").textContent = error.message; remove.disabled = false; }
+    });
+    item.append(text, remove);
+    return item;
+  }));
+}
+
+async function loadRemote() {
+  try { renderRemote(await request("/api/remote")); }
+  catch (error) { $("remote-status").textContent = error.message; }
+}
+
+async function applyRemote() {
+  const port = Number($("remote-port").value);
+  $("remote-apply").disabled = $("remote-enabled").disabled = true;
+  $("remote-status").textContent = "Applying…";
+  try { renderRemote(await request("/api/remote", { method: "POST", body: JSON.stringify({ enabled: $("remote-enabled").checked, port }) })); }
+  catch (error) { $("remote-status").textContent = error.message; await loadRemote(); }
+  finally { $("remote-apply").disabled = $("remote-enabled").disabled = false; }
+}
+
+$("remote-enabled").addEventListener("change", applyRemote);
+$("remote-apply").addEventListener("click", applyRemote);
+$("remote-add-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  $("remote-add").disabled = true;
+  try {
+    const added = await request("/api/remote/devices", { method: "POST", body: JSON.stringify({ name: $("remote-device-name").value }) });
+    $("remote-token-url").textContent = added.url || "Turn remote access on to get the address.";
+    $("remote-token-value").textContent = added.token;
+    $("remote-token").hidden = false;
+    $("remote-device-name").value = "";
+    $("remote-copy").focus();
+    await loadRemote();
+  } catch (error) { $("remote-status").textContent = error.message; }
+  finally { $("remote-add").disabled = false; }
+});
+$("remote-copy").addEventListener("click", async () => {
+  try { await navigator.clipboard.writeText($("remote-token-value").textContent); $("remote-copy").textContent = "Copied"; }
+  catch { $("remote-copy").textContent = "Select and copy it"; }
+});
+// Clearing the shown token is the only copy of it leaving the page.
+$("remote-token-done").addEventListener("click", () => {
+  $("remote-token").hidden = true;
+  $("remote-token-value").textContent = "";
+  $("remote-copy").textContent = "Copy token";
+});
+$("settings-dialog").addEventListener("close", () => $("remote-token-done").click());
 
 function captureShortcut(event) {
   if (!recordingShortcut) return;
@@ -1044,7 +1680,7 @@ async function saveSettings() {
   try {
     const roles = ["routePlanning", "longTermPlanning", "coding", "review", "security", "ui", "art", "github", "quick"];
     const modelSettings = Object.fromEntries(roles.flatMap((role) => [[`${role}Primary`, $(`${role}-primary`).value], [`${role}Fallback`, $(`${role}-fallback`).value]]));
-    const settings = await request("/api/settings", { method: "POST", body: JSON.stringify({ projectsRoot: $("projects-root").value, theme: $("theme-choice").value, skillsLimit, shortcut: $("shortcut-key").value, ...modelSettings, preapprovedSkillIds: state.pendingPreapprovedSkillIds }) });
+    const settings = await request("/api/settings", { method: "POST", body: JSON.stringify({ projectsRoot: $("projects-root").value, theme: $("theme-choice").value, skillsLimit, shortcut: $("shortcut-key").value, autoMergeImports: $("auto-merge-imports").checked, ...modelSettings, preapprovedSkillIds: state.pendingPreapprovedSkillIds }) });
     const rootChanged = state.settingsRoot !== settings.projectsRoot;
     state.settingsRoot = settings.projectsRoot;
     state.settingsConfigured = true;
@@ -1079,6 +1715,9 @@ $("prompt").addEventListener("keydown", (event) => {
 });
 $("new-session").addEventListener("click", newSession);
 $("import-sessions").addEventListener("click", () => importSessions());
+$("reindex-sessions").addEventListener("click", () => {
+  if (confirm("Re-file every imported session you haven't continued or merged by hand: move each to the project it fits best, then merge ones on the same topic within each project?")) importSessions({ reindex: true });
+});
 $("merge-sessions").addEventListener("click", () => {
   const ids = state.session && state.sessions.some((item) => item.id === state.session.id) ? [state.session.id, ...state.sessions.filter((item) => item.id !== state.session.id).map((item) => item.id)] : state.sessions.map((item) => item.id);
   if (ids.length < 2) { $("import-status").textContent = "There's only one session here to merge."; return; }
@@ -1093,11 +1732,77 @@ $("teleport-session").addEventListener("click", async () => {
 });
 $("session-search").addEventListener("input", refreshSessionSearch);
 $("pending-only").addEventListener("change", () => loadSessions().catch(() => {}));
-$("open-settings").addEventListener("click", () => openSettings().catch((error) => { $("settings-status").textContent = error.message; $("settings-dialog").showModal(); }));
+for (const id of ["open-settings", "open-settings-top"]) $(id).addEventListener("click", () => openSettings().catch((error) => { $("settings-status").textContent = error.message; if (!$("settings-dialog").open) $("settings-dialog").showModal(); }));
+$("route-button").addEventListener("click", () => setRouteMenu($("route-menu").hidden));
+$("thread-access").addEventListener("change", async (event) => {
+  const accessLimit = event.target.value;
+  try {
+    if (!state.session) await newSession();
+    if (!state.session) { event.target.value = ""; return; }
+    state.session = await request(`/api/sessions/${encodeURIComponent(state.session.id)}/access`, { method: "POST", body: JSON.stringify({ accessLimit }) });
+  } catch (error) {
+    event.target.value = state.session?.accessLimit || "";
+    alert(error.message);
+  }
+});
+// Same modes as Claude desktop's picker; the server passes the mode to Claude Code as --permission-mode.
+$("permission-mode").addEventListener("change", async (event) => {
+  const permissionMode = event.target.value;
+  try {
+    if (!state.session) await newSession();
+    if (!state.session) { event.target.value = state.claudeDefaultMode || "default"; return; }
+    state.session = await request(`/api/sessions/${encodeURIComponent(state.session.id)}/permission-mode`, { method: "POST", body: JSON.stringify({ permissionMode }) });
+  } catch (error) {
+    event.target.value = state.session?.permissionMode || state.claudeDefaultMode || "default";
+    alert(error.message);
+  }
+});
+$("route-menu").addEventListener("keydown", (event) => {
+  if (event.key === "Escape") { setRouteMenu(false); $("route-button").focus(); return; }
+  if (event.key === "Tab") { setRouteMenu(false); return; }
+  const items = [...$("route-menu").querySelectorAll(".route-item:not(:disabled)")];
+  const index = { Home: 0, End: items.length - 1 }[event.key] ?? (items.indexOf(document.activeElement) + ({ ArrowDown: 1, ArrowUp: -1 }[event.key] ?? NaN) + items.length) % items.length;
+  if (Number.isNaN(index)) return;
+  event.preventDefault();
+  items[index]?.focus();
+});
+$("route-button").addEventListener("keydown", (event) => {
+  if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+  event.preventDefault();
+  setRouteMenu(true);
+});
+$("new-project").addEventListener("click", () => {
+  $("new-project-name").value = "";
+  $("new-project-status").textContent = "";
+  $("new-project-where").textContent = `Creates an empty folder in ${state.settingsRoot || "your Projects folder"}.`;
+  $("new-project-dialog").showModal();
+});
+$("close-new-project").addEventListener("click", () => $("new-project-dialog").close());
+$("new-project-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  $("new-project-status").textContent = "Creating…";
+  try {
+    const project = await request("/api/projects", { method: "POST", body: JSON.stringify({ name: $("new-project-name").value }) });
+    localStorage.setItem("agent-router-project", project.id);
+    $("new-project-dialog").close();
+    await loadProjects();
+  } catch (error) { $("new-project-status").textContent = error.message; }
+});
 $("close-settings").addEventListener("click", () => $("settings-dialog").close());
 $("save-settings").addEventListener("click", saveSettings);
 $("refresh-models").addEventListener("click", () => loadModelChoices(state.modelPrefs, true, true));
 document.querySelectorAll("[data-settings-tab]").forEach((button) => button.addEventListener("click", () => selectSettingsTab(button.dataset.settingsTab)));
+document.querySelector(".settings-tabs").addEventListener("keydown", (event) => {
+  const tabs = [...document.querySelectorAll("[data-settings-tab]")];
+  const current = tabs.indexOf(document.activeElement);
+  const index = { Home: 0, End: tabs.length - 1 }[event.key] ?? (current + ({ ArrowDown: 1, ArrowUp: -1 }[event.key] ?? NaN) + tabs.length) % tabs.length;
+  if (current < 0 || Number.isNaN(index)) return;
+  event.preventDefault();
+  selectSettingsTab(tabs[index].dataset.settingsTab);
+  tabs[index].focus();
+});
+// Theme changes preview live; closing Settings without saving puts the saved theme back.
+$("settings-dialog").addEventListener("close", () => applyTheme(state.theme));
 $("record-shortcut").addEventListener("click", () => { recordingShortcut = true; $("shortcut-help").textContent = "Press a shortcut combination now. Escape cancels."; });
 $("clear-shortcut").addEventListener("click", () => { recordingShortcut = false; $("shortcut-key").value = ""; $("shortcut-help").textContent = "Shortcut is off. Save settings to apply."; });
 document.addEventListener("keydown", (event) => {
@@ -1148,7 +1853,7 @@ for (const handle of document.querySelectorAll(".resizer")) {
 applyLayout();
 $("mode").addEventListener("change", renderInspector);
 $("approved-skill-search").addEventListener("input", renderApprovedSkills);
-$("theme-choice").addEventListener("change", () => applyTheme($("theme-choice").value));
+$("theme-choice").addEventListener("change", () => { const saved = state.theme; applyTheme($("theme-choice").value); state.theme = saved; });
 $("skills-limit").addEventListener("input", () => {
   const limit = $("skills-limit").valueAsNumber;
   if (!Number.isSafeInteger(limit) || limit < -1) {
@@ -1166,12 +1871,28 @@ $("add-skill-toggle").addEventListener("click", () => {
 });
 $("cancel-skill").addEventListener("click", () => { $("skill-form").hidden = true; });
 $("save-skill").addEventListener("click", saveSkill);
+$("skill-scan-form").addEventListener("submit", scanSkill);
+$("install-skill").addEventListener("click", installScannedSkill);
+$("reject-skill").addEventListener("click", () => { $("skill-url").value = ""; resetSkillScan("Not installed."); $("skill-url").focus(); });
 $("refresh-projects").addEventListener("click", () => loadProjects().catch((error) => { $("projects").textContent = error.message; }));
 for (const button of document.querySelectorAll(".suggestions button")) {
   button.addEventListener("click", () => { $("prompt").value = button.dataset.prompt || ""; $("prompt").focus(); });
 }
 
+$("plus-button").addEventListener("click", () => setPlusMenu($("plus-menu").hidden));
+document.addEventListener("click", (event) => {
+  if (!event.target.closest(".plus-wrap")) setPlusMenu(false);
+  if (!event.target.closest(".route-picker") && !$("route-menu").hidden) setRouteMenu(false);
+});
+$("plus-menu").addEventListener("keydown", (event) => { if (event.key === "Escape") { setPlusMenu(false); $("plus-button").focus(); } });
+$("plus-menu").querySelector("label[for='attachment-files']").addEventListener("click", () => setPlusMenu(false));
+$("pick-folder").addEventListener("click", async () => {
+  setPlusMenu(false);
+  try { updateLinked((await request("/api/projects/linked/pick", { method: "POST", body: JSON.stringify({ projectId: state.project.id }) })).linked); }
+  catch (error) { state.lastRunStatus = error.message; $("context-count").textContent = error.message; renderInspector(); }
+});
 $("choose-context").addEventListener("click", async () => {
+  setPlusMenu(false);
   $("context-dialog-status").textContent = "Loading project files…";
   $("context-search").value = "";
   $("context-dialog").showModal();
@@ -1187,7 +1908,7 @@ $("attachment-files").addEventListener("change", async (event) => {
 $("close-proposal").addEventListener("click", () => $("proposal-dialog").close());
 $("apply-proposal").addEventListener("click", applyProposal);
 
-loadProjects().then(() => importSessions({ quiet: true })).catch((error) => { $("projects").textContent = error.message; });
+loadProjects().then(() => reattachRuns()).then(() => importSessions({ quiet: true })).catch((error) => { $("projects").textContent = error.message; });
 loadSkills().catch((error) => { $("skills-list").textContent = error.message; });
 // ---- First-run setup ----
 const setup = { step: 0, data: null, skipped: new Set(), firstRun: false };
@@ -1365,6 +2086,15 @@ $("run-setup").addEventListener("click", () => { $("settings-dialog").close(); o
 
 refreshStatus();
 refreshWindowsAccent();
+// The installer role ("server" or "client") follows the version so the two installs can be told apart.
+// A Client window loads the server's page; the server echoes the Client's own label as `client`, so show that one.
+// Remote devices can't manage pairing (the server answers 403), so the Remote access tab is hidden for them.
+request("/api/version").then(({ version, role, client, remote }) => {
+  const label = client || `${version}${role ? ` ${role}` : ""}`;
+  $("app-version").textContent = `v${label}`;
+  $("app-version").title = client ? `This Client is ${client}; the server is ${version} ${role || ""}`.trim() : "";
+  if (remote) document.querySelector('[data-settings-tab="remote"]')?.remove();
+}).catch(() => {});
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { if (state.theme === "system") applyTheme("system"); });
 setInterval(refreshStatus, 30_000);
 setInterval(refreshWindowsAccent, 15_000);

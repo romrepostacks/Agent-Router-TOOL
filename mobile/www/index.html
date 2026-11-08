@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+    <meta name="color-scheme" content="light dark">
+    <meta name="theme-color" content="#eef1f8" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#0b0d14" media="(prefers-color-scheme: dark)">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Agent Router">
+    <title>Agent Router</title>
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="stylesheet" href="style.css">
+    <!-- Copied in by scripts/build.mjs for the phone builds; absent (and not needed) in a browser preview. -->
+    <script src="vendor/capacitor.js" defer></script>
+    <script src="app.js" defer></script>
+  </head>
+  <body>
+    <div class="ambient" aria-hidden="true"><i></i><i></i><i></i></div>
+
+    <header class="nav-bar glass" id="nav-bar">
+      <button id="nav-back" class="nav-button back" type="button" aria-label="Back" hidden><span aria-hidden="true">‹</span><span id="nav-back-label">Back</span></button>
+      <h1 id="nav-title" class="nav-title">Agent Router</h1>
+      <div class="nav-actions" id="nav-actions"></div>
+    </header>
+
+    <main id="views" class="views">
+      <!-- Connect: pair this phone with the server install over Tailscale. -->
+      <section class="view" data-view="connect" hidden>
+        <div class="large-title">Connect</div>
+        <p class="lede">Point this app at the PC running the <strong>server</strong> install. Use its Tailscale address, for example <code>https://my-pc.tailnet.ts.net</code>.</p>
+        <form id="connect-form" class="card glass form-card">
+          <label class="field">Server address<input id="server-url" type="url" inputmode="url" autocomplete="url" autocapitalize="off" spellcheck="false" placeholder="http://100.101.102.103:8766" required></label>
+          <label class="field">Access code<input id="server-token" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Shown in the server's Settings"></label>
+          <button class="primary-button" type="submit">Connect</button>
+          <p id="connect-status" class="hint" aria-live="polite"></p>
+        </form>
+      </section>
+
+      <section class="view" data-view="projects" hidden>
+        <div class="large-title">Projects</div>
+        <div id="status-chips" class="chips" aria-live="polite"></div>
+        <div id="project-list" class="list glass"></div>
+      </section>
+
+      <section class="view" data-view="sessions" hidden>
+        <div class="large-title" id="sessions-title">Sessions</div>
+        <div class="search-row">
+          <input id="session-search" type="search" placeholder="Search sessions" aria-label="Search sessions" class="search glass">
+        </div>
+        <div class="toolbar">
+          <label class="toggle-chip glass"><input id="pending-only" type="checkbox"> Pending reviews</label>
+          <button id="import-sessions" type="button" class="chip-button glass">Import CLI sessions</button>
+        </div>
+        <p id="sessions-status" class="hint" aria-live="polite"></p>
+        <div id="session-list" class="list glass"></div>
+      </section>
+
+      <section class="view chat-view" data-view="chat" hidden>
+        <div id="messages" class="messages" aria-live="polite"></div>
+        <section id="approvals" class="approvals" aria-label="Waiting for your approval" hidden></section>
+        <form id="composer" class="composer glass">
+          <div id="attachment-list" class="attachment-list"></div>
+          <div class="composer-row">
+            <button id="attach" type="button" class="round-button" aria-label="Attach files">+</button>
+            <textarea id="prompt" rows="1" placeholder="Ask or describe a task…" aria-label="Task" enterkeyhint="send"></textarea>
+            <button id="send" type="submit" class="round-button send" aria-label="Send"><span aria-hidden="true">↑</span></button>
+          </div>
+          <div class="composer-chips">
+            <button id="mode-chip" type="button" class="chip-button">Auto</button>
+            <button id="skills-chip" type="button" class="chip-button">Skills</button>
+            <button id="access-chip" type="button" class="chip-button">Full access</button>
+            <button id="permission-chip" type="button" class="chip-button">Ask permissions</button>
+          </div>
+          <input id="attachment-files" type="file" multiple hidden accept=".c,.cc,.cfg,.conf,.cpp,.cs,.css,.csv,.go,.h,.hpp,.html,.java,.js,.json,.jsx,.md,.mjs,.ps1,.py,.rb,.rs,.sh,.sql,.toml,.ts,.tsx,.txt,.xml,.yaml,.yml,image/png,image/jpeg,image/webp">
+        </form>
+      </section>
+
+      <section class="view" data-view="running" hidden>
+        <div class="large-title">Running</div>
+        <div id="running-list" class="list glass"></div>
+      </section>
+
+      <section class="view" data-view="inbox" hidden>
+        <div class="large-title">Inbox</div>
+        <p class="hint">Finished sessions and requests for approval. Approvals can be answered here.</p>
+        <div id="inbox-list" class="stack"></div>
+      </section>
+
+      <section class="view" data-view="settings" hidden>
+        <div class="large-title">Settings</div>
+        <div class="group-label">Connection</div>
+        <div class="card glass">
+          <div class="row-line"><span>Server</span><span id="settings-server" class="value"></span></div>
+          <div class="row-line"><span>Version</span><span id="settings-version" class="value"></span></div>
+          <button id="disconnect" type="button" class="text-button danger">Disconnect</button>
+        </div>
+        <div class="group-label">This phone</div>
+        <div class="card glass">
+          <label class="row-line">Appearance<select id="appearance"><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select></label>
+          <label class="row-line">Alerts when the app is in the background<input id="notify-toggle" type="checkbox" role="switch"></label>
+          <p class="hint">Alerts show while the app is open or recently used. When you come back to the app it catches up on anything it missed. Alerts while it's fully closed need push notifications, which the server doesn't send yet.</p>
+        </div>
+        <div class="group-label">Server status</div>
+        <div id="server-status" class="card glass"></div>
+        <div class="group-label">Workspace</div>
+        <div class="card glass">
+          <label class="field">Projects folder on the server<input id="projects-root" type="text" autocapitalize="off" spellcheck="false"></label>
+          <label class="field">Maximum skills per request<input id="skills-limit" type="number" min="-1" step="1" inputmode="numeric"></label>
+          <p class="hint">−1 means unlimited, 0 sends no skills.</p>
+        </div>
+        <div class="group-label">Routing &amp; models</div>
+        <div id="routing" class="card glass"></div>
+        <p id="settings-status" class="hint" aria-live="polite"></p>
+        <button id="save-settings" type="button" class="primary-button">Save settings</button>
+      </section>
+    </main>
+
+    <nav class="tab-bar glass" id="tab-bar" aria-label="Sections">
+      <button type="button" data-tab="projects" class="tab"><span class="tab-icon" aria-hidden="true">▦</span><span>Projects</span></button>
+      <button type="button" data-tab="running" class="tab"><span class="tab-icon" aria-hidden="true">◉</span><span>Running</span><b class="badge" id="running-badge" hidden></b></button>
+      <button type="button" data-tab="inbox" class="tab"><span class="tab-icon" aria-hidden="true">✉</span><span>Inbox</span><b class="badge" id="inbox-badge" hidden></b></button>
+      <button type="button" data-tab="settings" class="tab"><span class="tab-icon" aria-hidden="true">⚙</span><span>Settings</span></button>
+    </nav>
+
+    <div id="sheet-backdrop" class="sheet-backdrop" hidden></div>
+    <section id="sheet" class="sheet glass" role="dialog" aria-modal="true" aria-labelledby="sheet-title" hidden>
+      <div class="sheet-grabber" aria-hidden="true"></div>
+      <header class="sheet-header"><h2 id="sheet-title"></h2><button id="sheet-close" type="button" class="nav-button" aria-label="Close">Done</button></header>
+      <div id="sheet-body" class="sheet-body"></div>
+    </section>
+
+    <div id="toast" class="toast glass" role="status" aria-live="polite" hidden></div>
+  </body>
+</html>

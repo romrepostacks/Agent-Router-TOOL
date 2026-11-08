@@ -1,0 +1,12 @@
+{
+  "appId": "com.localagentrouter.mobile",
+  "appName": "Agent Router",
+  "webDir": "www",
+  "server": { "androidScheme": "https" },
+  "ios": { "contentInset": "never", "backgroundColor": "#eef1f8" },
+  "android": { "backgroundColor": "#eef1f8" },
+  "plugins": {
+    "Keyboard": { "resize": "native" },
+    "CapacitorHttp": { "enabled": true }
+  }
+}

@@ -1,0 +1,38 @@
+# Builds the iPhone app as an unsigned IPA on a GitHub macOS runner (Windows can't build iOS apps).
+# Install the IPA with AltStore, which signs it with your Apple ID and can re-sign it over Wi-Fi.
+# Run it from the Actions tab (Run workflow) or by pushing a change under mobile/.
+name: iOS app (unsigned IPA)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ["mobile/**", ".github/workflows/ios-unsigned.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  ipa:
+    runs-on: macos-15
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - run: npm ci
+      - run: node scripts/build.mjs ios
+        env:
+          AR_IOS_UNSIGNED: "1"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AgentRouter-ios-unsigned
+          path: mobile/dist/*-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 30

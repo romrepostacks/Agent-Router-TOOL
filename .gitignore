@@ -1,8 +1,10 @@
 node_modules/
 out/
 release/
+LocalAgentRouter-Setup.exe
 *.tmp
 .agent-router/
 
 skills/
 skills.md
+error.log

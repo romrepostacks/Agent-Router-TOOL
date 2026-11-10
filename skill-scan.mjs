@@ -68,7 +68,8 @@ export function scanSkillText(text) {
 export const REVIEWERS = [
   {
     id: "skillspector", name: "NVIDIA SkillSpector", command: () => process.env.SKILLSPECTOR_CLI || "skillspector",
-    args: (dir, out) => ["scan", dir, "--no-llm", "--format", "json", "--output", out], output: "file",
+    // JSON on stdout: SkillSpector refuses --output on Windows ("Safe file output is unsupported on this platform").
+    args: (dir) => ["scan", dir, "--no-llm", "--format", "json"], output: "stdout",
     parse: (data) => ({
       safe: data.risk_assessment?.recommendation === "SAFE",
       summary: `${String(data.risk_assessment?.recommendation || "UNKNOWN").replace(/_/g, " ").toLowerCase()} · risk ${data.risk_assessment?.score ?? "?"}/100`,

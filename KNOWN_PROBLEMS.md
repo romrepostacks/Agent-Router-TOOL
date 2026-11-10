@@ -26,7 +26,7 @@ Checked items have source fixes and automated regression coverage where noted; n
 
 ## Projects
 
-- [ ] Merging projects moves their sessions but leaves separate folders in the Projects work tree. Preserve every file by moving the merged folder's contents into an `obsolete` folder inside the destination project, and record the old and new paths so agents can still locate those files and update references that point to their former locations. Do not delete files.
+- [x] Merging projects moves their sessions but leaves separate folders in the Projects work tree. Merge now moves the whole folder into `<destination>\obsolete\<name>` (a `-2` suffix if taken; nothing deleted), records old → new in `settings.projectMoves` and `obsolete\MOVED.md`, and adds the move to every provider prompt for that project so agents find the files and fix old references. Refused while either project is running or edit-locked, and if the folder is in use nothing changes. Split moves it back if the old place is free. Tests: `test/import-sessions.test.mjs`; UI merge/split and the prompt note checked in Chromium against a sandboxed server.
 
 ## Upgrade list
 

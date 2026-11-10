@@ -1,7 +1,7 @@
 import { runCli, runClaudeStream, isUsageLimitError } from "./cli-runner.mjs";
 import { execFile, spawn } from "node:child_process";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { copyFile, lstat, mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
+import { appendFile, copyFile, lstat, mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { createReadStream } from "node:fs";
 import http from "node:http";
 import os from "node:os";
@@ -523,6 +523,8 @@ async function importCliSessions({ reindex = false } = {}) {
     return { id: project.id, remote, repos };
   }));
   const parentOf = await projectParents();
+  // Merged folders moved into <parent>/obsolete still match history recorded under their old path.
+  for (const member of Object.keys(parentOf)) if (!projects.some((project) => project.id === member)) projects.push({ id: member, remote: "", repos: [] });
   const assign = (item) => bestProject(item, projects, PROJECTS_ROOT, parentOf) || "__all_projects__";
   const stagingDir = path.join(DATA_DIR, "staging").toLowerCase();
   // The app's own provider runs are headless (`claude -p`, `codex exec`); they're already in the app's sessions.
@@ -604,11 +606,26 @@ async function mergeProjects(parentId, childId) {
   const parent = await projectFolder(parents[parentId] || parentId), child = await projectFolder(childId);
   if (!parent || !child) throw new Error("Choose two project folders.");
   if (parent.id === child.id) throw new Error("A project can't be merged into itself.");
+  if ([...activeRuns.values()].some((run) => !run.final && [parent.id, child.id].includes(run.projectId)) || [parent, child].some((item) => editLocks.has(editLockKey(item)))) {
+    throw new Error("Wait for running work in these projects to finish before merging them.");
+  }
+  // Files are kept, never deleted: the child folder moves whole into <parent>/obsolete/<child>, and the move is
+  // recorded (settings.projectMoves + obsolete/MOVED.md) so agents can find the files and fix stale references.
+  const obsolete = path.join(parent.path, "obsolete");
+  await mkdir(obsolete, { recursive: true });
+  let target = path.join(obsolete, child.id);
+  for (let n = 2; await stat(target).then(() => true, () => false); n++) target = path.join(obsolete, `${child.id}-${n}`);
+  try { await rename(child.path, target); } catch (error) {
+    throw new Error(`Couldn't move ${child.id} into ${parent.id}${error.code === "EPERM" || error.code === "EBUSY" ? ": a file in it is open in another program. Close it and try again" : `: ${error.message}`}. Nothing was changed.`);
+  }
+  const moves = (await rawSettings()).projectMoves || {};
+  moves[child.id] = { from: child.path, to: target, parent: parent.id, at: new Date().toISOString() };
+  await appendFile(path.join(obsolete, "MOVED.md"), `${(await stat(path.join(obsolete, "MOVED.md")).catch(() => null)) ? "" : "# Folders merged into this project\n\nKept as they were, nothing deleted. References to an old path should point to its new one.\n\n"}- ${moves[child.id].at.slice(0, 10)}: \`${child.path}\` → \`${target}\`\n`);
   // Flat groups: the child and anything already under it now sit under the parent.
   for (const [member, owner] of Object.entries(parents)) if (owner === child.id) parents[member] = parent.id;
   parents[child.id] = parent.id;
   delete parents[parent.id];
-  await writeSettings({ projectParents: parents });
+  await writeSettings({ projectParents: parents, projectMoves: moves });
   const moved = await withFileLock(SESSIONS_FILE, async () => {
     const sessions = await readSessions();
     let count = 0;
@@ -616,7 +633,24 @@ async function mergeProjects(parentId, childId) {
     if (count) await writeSessions(sessions);
     return count;
   });
-  return { parentId: parent.id, moved };
+  return { parentId: parent.id, moved, folder: target };
+}
+
+// Undoes a merge: the folder moves back from obsolete/ if its old place is still free.
+async function splitProject(childId) {
+  const parents = await projectParents();
+  if (typeof childId !== "string" || !parents[childId]) throw new Error("That folder isn't part of a project group.");
+  const moves = (await rawSettings()).projectMoves || {};
+  const move = moves[childId];
+  if (move) {
+    if (await stat(move.from).then(() => true, () => false)) throw new Error(`${move.from} exists again, so ${childId} can't move back. Its files are still in ${move.to}.`);
+    try { await rename(move.to, move.from); } catch (error) { throw new Error(`Couldn't move ${childId} back: ${error.message}. Its files are still in ${move.to}.`); }
+    await appendFile(path.join(path.dirname(move.to), "MOVED.md"), `- ${new Date().toISOString().slice(0, 10)}: moved back to \`${move.from}\`\n`);
+    delete moves[childId];
+  }
+  delete parents[childId];
+  await writeSettings({ projectParents: parents, projectMoves: moves });
+  return { split: childId };
 }
 
 function mergeSessions(ids, extra = {}) {
@@ -680,7 +714,8 @@ async function linkedProjects(id) {
 async function projectFor(id) {
   if (id === "__all_projects__") return { id, name: "All Projects", path: PROJECTS_ROOT, scope: "all" };
   const folder = await projectFolder(id);
-  return folder && { ...folder, linked: await linkedProjects(id) };
+  const moved = Object.entries((await rawSettings()).projectMoves || {}).filter(([, move]) => move.parent === id).map(([name, move]) => ({ name, from: move.from, to: move.to }));
+  return folder && { ...folder, linked: await linkedProjects(id), moved };
 }
 
 async function listProjects() {
@@ -690,7 +725,7 @@ async function listProjects() {
   const parents = await projectParents();
   const folders = [...names]
     .map((name) => ({ id: name, name, path: path.join(PROJECTS_ROOT, name), scope: "single", linked: (Array.isArray(saved[name]) ? saved[name] : []).filter((other) => typeof other === "string" && other !== name && (names.has(other) || path.isAbsolute(other))),
-      ...(names.has(parents[name]) ? { parent: parents[name] } : { members: [...names].filter((other) => parents[other] === name).sort() }) }))
+      ...(names.has(parents[name]) ? { parent: parents[name] } : { members: Object.keys(parents).filter((other) => parents[other] === name).sort() }) }))
     .sort((a, b) => a.name.localeCompare(b.name));
   return [{ id: "__all_projects__", name: "All Projects", path: PROJECTS_ROOT, scope: "all" }, ...folders];
 }
@@ -1091,6 +1126,7 @@ async function runProviderTask(choice, prompt, project, kind, options = {}) {
   options = { ...options, onDelta: (text) => { onDelta?.(text); activity(text); } };
   const gitNote = "You cannot run git or gh commands from this provider. Inspect what you can and give the exact commands the user should run.";
   const linked = access === "none" ? [] : project?.linked || [];
+  if (access !== "none" && project?.moved?.length) prompt += `\n\nFolders merged into this project (files kept, moved): ${project.moved.map((item) => `${item.from} is now ${item.to}`).join("; ")}. Treat references to an old path as pointing to its new one, and update them when you edit those files.`;
   if (linked.length) prompt += `\n\nLinked folders (read-only reference; read them as needed, never edit them or run commands in them):\n${linked.map((item) => `- ${item.name}: ${item.path}`).join("\n")}`;
   if (CHAT_PROVIDERS.has(provider)) {
     let content = prompt;
@@ -2147,12 +2183,7 @@ async function handleRequest(req, res, fromRemote = false) {
     }
     if (req.method === "POST" && url.pathname === "/api/projects/split") {
       // Sessions stay with the parent: once merged, there's no telling which folder each one belonged to.
-      const { childId } = await bodyJson(req);
-      const parents = await projectParents();
-      if (typeof childId !== "string" || !parents[childId]) return json(res, 400, { error: "That folder isn't part of a project group." });
-      delete parents[childId];
-      await writeSettings({ projectParents: parents });
-      return json(res, 200, { split: childId });
+      try { return json(res, 200, await splitProject((await bodyJson(req)).childId)); } catch (error) { return json(res, 400, { error: error.message }); }
     }
     if (req.method === "POST" && url.pathname === "/api/sessions/merge") {
       const data = await bodyJson(req);

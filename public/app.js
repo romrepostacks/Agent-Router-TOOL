@@ -441,7 +441,7 @@ function renderProjects() {
       const label = document.createElement("span");
       label.className = "project-button";
       label.textContent = `↳ ${member}`;
-      label.title = `Part of ${project.name}: its sessions are here and its files are read-only context`;
+      label.title = `Part of ${project.name}: its sessions are here and its files are in ${project.name}'s obsolete folder`;
       memberRow.append(label, iconButton("delete-session", "⇱", `Split ${member} out of ${project.name}`, () => splitProject(member)));
       list.append(memberRow);
     }
@@ -457,10 +457,10 @@ function blockedByRuns() {
 
 async function mergeProject(parentId, childId) {
   if (blockedByRuns()) return;
-  if (!confirm(`Merge ${childId} into ${parentId}? ${childId}'s sessions move to ${parentId}, new imports about it go there too, and its files become read-only context. The folder itself isn't touched.`)) return;
+  if (!confirm(`Merge ${childId} into ${parentId}? ${childId}'s sessions move to ${parentId} and new imports about it go there too. The ${childId} folder moves, with every file, into ${parentId}\\obsolete\\${childId}; nothing is deleted, and splitting it out later moves it back.`)) return;
   try {
     const result = await request("/api/projects/merge", { method: "POST", body: JSON.stringify({ parentId, childId }) });
-    $("import-status").textContent = `Merged ${childId} into ${result.parentId}${result.moved ? `, moving ${result.moved} sessions` : ""}. Press ⟳ to merge sessions on the same topic.`;
+    $("import-status").textContent = `Merged ${childId} into ${result.parentId}${result.moved ? `, moving ${result.moved} sessions` : ""}. Its files are now in ${result.folder}. Press ⟳ to merge sessions on the same topic.`;
     await reloadProjects(result.parentId);
   } catch (error) { $("import-status").textContent = error.message; }
 }
@@ -469,7 +469,7 @@ async function splitProject(childId) {
   if (blockedByRuns()) return;
   try {
     await request("/api/projects/split", { method: "POST", body: JSON.stringify({ childId }) });
-    $("import-status").textContent = `${childId} is its own project again. Its old sessions stay where they are.`;
+    $("import-status").textContent = `${childId} is its own project again and its folder is back in place. Its old sessions stay where they are.`;
     await reloadProjects(state.project?.id);
   } catch (error) { $("import-status").textContent = error.message; }
 }

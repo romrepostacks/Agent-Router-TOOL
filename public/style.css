@@ -391,3 +391,5 @@ html[data-theme="dark"] .setup-missing { background: none; }
 .remote-devices li { display: flex; align-items: center; justify-content: space-between; gap: 8px; border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; font-size: 12px; }
 .remote-devices small { display: block; color: var(--muted); font-size: 10px; }
 .error-text { color: var(--red) !important; }
+.session-edit { flex: 1; min-width: 0; height: 30px; padding: 0 8px; border: 1px solid var(--accent, #888); border-radius: 7px; font: inherit; background: var(--surface, transparent); color: inherit; }
+.project-button.drop-target { outline: 2px dashed var(--green); outline-offset: -2px; }

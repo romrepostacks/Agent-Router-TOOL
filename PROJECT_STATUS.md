@@ -1,5 +1,10 @@
 # Local Agent Router — Project Status
 
+## Current change (v0.21.0, continued 2026-11-10)
+
+- **Committed at last:** the 0.20.0/0.21.0 work that was stuck uncommitted on the PC (git lock files) is now commit bdd05cd on branch `claude/project-thread-eob1g2` (GitHub). `approvalTitle()` now splits paths on both `\\` and `/`, so `test/permission-modes.test.mjs` also passes off Windows. 66/66 tests pass.
+- **Session rename + move (desktop):** ✎ on a session row opens an inline title box (Enter/leave saves, Escape cancels); drag a session onto a project row to move it; in All Projects, ⇥ opens a keyboard Move to… picker. `state.editingSessionRow` stops the 2-second background refresh from wiping an open box. Tested in headless Chromium against a sandboxed `node server.mjs` (rename, Escape, slow edit across refreshes, drag to beta, picker to alpha). Phone app has no rename/move yet. No version bump: 0.21.0 was never built.
+
 ## Current change (v0.21.0)
 
 - Validation: four required syntax checks passed and all 66 tests passed using node --test test/*.test.mjs (Node 24 does not resolve test/ as a test directory here).

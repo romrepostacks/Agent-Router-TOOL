@@ -1517,7 +1517,7 @@ function emitRun(run, event, value) {
 export function approvalTitle(tool, input = {}) {
   if (tool === "ExitPlanMode") return "Approve this plan?";
   if (/^(Bash|PowerShell)$/.test(tool)) return `Run this ${tool === "Bash" ? "command" : "PowerShell command"}?`;
-  if (/^(Write|Edit|MultiEdit|NotebookEdit)$/.test(tool) && (input.file_path || input.notebook_path)) return `${tool === "Write" ? "Write" : "Edit"} ${path.basename(String(input.file_path || input.notebook_path))}?`;
+  if (/^(Write|Edit|MultiEdit|NotebookEdit)$/.test(tool) && (input.file_path || input.notebook_path)) return `${tool === "Write" ? "Write" : "Edit"} ${String(input.file_path || input.notebook_path).split(/[\\/]/).pop()}?`;
   return `Allow ${tool || "this tool"}?`;
 }
 export function approvalDetail(tool, input = {}) {

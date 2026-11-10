@@ -416,6 +416,20 @@ function renderProjects() {
       button.append(badge);
     }
     button.addEventListener("click", () => selectProject(project.id));
+    if (project.scope === "single") {
+      button.addEventListener("dragover", (event) => {
+        if (!event.dataTransfer.types.includes("application/x-agent-router-session")) return;
+        event.preventDefault();
+        button.classList.add("drop-target");
+      });
+      button.addEventListener("dragleave", () => button.classList.remove("drop-target"));
+      button.addEventListener("drop", (event) => {
+        event.preventDefault();
+        button.classList.remove("drop-target");
+        const id = event.dataTransfer.getData("application/x-agent-router-session");
+        if (id) moveSession(id, project.id);
+      });
+    }
     row.append(button);
     if (project.scope === "single" && state.project?.scope === "single" && state.project.id !== project.id) {
       row.append(iconButton("merge-session", "⇲", `Merge ${project.name} into ${state.project.name}`, () => mergeProject(state.project.id, project.id)));
@@ -466,6 +480,7 @@ async function reloadProjects(selectId) {
 }
 
 function renderSessions() {
+  if (state.editingSessionRow) return; // background refreshes would wipe an open title box or picker
   const list = $("sessions");
   list.replaceChildren();
   if (!state.project) {
@@ -524,9 +539,89 @@ function renderSessions() {
       event.stopPropagation();
       mergeSessions([state.session.id, session.id]);
     });
-    row.append(button, merge, remove);
+    const rename = document.createElement("button");
+    rename.type = "button";
+    rename.className = "merge-session";
+    rename.title = "Rename session";
+    rename.setAttribute("aria-label", `Rename ${session.title || "session"}`);
+    rename.textContent = "✎";
+    rename.addEventListener("click", (event) => { event.stopPropagation(); editSessionRow(row, session, "rename"); });
+    row.append(button, rename);
+    if (state.project.scope !== "single") {
+      const move = document.createElement("button");
+      move.type = "button";
+      move.className = "merge-session";
+      move.title = "Move to a project";
+      move.setAttribute("aria-label", `Move ${session.title || "session"} to a project`);
+      move.textContent = "⇥";
+      move.addEventListener("click", (event) => { event.stopPropagation(); editSessionRow(row, session, "move"); });
+      row.append(move);
+    }
+    row.append(merge, remove);
+    // Drag a session onto a project in the Projects list to move it there.
+    button.draggable = true;
+    button.addEventListener("dragstart", (event) => {
+      event.dataTransfer.setData("application/x-agent-router-session", session.id);
+      event.dataTransfer.effectAllowed = "move";
+    });
     list.append(row);
   }
+}
+
+// Replaces a session row with an inline title box or project picker (Electron has no prompt()).
+function editSessionRow(row, session, mode) {
+  const field = document.createElement(mode === "rename" ? "input" : "select");
+  field.className = "session-edit";
+  if (mode === "rename") {
+    field.value = session.title || "";
+    field.maxLength = 200;
+    field.setAttribute("aria-label", "Session title");
+  } else {
+    field.setAttribute("aria-label", "Move to project");
+    field.append(new Option("Move to…", ""));
+    for (const project of moveTargets()) field.append(new Option(project.name, project.id));
+  }
+  let done = false;
+  const finish = async (save) => {
+    if (done) return;
+    done = true;
+    state.editingSessionRow = false;
+    try {
+      if (save && mode === "rename" && field.value.trim() && field.value.trim() !== session.title) await renameSession(session.id, field.value.trim());
+      if (save && mode === "move" && field.value) await moveSession(session.id, field.value);
+    } finally { renderSessions(); }
+  };
+  field.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") { event.preventDefault(); finish(true); }
+    if (event.key === "Escape") { event.preventDefault(); finish(false); }
+  });
+  if (mode === "move") field.addEventListener("change", () => finish(true));
+  field.addEventListener("blur", () => finish(mode === "rename"));
+  state.editingSessionRow = true;
+  row.replaceChildren(field);
+  field.focus();
+  if (mode === "rename") field.select();
+}
+
+function moveTargets() {
+  return state.projects.filter((project) => project.scope === "single" && !project.parent);
+}
+
+async function renameSession(id, title) {
+  try {
+    const saved = await request(`/api/sessions/${encodeURIComponent(id)}/rename`, { method: "POST", body: JSON.stringify({ title }) });
+    if (state.session?.id === id) state.session.title = saved.title;
+    await loadSessions();
+  } catch (error) { $("import-status").textContent = error.message; }
+}
+
+async function moveSession(id, projectId) {
+  try {
+    await request(`/api/sessions/${encodeURIComponent(id)}/project`, { method: "POST", body: JSON.stringify({ projectId }) });
+    const name = state.projects.find((project) => project.id === projectId)?.name || projectId;
+    $("import-status").textContent = `Moved the session to ${name}.`;
+    await loadSessions();
+  } catch (error) { $("import-status").textContent = error.message; }
 }
 
 function renderMessages() {

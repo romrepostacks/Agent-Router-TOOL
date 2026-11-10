@@ -21,8 +21,8 @@ Checked items have source fixes and automated regression coverage where noted; n
 
 ## Sessions
 
-- [ ] Sessions cannot be renamed. **Server ready in 0.21.0:** POST /api/sessions/:id/rename; desktop controls and visual acceptance pending.
-- [ ] Sessions in **All Projects** cannot be dragged and dropped into their matching project once reviewed. **Server ready in 0.21.0:** POST /api/sessions/:id/project; drag/drop and keyboard controls pending.
+- [x] Sessions cannot be renamed. Desktop: ✎ on a session row opens an inline title box (Enter saves, Escape cancels, leaving the box saves) using `POST /api/sessions/:id/rename`. Tested in Chromium against a sandboxed server. The phone app has no rename control yet.
+- [x] Sessions in **All Projects** cannot be dragged and dropped into their matching project once reviewed. Desktop: drag a session onto a project in the Projects list, or (keyboard) ⇥ on a row in All Projects opens a Move to… picker; both use `POST /api/sessions/:id/project`. Tested in Chromium (drag, picker, list refresh).
 
 ## Projects
 

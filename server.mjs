@@ -9,7 +9,7 @@ import path from "node:path";
 import Anthropic from "@anthropic-ai/sdk";
 import { remember, recall, memorySection } from "./project-memory.mjs";
 import { buildRoutePrompt, parseRoute, buildChainPrompt, parseChainPlan, buildStepsOverlap, CHAIN_BUILD_ROUTES } from "./route-rules.mjs";
-import { fetchGithubSkill } from "./skill-scan.mjs";
+import { fetchGithubSkill, runReviewers } from "./skill-scan.mjs";
 import { colibriGate, colibriModels, colibriSetup, managerScript, openManager } from "./colibri.mjs";
 import { MAX_MESSAGES, bestProject, fetchCodexCloudSessions, groupSessions, mergeMessages, scanLocalCliSessions, topicIndex } from "./import-sessions.mjs";
 import { promisify } from "node:util";
@@ -2047,14 +2047,22 @@ async function handleRequest(req, res, fromRemote = false) {
     if (req.method === "POST" && url.pathname === "/api/skills/scan") {
       const data = await bodyJson(req);
       try {
-        const scan = await fetchGithubSkill(data.url);
+        const { text, ...scan } = await fetchGithubSkill(data.url);
         const id = randomUUID();
+        scan.reviewers = await runReviewers(text, path.join(DATA_DIR, "staging", `skill-scan-${id}`));
         for (const [key, value] of skillScans) if (Date.now() - value.at > 30 * 60_000) skillScans.delete(key);
         skillScans.set(id, { ...scan, at: Date.now() });
         return json(res, 200, { scanId: id, ...scan });
       } catch (error) {
         return json(res, error.status || 502, { error: error.status ? error.message : `Could not reach GitHub: ${error.message}` });
       }
+    }
+    if (req.method === "POST" && url.pathname === "/api/skills/reviewers/install") {
+      // Fixed command, no page input: uv (installed first if missing) puts both tools in ~/.local/bin, already on the router's PATH.
+      try {
+        openTerminal("Install skill scanners", "if (-not (Get-Command uv -ErrorAction SilentlyContinue)) { irm https://astral.sh/uv/install.ps1 | iex; $env:Path = \"$env:USERPROFILE\\.local\\bin;$env:Path\" }; uv tool install --force cisco-ai-skill-scanner; uv tool install --force git+https://github.com/NVIDIA/skillspector.git");
+      } catch (error) { return json(res, 400, { error: error.message }); }
+      return json(res, 200, { opened: true });
     }
     if (req.method === "POST" && url.pathname === "/api/skills/install") {
       const data = await bodyJson(req);

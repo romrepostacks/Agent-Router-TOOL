@@ -253,7 +253,7 @@
           </section>
           <section class="settings-section settings-page" data-settings-page="add-skills" hidden>
             <h3>Add a skill from GitHub</h3>
-            <p class="settings-help">Paste a link to a skill on GitHub: its SKILL.md file, its folder, or the repo. Scan reads it and checks for risky instructions. Nothing is installed until you choose Install.</p>
+            <p class="settings-help">Paste a link to a skill on GitHub: its SKILL.md file, its folder, or the repo. Scan reads it, checks it for risky instructions, and runs NVIDIA SkillSpector and Cisco Skill Scanner on it. Nothing is installed until you choose Install.</p>
             <form id="skill-scan-form" class="skill-url-row">
               <input id="skill-url" type="url" required placeholder="https://github.com/owner/repo/tree/main/skills/my-skill" aria-label="GitHub link to a skill" autocomplete="off">
               <button id="scan-skill" type="submit" class="context-button">Scan</button>
@@ -264,7 +264,10 @@
               <p id="scan-source" class="scan-source"></p>
               <h5>Purpose</h5>
               <p id="scan-purpose" class="scan-purpose"></p>
-              <h5>Warnings</h5>
+              <h5>Skill reviewers</h5>
+              <div id="scan-reviewers" class="scan-reviewers"></div>
+              <button id="install-reviewers" type="button" class="context-button" hidden>Install the missing reviewers…</button>
+              <h5>Built-in pattern check</h5>
               <ul id="scan-warnings" class="scan-warnings"></ul>
               <details class="scan-full"><summary>Read the full skill</summary><pre id="scan-instructions"></pre></details>
               <label class="settings-field">Category<input id="scan-category" list="skill-categories" maxlength="40" value="General"></label>

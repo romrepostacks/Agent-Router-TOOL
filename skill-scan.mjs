@@ -62,6 +62,55 @@ export function scanSkillText(text) {
   return warnings;
 }
 
+// The two outside reviewers (UPGRADE_LIST #3), run as installed command-line tools on a temp copy of the SKILL.md.
+// SkillSpector runs static-only (--no-llm): no API key needed and no skill text leaves this computer.
+// Each result stands alone; a reviewer that isn't installed is "unavailable", never a pass.
+export const REVIEWERS = [
+  {
+    id: "skillspector", name: "NVIDIA SkillSpector", command: () => process.env.SKILLSPECTOR_CLI || "skillspector",
+    args: (dir, out) => ["scan", dir, "--no-llm", "--format", "json", "--output", out], output: "file",
+    parse: (data) => ({
+      safe: data.risk_assessment?.recommendation === "SAFE",
+      summary: `${String(data.risk_assessment?.recommendation || "UNKNOWN").replace(/_/g, " ").toLowerCase()} · risk ${data.risk_assessment?.score ?? "?"}/100`,
+      findings: (data.issues || []).map((issue) => ({ severity: String(issue.severity || "").toLowerCase(), title: [issue.category, issue.pattern].filter(Boolean).join(": "), detail: issue.explanation || issue.finding || "", line: issue.location?.start_line ?? null })),
+    }),
+  },
+  {
+    id: "cisco", name: "Cisco Skill Scanner", command: () => process.env.SKILL_SCANNER_CLI || "skill-scanner",
+    args: (dir) => ["scan", dir, "--format", "json"], output: "stdout",
+    parse: (data) => ({
+      safe: data.is_safe === true,
+      summary: `${data.is_safe ? "safe" : "not safe"} · highest severity ${String(data.max_severity || "none").toLowerCase()}`,
+      findings: (data.findings || []).map((finding) => ({ severity: String(finding.severity || "").toLowerCase(), title: finding.title || finding.rule_id || "", detail: finding.description || "", line: finding.line_number ?? null })),
+    }),
+  },
+];
+
+export async function runReviewers(text, workDir, { timeoutMs = 180_000 } = {}) {
+  const { execFile } = await import("node:child_process");
+  const { mkdir, readFile, rm, writeFile } = await import("node:fs/promises");
+  const path = await import("node:path");
+  const skillDir = path.join(workDir, "skill");
+  await mkdir(skillDir, { recursive: true });
+  await writeFile(path.join(skillDir, "SKILL.md"), text);
+  try {
+    return await Promise.all(REVIEWERS.map(async (reviewer) => {
+      const out = path.join(workDir, `${reviewer.id}.json`);
+      // Both tools exit non-zero when they find something; the JSON report decides, not the exit code.
+      const result = await new Promise((resolve) => execFile(reviewer.command(), reviewer.args(skillDir, out), { timeout: timeoutMs, maxBuffer: 20_000_000, windowsHide: true }, (error, stdout, stderr) => resolve({ error, stdout, stderr })));
+      const base = { id: reviewer.id, name: reviewer.name };
+      if (result.error?.code === "ENOENT") return { ...base, status: "unavailable" };
+      try {
+        const raw = reviewer.output === "file" ? await readFile(out, "utf8") : result.stdout;
+        return { ...base, status: "ok", ...reviewer.parse(JSON.parse(raw.slice(raw.indexOf("{")))) };
+      } catch {
+        const reason = result.error?.killed ? "timed out" : String(result.stderr || result.error?.message || "no report").trim().split(/\r?\n/).at(-1).slice(0, 300);
+        return { ...base, status: "error", error: reason };
+      }
+    }));
+  } finally { await rm(workDir, { recursive: true, force: true }); }
+}
+
 // Fetches only from raw.githubusercontent.com, never follows redirects, and caps the size.
 export async function fetchGithubSkill(input, fetchImpl = fetch) {
   const rawUrl = githubSkillUrl(input);
@@ -86,5 +135,5 @@ export async function fetchGithubSkill(input, fetchImpl = fetch) {
   const folder = segments.length > 4 ? segments.at(-2) : segments[1];
   const name = (parsed.name || folder || "Imported skill").replace(/[^A-Za-z0-9 _-]+/g, " ").replace(/\s+/g, " ").trim().replace(/^[^A-Za-z0-9]+/, "").slice(0, 60) || "Imported skill";
   const purpose = parsed.description || parsed.body.split(/\r?\n/).find((line) => line.trim() && !/^#/.test(line))?.trim().slice(0, 300) || "";
-  return { source: rawUrl, name, purpose, instructions: parsed.body, warnings: scanSkillText(text) };
+  return { source: rawUrl, name, purpose, instructions: parsed.body, warnings: scanSkillText(text), text };
 }

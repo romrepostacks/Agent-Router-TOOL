@@ -936,7 +936,7 @@ function resetSkillScan(message = "") {
 async function scanSkill(event) {
   event.preventDefault();
   const button = $("scan-skill");
-  resetSkillScan("Scanning…");
+  resetSkillScan("Scanning… the two skill reviewers can take a minute.");
   button.disabled = true;
   try {
     skillScan = await request("/api/skills/scan", { method: "POST", body: JSON.stringify({ url: $("skill-url").value }) });
@@ -959,6 +959,7 @@ async function scanSkill(event) {
       }
       return item;
     }) : [Object.assign(document.createElement("li"), { className: "scan-warning clean", textContent: "No warnings found. This is a pattern check, so still read the skill if you don't know its author." })]));
+    renderReviewers(skillScan.reviewers || []);
     $("skill-scan-result").hidden = false;
     $("skill-scan-status").textContent = "";
   } catch (error) {
@@ -966,6 +967,38 @@ async function scanSkill(event) {
   } finally {
     button.disabled = false;
   }
+}
+
+// One card per outside reviewer, each with its own verdict; a missing reviewer says so instead of passing.
+function renderReviewers(reviewers) {
+  const sev = { critical: "high", high: "high", medium: "medium", low: "info", info: "info" };
+  $("scan-reviewers").replaceChildren(...reviewers.map((reviewer) => {
+    const card = document.createElement("div");
+    card.className = `scan-reviewer ${reviewer.status === "ok" ? (reviewer.safe ? "clean" : "high") : "unavailable"}`;
+    const title = document.createElement("strong");
+    title.textContent = reviewer.name;
+    const verdict = document.createElement("span");
+    verdict.textContent = reviewer.status === "ok" ? ` ${reviewer.safe ? "No problems found" : "Found problems"} (${reviewer.summary})`
+      : reviewer.status === "unavailable" ? " Not installed on this computer, so it didn't run." : ` Couldn't finish: ${reviewer.error}`;
+    card.append(title, verdict);
+    const findings = (reviewer.findings || []).filter((finding) => finding.severity !== "info");
+    if (findings.length) {
+      const list = document.createElement("ul");
+      list.className = "scan-warnings";
+      for (const finding of findings) {
+        const item = document.createElement("li");
+        item.className = `scan-warning ${sev[finding.severity] || "info"}`;
+        const badge = document.createElement("strong");
+        badge.textContent = finding.severity[0].toUpperCase() + finding.severity.slice(1);
+        item.append(badge, document.createTextNode(` ${finding.title}${finding.line ? ` (line ${finding.line})` : ""}`));
+        if (finding.detail) item.append(Object.assign(document.createElement("code"), { textContent: finding.detail }));
+        list.append(item);
+      }
+      card.append(list);
+    }
+    return card;
+  }));
+  $("install-reviewers").hidden = !reviewers.some((reviewer) => reviewer.status === "unavailable");
 }
 
 async function installScannedSkill() {
@@ -2025,6 +2058,10 @@ $("add-skill-toggle").addEventListener("click", () => {
 $("cancel-skill").addEventListener("click", () => { $("skill-form").hidden = true; });
 $("save-skill").addEventListener("click", saveSkill);
 $("skill-scan-form").addEventListener("submit", scanSkill);
+$("install-reviewers").addEventListener("click", async () => {
+  try { await request("/api/skills/reviewers/install", { method: "POST" }); $("skill-scan-status").textContent = "An install window opened. When it says Done, scan the link again."; }
+  catch (error) { $("skill-scan-status").textContent = error.message; }
+});
 $("install-skill").addEventListener("click", installScannedSkill);
 $("reject-skill").addEventListener("click", () => { $("skill-url").value = ""; resetSkillScan("Not installed."); $("skill-url").focus(); });
 $("refresh-projects").addEventListener("click", () => loadProjects().catch((error) => { $("projects").textContent = error.message; }));

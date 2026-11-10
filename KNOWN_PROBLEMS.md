@@ -34,7 +34,7 @@ Numbers match the old `UPGRADE_LIST.md`, which earlier `PROJECT_STATUS.md` entri
 
 1. [x] **Per-thread permission levels.** Thread access (Full / Review edits first / Read-only / No project access), plus Claude Code permission modes per thread since 0.19.0. Regressions: `test/thread-access.test.mjs`, `test/permission-modes.test.mjs`. Not yet checked in the app.
 2. [x] **UI cleanup.** 0.12.0 refresh (tokens, settings tabs, route picker) and 0.12.1 keyboard/theme fixes. Not yet checked in the app.
-3. [ ] **Skill searcher from GitHub links.** **Partial:** 0.13.0 Settings → Add new skills scans a link with the built-in pattern scanner before install. Still to do: run NVIDIA SkillSpector and Cisco Skill Scanner (the list called both "NVIDIA") and show each result, with an "unavailable" state when one is missing. Neither is installed; their CLIs and output formats are unchecked.
+3. [x] **Skill searcher from GitHub links.** Settings → Add new skills now runs NVIDIA SkillSpector (static mode, `--no-llm`, so nothing leaves the PC) and Cisco Skill Scanner on the fetched SKILL.md next to the built-in pattern check, each shown as its own card with its findings. A reviewer that isn't installed shows "Not installed" and an **Install the missing reviewers…** button (uv, `cisco-ai-skill-scanner` from PyPI, SkillSpector from github.com/NVIDIA/SkillSpector). Tested with both real tools on a malicious test skill, a clean one, and a real GitHub skill through the UI.
 4. [x] **Server and Client installers.** One installer with a Server/Client page (0.17.0–0.19.0); `LocalAgentRouter-Setup-0.19.0.exe` built. Not yet clicked through or installed over an earlier version.
 5. [ ] **iOS app for iPhone 16 Pro Max.** **Partial:** unsigned IPA built on GitHub Actions (0.19.0, AltStore sideload); Android debug APK also built. Not yet tested on an iPhone. App Store release needs the Apple Developer Program, a signed App Store archive on a Mac, and an App Store Connect listing.
 6. [x] **Tailscale networking.** Remote listener on the Tailscale address with paired-device keys (0.17.0); clients and the phone only accept Tailscale addresses. Not yet tested over a real Tailscale connection.
@@ -56,7 +56,7 @@ The automated test suite uses synthetic projects, keys, and providers. No real c
 
 Everything that could be built and tested without a person is done (session rename/move, folder-preserving merges, more local models, Local models only). What's left needs a decision or hands:
 
-- **#3 skill scanners:** installing the scanners was refused by the agent's safety check (third-party code). Cisco's is on PyPI as `cisco-ai-skill-scanner` (2.3.2); NVIDIA SkillSpector isn't on PyPI and its GitHub page wasn't reachable from the cloud session. Needs the owner's OK to install them and the SkillSpector source.
+- **#3 skill scanners:** done (owner OK'd the install, 2026-11-10); installed on the PC with the app's own installer command.
 - **Desktop app acceptance on the PC:** `npm.cmd start` still fails on Electron's sandbox ACL for `node_modules\electron\dist`; fixing it is a Windows permission change the owner has to make or approve.
 - **Real Colibri run:** the Colibri switching was tested against a fake Colibri only; it needs one run on the PC (pick a different installed model for Quick, ask something, watch Colibri switch).
 - **Automatic server discovery** and **iOS notification timing:** need a design choice for discovery over Tailscale and a real iPhone.

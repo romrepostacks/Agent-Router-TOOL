@@ -396,3 +396,8 @@ html[data-theme="dark"] .setup-missing { background: none; }
 .local-models { list-style: none; margin: 8px 0; padding: 0; display: grid; gap: 6px; }
 .local-models li { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
 .local-models li span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.scan-reviewers { display: grid; gap: 8px; margin-bottom: 8px; }
+.scan-reviewer { font-size: 14px; padding: 8px 10px; border-radius: 8px; border-left: 4px solid var(--muted); background: var(--surface); }
+.scan-reviewer.clean { border-left-color: var(--green); }
+.scan-reviewer.high { border-left-color: var(--red); }
+.scan-reviewer .scan-warnings { margin: 6px 0 0; }

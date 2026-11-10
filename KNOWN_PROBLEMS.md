@@ -1,0 +1,57 @@
+﻿# Known problems and upgrade list
+
+One list for reported problems and planned upgrades. Updated for v0.20.0 (2026-11-09).
+This file replaces `UPGRADE_LIST.md`; its items are in **Upgrade list** below with their current status.
+Checked items have source fixes and automated regression coverage where noted; native-device and in-app acceptance is listed separately at the end.
+
+## Mobile app
+
+- [x] Requests from mobile do not appear on desktop simultaneously. Desktop now discovers and follows server-owned runs every two seconds, including the request and streaming answer; session lists refresh too. A project-switch guard prevents background refresh from replacing another project's sessions.
+- [x] Cannot recopy a device key after sign-out. Remote access now offers **Replace key** on each existing device, showing a fresh key to copy without deleting the device. Replacement invalidates the old key. Existing keys are hashes and cannot be recovered verbatim. Regression: `test/remote-client.test.mjs`.
+- [x] Custom remote access keys are not allowed. Device creation accepts an optional unique 24–128-character printable key without spaces; only its hash is saved. Short and duplicate keys are rejected. Regression: `test/remote-client.test.mjs`.
+- [x] Keyboard Send inserts a newline. Enter submits, Shift+Enter adds a newline, and composition input is left alone; the input requests a Send keyboard action. Regression: `test/mobile-composer.test.mjs`.
+- [ ] Detect server rather than manually typing its address. **Partial:** copying a connection code from desktop Remote access and pasting it into Connect fills and validates both address and key. Automatic network discovery is not implemented. Regression covers code parsing and rejected hosts. Native discovery and device testing remain required.
+- [x] Plus button only attaches phone files. It now offers phone attachments, server project text files, and linking an existing server project folder. The desktop-only arbitrary folder picker remains local to the server PC.
+- [ ] Completion notifications on iOS can arrive late or not at all while the app is outside the foreground. Check delivery timing on a real device and make events as timely as iOS allows; reconcile missed completions on resume. Closed-app push delivery is also tracked in Upgrade list #8.
+
+## Desktop and mobile
+
+- [x] Cannot steer or queue a new message. A nonempty submission while running queues after the current response; **Steer** aborts the current provider run and restarts with its original task plus the correction. An empty submission still stops. Queue entries serialize on the server and reload saved history before execution. Native polling correlates queued requests by ID. Regressions: `test/concurrent-sessions.test.mjs`, `test/mobile-composer.test.mjs`.
+- [x] Read-only/full-access behavior changes between implementation messages. Sessions remember their implementation workflow. Auto reuses that route for implementation continuations; questions/reviews still route normally. Saved read-only/no-access thread limits, All Projects scope, project edit locks, and provider permissions continue to apply. Regressions: `test/thread-access.test.mjs`.
+
+## Sessions
+
+- [ ] Sessions cannot be renamed. **Server ready in 0.21.0:** POST /api/sessions/:id/rename; desktop controls and visual acceptance pending.
+- [ ] Sessions in **All Projects** cannot be dragged and dropped into their matching project once reviewed. **Server ready in 0.21.0:** POST /api/sessions/:id/project; drag/drop and keyboard controls pending.
+
+## Projects
+
+- [ ] Merging projects moves their sessions but leaves separate folders in the Projects work tree. Preserve every file by moving the merged folder's contents into an `obsolete` folder inside the destination project, and record the old and new paths so agents can still locate those files and update references that point to their former locations. Do not delete files.
+
+## Upgrade list
+
+Numbers match the old `UPGRADE_LIST.md`, which earlier `PROJECT_STATUS.md` entries cite as `UPGRADE_LIST #N`.
+
+1. [x] **Per-thread permission levels.** Thread access (Full / Review edits first / Read-only / No project access), plus Claude Code permission modes per thread since 0.19.0. Regressions: `test/thread-access.test.mjs`, `test/permission-modes.test.mjs`. Not yet checked in the app.
+2. [x] **UI cleanup.** 0.12.0 refresh (tokens, settings tabs, route picker) and 0.12.1 keyboard/theme fixes. Not yet checked in the app.
+3. [ ] **Skill searcher from GitHub links.** **Partial:** 0.13.0 Settings → Add new skills scans a link with the built-in pattern scanner before install. Still to do: run NVIDIA SkillSpector and Cisco Skill Scanner (the list called both "NVIDIA") and show each result, with an "unavailable" state when one is missing. Neither is installed; their CLIs and output formats are unchecked.
+4. [x] **Server and Client installers.** One installer with a Server/Client page (0.17.0–0.19.0); `LocalAgentRouter-Setup-0.19.0.exe` built. Not yet clicked through or installed over an earlier version.
+5. [ ] **iOS app for iPhone 16 Pro Max.** **Partial:** unsigned IPA built on GitHub Actions (0.19.0, AltStore sideload); Android debug APK also built. Not yet tested on an iPhone. App Store release needs the Apple Developer Program, a signed App Store archive on a Mac, and an App Store Connect listing.
+6. [x] **Tailscale networking.** Remote listener on the Tailscale address with paired-device keys (0.17.0); clients and the phone only accept Tailscale addresses. Not yet tested over a real Tailscale connection.
+7. [ ] **Add more local LLMs.** Not started. Build on `Colibri_Model_Adder`; today only one OpenAI-compatible local server is configured.
+8. [ ] **Phone notifications.** **Partial:** finished runs and approval requests are polled from `GET /api/notifications` while the app is open or resumed. Push notifications (APNs/FCM) for a closed app are not implemented.
+9. [ ] **Local models only mode.** Not started. A setting that keeps every step of a task chain on Colibri, with no cloud provider and no fallback to one. Each step (route planning, coding, review, and so on) should use the local model best suited to it, so Colibri must switch which model is loaded between steps. Today the router only lists Colibri's models (`GET /v1/models`) and uses the configured or loaded one; it never loads or swaps a model. Needs a per-route local model choice and a way to ask Colibri to load a model and wait until it is ready. Depends on #7, which is paused until Colibri installation is standardized.
+
+General goals from the old list (secure links between components, Tailscale compatibility, phone performance, error handling and logging, room to grow) apply to every item above.
+
+## Remaining acceptance
+
+- [ ] Automatic server discovery over the supported remote network.
+- [ ] Exercise connection, plus menu, cross-device streaming, queue/steer and permissions on iOS and Android.
+- [ ] Visual desktop/mobile walkthrough. Playwright download failed with EACCES; installed Electron could not start because Windows denied its sandbox token access to the runtime directory. No system ACL changes were made.
+
+The automated test suite uses synthetic projects, keys, and providers. No real credentials or provider accounts are required.
+
+## Current stop (0.21.0)
+
+App acceptance is blocked: npm.cmd start fails with Electron install_dir_access.cc:52 because Windows denies its sandbox access to node_modules/electron/dist. Human guidance is required to repair runtime access; no system ACLs were changed. Subsequent server backlog items have not been implemented.

@@ -8,3 +8,5 @@ LocalAgentRouter-Setup.exe
 skills/
 skills.md
 error.log
+
+.tools/

@@ -1,5 +1,19 @@
 # Release notes
 
+## 0.21.0
+
+- Add server APIs to rename sessions and assign reviewed sessions to a project, preserving history and thread permissions.
+- Reject project moves during active or queued work. Desktop controls and app acceptance remain pending.
+
+
+## 0.20.0
+
+- Desktop discovers mobile-started work while open.
+- Mobile keyboard Send, server project context and linked-folder choices.
+- Optional custom pairing keys, replacement keys, and copyable connection codes.
+- Queue follow-ups or restart a running task with Steer; implementation follow-ups retain their route within thread access limits.
+- Automatic network discovery and native-device acceptance remain tracked in KNOWN_PROBLEMS.md.
+
 ## 0.19.0
 
 - **Fixed: the installer wouldn't build.** electron-builder stopped with a `builder-util` error; the cause was the Server/Client setup page using an installer macro that isn't loaded yet at that point. The page now sets its heading directly.

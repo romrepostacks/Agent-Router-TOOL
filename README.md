@@ -1,5 +1,8 @@
 # Local Agent Router
 
+Session integration (0.21.0): clients can POST a {title} to /api/sessions/:id/rename and a {projectId} to /api/sessions/:id/project. Titles must contain 1?200 characters; project assignment requires an unmerged project and no active or queued work. Both return the saved session. Existing thread access and permission settings are retained. Desktop controls are pending.
+
+
 A Windows desktop app that sends each request to the AI tool best suited for it: Claude Code, Codex, GitHub Copilot, a local model (Ollama, LM Studio, Colibri), or an OpenAI / Anthropic API key.
 
 ## Install (for anyone, starting from nothing)
@@ -193,3 +196,13 @@ Choose **Task chain**, or use Auto for an app/spec request needing multiple role
 Every project provider run now receives recent saved reports across threads and restarts. Review and security reports have a separate history so ordinary coding tasks do not crowd them out. Reports live in the app data folder under `project-memory/`, separate from the latest-task handoff. Reviews and security audits must reconcile earlier findings with current files and distinguish verified fixes from unverified claims; other routes get the history as background only, so their answers stay short. Recent context is bounded (12 records per history, 64 KB tail); full histories remain on disk. Memory contains provider reports, not independently verified security verdicts. Staged edits still require applying and verification.
 
 CLI tasks may run longer than 15 minutes while producing output. After 15 minutes without stdout or stderr, the router stops the process tree and reports an inactivity timeout. Stop remains available. Provider usage limits require waiting for reset or using another provider.
+
+### Mobile and cross-device updates (0.20.0)
+
+Desktop discovers active phone requests about every two seconds. In mobile chat, Enter sends and Shift+Enter inserts a newline. The plus menu offers phone attachments, server project text files, and linking an existing server project folder.
+
+While a response runs, submit a nonempty message to queue it. **Steer** stops the current provider run and restarts its task with your correction; it is not live provider input. Submit with an empty composer to stop. Queued work belongs to the running server and does not survive a server restart.
+
+In server **Settings ? Remote access**, optionally enter a custom device key (24?128 printable characters, no spaces). Choose a unique, hard-to-guess key. **Replace key** on a paired device invalidates its previous key and shows a fresh one to copy. The original key cannot be recovered because only its hash is stored. **Copy connection code** includes address and key: paste it into the phone's Connect screen to fill both without typing the address. Treat that code like a password. Automatic network discovery remains pending.
+
+Auto remembers an implementation workflow for implementation follow-ups while retaining saved thread limits. Explicit read-only threads remain read-only; questions and reviews still route normally. See [KNOWN_PROBLEMS.md](KNOWN_PROBLEMS.md) for remaining device acceptance.

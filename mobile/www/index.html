@@ -32,7 +32,7 @@
         <div class="large-title">Connect</div>
         <p class="lede">Point this app at the PC running the <strong>server</strong> install. Use its Tailscale address, for example <code>https://my-pc.tailnet.ts.net</code>.</p>
         <form id="connect-form" class="card glass form-card">
-          <label class="field">Server address<input id="server-url" type="url" inputmode="url" autocomplete="url" autocapitalize="off" spellcheck="false" placeholder="http://100.101.102.103:8766" required></label>
+          <label class="field">Connection code<input id="connection-code" type="password" autocomplete="off" placeholder="Paste code to detect server address"></label><label class="field">Server address<input id="server-url" type="url" inputmode="url" autocomplete="url" autocapitalize="off" spellcheck="false" placeholder="http://100.101.102.103:8766" required></label>
           <label class="field">Access code<input id="server-token" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Shown in the server's Settings"></label>
           <button class="primary-button" type="submit">Connect</button>
           <p id="connect-status" class="hint" aria-live="polite"></p>
@@ -65,8 +65,8 @@
           <div id="attachment-list" class="attachment-list"></div>
           <div class="composer-row">
             <button id="attach" type="button" class="round-button" aria-label="Attach files">+</button>
-            <textarea id="prompt" rows="1" placeholder="Ask or describe a task…" aria-label="Task" enterkeyhint="send"></textarea>
-            <button id="send" type="submit" class="round-button send" aria-label="Send"><span aria-hidden="true">↑</span></button>
+            <textarea enterkeyhint="send" id="prompt" rows="1" placeholder="Ask or describe a task…" aria-label="Task" enterkeyhint="send"></textarea>
+            <button id="steer" type="submit" hidden>Steer</button><button id="send" type="submit" class="round-button send" aria-label="Send"><span aria-hidden="true">↑</span></button>
           </div>
           <div class="composer-chips">
             <button id="mode-chip" type="button" class="chip-button">Auto</button>

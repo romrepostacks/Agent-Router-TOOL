@@ -131,7 +131,7 @@
           <textarea id="prompt" rows="3" placeholder="Describe a task…" aria-label="Task"></textarea>
           <div class="composer-bottom">
             <span id="workspace-note">Choose a project before asking a question.</span>
-            <button id="send" class="send-button" type="submit" disabled><span>Send</span><span aria-hidden="true">↑</span></button>
+            <button id="steer" type="submit" hidden>Steer</button><button id="send" class="send-button" type="submit" disabled><span>Send</span><span aria-hidden="true">↑</span></button>
           </div>
         </form>
         <div class="privacy-note">PDF text is extracted on this computer. Images are sent only to the Quick questions provider. Text context may be included in cloud prompts; keep credentials and secrets out of context. Saved attachments stay on this computer.</div>
@@ -280,13 +280,13 @@
             <p class="settings-help">Each device gets its own token, shown once. A token can run tasks on this PC with your provider settings, so treat it like a password. Remove a device to cut it off at once.</p>
             <form id="remote-add-form" class="remote-row">
               <input id="remote-device-name" type="text" maxlength="60" placeholder="My iPhone" aria-label="New device name" autocomplete="off">
-              <button id="remote-add" type="submit" class="context-button">Add device</button>
+              <input id="remote-custom-key" type="password" minlength="24" maxlength="128" placeholder="Custom key (optional, 24+ characters)" aria-label="Custom device key" autocomplete="new-password"><button id="remote-add" type="submit" class="context-button">Add device</button>
             </form>
             <div id="remote-token" class="remote-token" hidden>
               <strong>Enter these on the device now. The token won't be shown again.</strong>
               <span>Server address: <code id="remote-token-url"></code></span>
               <span>Token: <code id="remote-token-value"></code></span>
-              <div class="remote-row"><button id="remote-copy" type="button" class="context-button">Copy token</button><button id="remote-token-done" type="button" class="context-button">Done</button></div>
+              <div class="remote-row"><button id="remote-copy-connection" type="button">Copy connection code</button><button id="remote-copy" type="button" class="context-button">Copy token</button><button id="remote-token-done" type="button" class="context-button">Done</button></div>
             </div>
             <ul id="remote-devices" class="remote-devices" aria-label="Paired devices"></ul>
           </section>

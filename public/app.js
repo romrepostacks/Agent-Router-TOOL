@@ -1,3 +1,4 @@
+const pendingFollowups = new Map();
 const $ = (id) => document.getElementById(id);
 let recordingShortcut = false;
 const state = { projects: [], project: null, sessions: [], session: null, busy: false, runs: new Map(), skills: [], categories: [], selectedSkills: loadSelectedSkills(), preapprovedSkillIds: [], pendingPreapprovedSkillIds: [], skillsLimit: -1, pendingSkillsLimit: -1, theme: "system", settingsRoot: "", settingsConfigured: false, settingsPrompted: false, attachments: [], contextIds: [], contextFiles: [], contextProjectId: null, proposal: null, proposals: {}, lastRunStatus: "Ready when you are.", modelPrefs: {}, modelCatalog: null };
@@ -362,8 +363,9 @@ function renderApprovals() {
 function refreshRunControls() {
   const busy = Boolean(viewedRun()?.active);
   state.busy = busy;
+  $("steer").hidden = !busy;
   $("send").disabled = busy ? false : !state.project;
-  $("send").querySelector("span").textContent = busy ? "Stop" : "Send";
+  $("send").querySelector("span").textContent = busy ? "Queue / Stop" : "Send";
   $("send").title = busy ? "Stop this session's response" : "Send message";
   $("new-session").disabled = !state.project;
   $("choose-context").disabled = !state.project;
@@ -1022,7 +1024,10 @@ async function addAttachments(files) {
 async function loadSessions() {
   if (!state.project) return;
   const query = new URLSearchParams({ projectId: state.project.id, q: $("session-search").value.trim(), pending: $("pending-only").checked ? "1" : "0" });
-  state.sessions = await request(`/api/sessions?${query}`);
+  const projectId = state.project.id;
+  const sessions = await request(`/api/sessions?${query}`);
+  if (state.project?.id !== projectId) return;
+  state.sessions = sessions;
   renderSessions();
 }
 
@@ -1240,7 +1245,7 @@ async function submitRequest(requestData) {
 // were stopped while it was away, so their error and Retry show again).
 async function reattachRuns() {
   const runs = await request("/api/runs?all").catch(() => []);
-  await Promise.all(runs.filter((run) => !state.runs.get(run.sessionId)?.active).map(async (run) => {
+  await Promise.all(runs.filter((run) => !pendingFollowups.has(run.sessionId) && !state.runs.get(run.sessionId)?.active && !(run.failed && state.runs.has(run.sessionId))).map(async (run) => {
     const session = await request(`/api/sessions/${encodeURIComponent(run.sessionId)}`).catch(() => null);
     // Not found: the run finished (and saved) between the list and now.
     const response = session && await fetch(`/api/runs/${encodeURIComponent(run.sessionId)}/stream`).catch(() => null);
@@ -1358,12 +1363,13 @@ async function sendMessage(event) {
   event.preventDefault();
   const running = viewedRun();
   // Stop goes through the server: closing a stream only detaches this page from the run.
-  if (running?.active) {
+  if (running?.active && !$("prompt").value.trim()) {
     await request(`/api/runs/${encodeURIComponent(running.sessionId)}/cancel`, { method: "POST" }).catch(() => {});
     return;
   }
   const message = $("prompt").value.trim();
   if (!message || !state.project) return;
+  if (running?.active) return sendFollowup(event.submitter?.id === "steer" ? "steer" : "queue");
   await submitRequest({
     message,
     projectId: state.project.id,
@@ -1608,7 +1614,14 @@ function renderRemote(info) {
       try { await request(`/api/remote/devices/${encodeURIComponent(device.id)}`, { method: "DELETE" }); await loadRemote(); }
       catch (error) { $("remote-status").textContent = error.message; remove.disabled = false; }
     });
-    item.append(text, remove);
+    const replace = document.createElement("button");
+    replace.type = "button"; replace.textContent = "Replace key";
+    replace.addEventListener("click", async () => {
+      if (!confirm("Replace this device's key? Its old key will stop working.")) return;
+      try { showDeviceKey(await request(`/api/remote/devices/${encodeURIComponent(device.id)}`, { method: "POST", body: "{}" })); }
+      catch (error) { $("remote-status").textContent = error.message; }
+    });
+    item.append(text, replace, remove);
     return item;
   }));
 }
@@ -1633,10 +1646,9 @@ $("remote-add-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   $("remote-add").disabled = true;
   try {
-    const added = await request("/api/remote/devices", { method: "POST", body: JSON.stringify({ name: $("remote-device-name").value }) });
-    $("remote-token-url").textContent = added.url || "Turn remote access on to get the address.";
-    $("remote-token-value").textContent = added.token;
-    $("remote-token").hidden = false;
+    const added = await request("/api/remote/devices", { method: "POST", body: JSON.stringify({ name: $("remote-device-name").value, token: $("remote-custom-key").value || undefined }) });
+    showDeviceKey(added);
+    $("remote-custom-key").value = "";
     $("remote-device-name").value = "";
     $("remote-copy").focus();
     await loadRemote();
@@ -2098,3 +2110,32 @@ request("/api/version").then(({ version, role, client, remote }) => {
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { if (state.theme === "system") applyTheme("system"); });
 setInterval(refreshStatus, 30_000);
 setInterval(refreshWindowsAccent, 15_000);
+
+async function sendFollowup(delivery) {
+  const sessionId = state.session.id;
+  const originalRun = viewedRun();
+  pendingFollowups.set(sessionId, (pendingFollowups.get(sessionId) || 0) + 1);
+  const requestData = { message: $("prompt").value.trim(), projectId: state.project.id, mode: $("mode").value, skillIds: [...state.selectedSkills], contextIds: [...state.contextIds], attachments: state.attachments.map((f) => ({ ...f })) };
+  $("prompt").value = ""; state.attachments = []; renderContextControls();
+  $("context-count").textContent = delivery === "steer" ? "Restarting with your correction?" : "Message queued after this response.";
+  try {
+    const response = await fetch("/api/chat/stream", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...requestData, sessionId, delivery, attachmentNames: requestData.attachments.map((f) => f.name) }) });
+    while (originalRun?.active) await new Promise((resolve) => setTimeout(resolve, 100));
+    requestData.before = (await request(`/api/sessions/${encodeURIComponent(sessionId)}`)).messages;
+    await followRun({ sessionId, projectName: state.projects.find((p) => p.id === requestData.projectId)?.name || "Project", title: requestData.message.slice(0, 60), requestData, attachmentNames: requestData.attachments.map((f) => f.name), response });
+  } catch (error) { $("context-count").textContent = error.message; }
+  finally { const left = pendingFollowups.get(sessionId) - 1; if (left) pendingFollowups.set(sessionId, left); else pendingFollowups.delete(sessionId); }
+}
+let syncingRuns = false;
+setInterval(async () => {
+  if (syncingRuns) return; syncingRuns = true;
+  try { await reattachRuns(); await loadSessions(); } catch {} finally { syncingRuns = false; }
+}, 2000);
+function showDeviceKey(added) {
+  $("remote-token-url").textContent = added.url || "Turn remote access on to get the address.";
+  $("remote-token-value").textContent = added.token; $("remote-token").hidden = false;
+}
+$("remote-copy-connection").addEventListener("click", async () => {
+  try { await navigator.clipboard.writeText(JSON.stringify({ server: $("remote-token-url").textContent, token: $("remote-token-value").textContent })); $("remote-copy-connection").textContent = "Copied"; }
+  catch { $("remote-status").textContent = "Clipboard unavailable. Copy the address and key separately."; }
+});

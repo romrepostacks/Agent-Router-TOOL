@@ -1,3 +1,4 @@
+const pendingFollowups = new Map();
 "use strict";
 // Mobile client for a Local Agent Router server install. Same API as the desktop page (public/app.js), shown one
 // panel at a time: Projects → Sessions → Chat, plus Running, Inbox and Settings tabs. Vanilla JS, no build step.
@@ -390,6 +391,7 @@ function openNewProject() {
 
 async function openProject(id) {
   state.project = state.projects.find((project) => project.id === id) || null;
+  state.contextIds = [];
   state.sessions = [];
   $("session-search").value = "";
   push("sessions");
@@ -596,9 +598,10 @@ function approvalCard(sessionId, card) {
 function refreshComposer() {
   const run = viewedRun();
   const busy = Boolean(run?.active);
+  $("steer").hidden = !busy;
   const send = $("send");
   send.classList.toggle("stop", busy);
-  send.setAttribute("aria-label", busy ? "Stop this session's response" : "Send");
+  send.setAttribute("aria-label", busy ? "Send to queue; empty message stops response" : "Send");
   send.firstElementChild.textContent = busy ? "■" : "↑";
   send.disabled = !busy && !state.project;
   const allProjects = state.project?.scope === "all";
@@ -689,7 +692,10 @@ $("skills-chip").addEventListener("click", () => {
 });
 
 // Attachments: small text files and images, the same limits as the desktop page. PDFs need the desktop app.
-$("attach").addEventListener("click", () => $("attachment-files").click());
+state.contextIds = [];
+$("attach").addEventListener("click", () => {
+  openSheet("Add context", "context", el("button", { type: "button", class: "row", onclick: () => $("attachment-files").click() }, "Attach from phone"), el("button", { type: "button", class: "row", onclick: chooseServerContext }, "Choose server project files"), el("button", { type: "button", class: "row", onclick: chooseLinkedFolder }, "Link server project folder"));
+});
 $("attachment-files").addEventListener("change", async (event) => {
   try { await addAttachments([...event.target.files]); } catch (error) { toast(error.message); }
   event.target.value = "";
@@ -738,13 +744,14 @@ function renderAttachments() {
 $("composer").addEventListener("submit", async (event) => {
   event.preventDefault();
   const running = viewedRun();
-  if (running?.active) {
+  if (running?.active && !$("prompt").value.trim()) {
     await request(`/api/runs/${encodeURIComponent(running.sessionId)}/cancel`, { method: "POST" }).catch(toastError);
     return;
   }
   const message = $("prompt").value.trim();
   if (!message || !state.project) return;
-  await submitRequest({ message, projectId: state.project.id, mode: state.mode, skillIds: [...state.selectedSkills], contextIds: [], attachments: state.attachments.map((file) => ({ ...file })), before: state.session?.messages || [] }).catch(toastError);
+  if (running?.active) return sendFollowup(event.submitter?.id === "steer" ? "steer" : "queue");
+  await submitRequest({ message, projectId: state.project.id, mode: state.mode, skillIds: [...state.selectedSkills], contextIds: [...state.contextIds], attachments: state.attachments.map((file) => ({ ...file })), before: state.session?.messages || [] }).catch(toastError);
 });
 
 async function submitRequest(requestData) {
@@ -815,7 +822,7 @@ async function followRun({ sessionId, projectId, title, requestData, attachmentN
         const status = last?.querySelector(".bubble-status");
         if (status) status.textContent = assistantMessage.status;
       }
-    }, sessionId);
+    }, sessionId, requestData.requestId);
     run.status = result.route || "Completed";
     appendLive(run, `\n✓ Done${result.route ? ` · ${result.route}` : ""}\n`);
     if (result.proposal) {
@@ -862,7 +869,7 @@ function dropAnswered(sessionId, pending) {
 // The buffered response can time out during a long quiet wait (iOS drops a request after 60 s without data); once the
 // run has been seen, that error is ignored and polling decides.
 // ponytail: 1 s polling per open run; move to a native streaming plugin if phones lag or batteries complain.
-async function pollRun(responsePromise, onEvent, sessionId) {
+async function pollRun(responsePromise, onEvent, sessionId, requestId) {
   let settled = null;
   Promise.resolve(responsePromise).then((response) => readStream(response, () => {})).then((result) => { settled = { result }; }, (error) => { settled = { error }; });
   let seen = false;
@@ -879,6 +886,7 @@ async function pollRun(responsePromise, onEvent, sessionId) {
     }
     if (response?.ok) {
       const snap = await response.json();
+      if (requestId && snap.requestId !== requestId) { await new Promise((resolve) => setTimeout(resolve, 1000)); continue; }
       seen = true;
       missing = 0;
       if (snap.final) {
@@ -921,7 +929,7 @@ function renderRunState() {
 async function syncRuns() {
   if (!conn.ok || document.hidden) return;
   const runs = await request("/api/runs").catch((error) => { if (error.auth) lostConnection(error); return []; });
-  await Promise.all(runs.filter((run) => !state.runs.get(run.sessionId)?.active && !state.attaching.has(run.sessionId)).map(async (run) => {
+  await Promise.all(runs.filter((run) => !pendingFollowups.has(run.sessionId) && !state.runs.get(run.sessionId)?.active && !state.attaching.has(run.sessionId)).map(async (run) => {
     state.attaching.add(run.sessionId);
     try {
       const session = await request(`/api/sessions/${encodeURIComponent(run.sessionId)}`).catch(() => null);
@@ -1167,3 +1175,48 @@ $("server-url").value = conn.url;
   conn.appVersion = (await AppPlugin?.getInfo().catch(() => null))?.version || "";
   connect(true);
 })();
+
+$("prompt").addEventListener("keydown", (event) => {
+  if (event.key === "Enter" && !event.shiftKey && !event.isComposing) { event.preventDefault(); $("composer").requestSubmit(); }
+});
+async function sendFollowup(delivery) {
+  const sessionId = state.session.id, projectId = state.project.id;
+  const originalRun = viewedRun();
+  pendingFollowups.set(sessionId, (pendingFollowups.get(sessionId) || 0) + 1);
+  const requestData = { requestId: crypto.randomUUID(), message: $("prompt").value.trim(), projectId, mode: state.mode, skillIds: [...state.selectedSkills], contextIds: [...state.contextIds], attachments: state.attachments.map((f) => ({ ...f })) };
+  $("prompt").value = ""; growPrompt(); state.attachments = []; renderAttachments();
+  toast(delivery === "steer" ? "Restarting with your correction?" : "Message queued after this response.");
+  const response = stream("/api/chat/stream", { method: "POST", body: JSON.stringify({ ...requestData, sessionId, delivery, attachmentNames: requestData.attachments.map((f) => f.name) }) });
+  response.catch(() => {});
+  try {
+    while (originalRun?.active) await new Promise((resolve) => setTimeout(resolve, 100));
+    requestData.before = (await request(`/api/sessions/${encodeURIComponent(sessionId)}`)).messages;
+    await followRun({ sessionId, projectId, title: requestData.message.slice(0, 60), requestData, attachmentNames: requestData.attachments.map((f) => f.name), response });
+  } catch (error) { toastError(error); }
+  finally { const left = pendingFollowups.get(sessionId) - 1; if (left) pendingFollowups.set(sessionId, left); else pendingFollowups.delete(sessionId); }
+}
+async function chooseServerContext() {
+  try {
+    const projectId = state.project.id;
+    const { files } = await request(`/api/context?projectId=${encodeURIComponent(projectId)}`);
+    if (state.project?.id !== projectId) return;
+    openSheet("Server project files", "context", el("div", { class: "list glass" }, ...files.map((file) => el("label", { class: "row" }, el("input", { type: "checkbox", checked: state.contextIds.includes(file.id), onchange: (event) => {
+      if (event.target.checked && state.contextIds.length >= 10) { event.target.checked = false; return toast("Choose up to 10 files."); }
+      state.contextIds = event.target.checked ? [...state.contextIds, file.id] : state.contextIds.filter((id) => id !== file.id);
+    } }), file.projectName + "/" + file.path))));
+  } catch (error) { toastError(error); }
+}
+async function chooseLinkedFolder() {
+  openSheet("Link server folder", "context", el("div", { class: "list glass" }, ...state.projects.filter((p) => p.scope === "single" && p.id !== state.project.id).map((project) => el("button", { type: "button", class: "row", onclick: async () => {
+    try { const result = await request("/api/projects/linked", { method: "POST", body: JSON.stringify({ projectId: state.project.id, linked: [...new Set([...(state.project.linked || []).map((p) => typeof p === "string" ? p : p.id), project.id])] }) }); state.project.linked = result.linked; toast("Folder linked"); closeSheet(); await loadProjects(); }
+    catch (error) { toastError(error); }
+  } }, project.name))));
+}
+$("connection-code").addEventListener("input", (event) => {
+  try {
+    const code = JSON.parse(event.target.value);
+    if (serverUrlProblem(code.server) || typeof code.token !== "string") throw new Error();
+    $("server-url").value = code.server; $("server-token").value = code.token;
+    $("connect-status").textContent = "Server address detected. Tap Connect.";
+  } catch { $("connect-status").textContent = "Paste the connection code copied from Remote access settings."; }
+});

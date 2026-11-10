@@ -1020,6 +1020,12 @@ const ACCESS = { route: "none", quick: "none", review: "read", security: "read",
 // Per-thread cap (session.accessLimit). It can only narrow a route's ACCESS, never widen it.
 // "": route default · staged: edits go to a reviewed copy, no git · read: no edits or git · none: Quick questions only
 const THREAD_ACCESS = ["", "staged", "read", "none"];
+export function threadMode(mode, session, message) {
+  if (mode !== "auto" || !EDIT_ROUTES.includes(session?.workMode) || ["read", "none"].includes(session?.accessLimit)) return mode;
+  // Only implementation follow-ups inherit the workflow; questions and explicit reviews still route normally.
+  if (/\b(review|audit|explain|summarize|what|why|how)\b/i.test(message)) return mode;
+  return /\b(continue|resume|proceed|implement|fix|correct|change|add|remove|build|finish|yes|do it)\b/i.test(message) ? session.workMode : mode;
+}
 const EDIT_ROUTES = ["code", "ui", "art"];
 function threadBlocks(limit, route) {
   if (route === "route") return "";
@@ -1362,6 +1368,11 @@ async function runRoute(route, messages, project, skillText = "", localSkillText
   const delegated = (name) => via ? [via, name] : [name];
   const blocked = threadBlocks(options.accessLimit, route);
   if (blocked) return { content: blocked, route: label("Thread access"), delegated: delegated("Thread access") };
+  if (options.sessionId && EDIT_ROUTES.includes(route)) await withFileLock(SESSIONS_FILE, async () => {
+    const sessions = await readSessions();
+    const session = sessions.find((item) => item.id === options.sessionId);
+    if (session) { session.workMode = route; await writeSessions(sessions); }
+  });
   if (options.accessLimit === "staged" && EDIT_ROUTES.includes(route)) options = { ...options, staged: true };
   if (project?.scope === "all" && ["chain", "code", "ui", "art", "github", "push"].includes(route)) {
     return { content: "This request can change project files or GitHub. All Projects scope is read-only; select one project folder to continue.", route: label("All Projects"), delegated: delegated("All Projects") };
@@ -1439,6 +1450,31 @@ const editingSession = (sessionId) => [...editLocks.values()].some((lock) => loc
 const activeRuns = new Map();
 const FAILED_RUN_KEEP_MS = 30 * 60 * 1000;
 const isRunning = (id) => Boolean(activeRuns.get(id) && !activeRuns.get(id).final);
+const followupTails = new Map();
+
+// Queue waits on the actual run lifecycle, rather than a client's connection.
+async function waitForRun(data) {
+  if (!["queue", "steer"].includes(data.delivery)) return;
+  const tail = followupTails.get(data.sessionId) || Promise.resolve();
+  let release;
+  const next = new Promise((resolve) => { release = resolve; });
+  followupTails.set(data.sessionId, next);
+  data.releaseQueue = () => {
+    release();
+    if (followupTails.get(data.sessionId) === next) followupTails.delete(data.sessionId);
+  };
+  await tail;
+  let previous;
+  while ((previous = activeRuns.get(data.sessionId)) && !previous.final) {
+    if (data.delivery === "steer") {
+      data.message = `Continue this task with the following correction. Inspect current files before continuing.\n\nOriginal task:\n${previous.request.message}\n\nCorrection:\n${data.message}`;
+      data.delivery = "queue";
+      previous.controller.abort();
+    }
+    await previous.finished;
+  }
+  if (data.sessionId) data.history = (await readSessions()).find((s) => s.id === data.sessionId)?.messages || [];
+}
 
 async function claimRun(data) {
   if (data.sessionId === undefined) return { controller: new AbortController(), content: "", live: "", listeners: new Set(), approvals: new Map(), final: null };
@@ -1448,6 +1484,7 @@ async function claimRun(data) {
   const run = {
     sessionId: data.sessionId,
     projectId: typeof data.projectId === "string" ? data.projectId : "",
+    requestId: typeof data.requestId === "string" ? data.requestId.slice(0, 100) : "",
     startedAt: new Date().toISOString(),
     status: "Starting…",
     controller: new AbortController(),
@@ -1460,6 +1497,7 @@ async function claimRun(data) {
     final: null,
   };
   activeRuns.set(run.sessionId, run);
+  run.finished = new Promise((resolve) => { run.resolveFinished = resolve; });
   return run;
 }
 
@@ -1537,13 +1575,15 @@ function notify(run, type, text, cardId) {
 
 function runSnapshot(run) {
   return {
-    sessionId: run.sessionId, projectId: run.projectId, startedAt: run.startedAt, status: run.status, editing: editingSession(run.sessionId),
+    requestId: run.requestId, sessionId: run.sessionId, projectId: run.projectId, startedAt: run.startedAt, status: run.status, editing: editingSession(run.sessionId),
     running: !run.final, content: run.content, live: run.live, approvals: [...run.approvals.values()].map((item) => item.card), final: run.final,
   };
 }
 
 function finishRun(run, event, value) {
   run.final = { event, value };
+  run.resolveFinished?.();
+  run.releaseQueue?.();
   notify(run, event === "done" ? "done" : value?.cancelled ? "stopped" : "failed", event === "done" ? "Finished." : value?.error);
   for (const res of run.listeners) { sseWrite(res, event, value); res.end(); }
   run.listeners.clear();
@@ -1612,11 +1652,13 @@ async function handleChat(data, options = {}) {
     : [];
   const images = (Array.isArray(data.attachments) ? data.attachments : []).filter((attachment) => /^image\/(png|jpeg|webp)$/.test(attachment?.mimeType || "")).map(({ name, mimeType, dataUrl }) => ({ name, mimeType, dataUrl }));
   const messages = [...history, { role: "user", content: message + contextText, ...(images.length ? { images } : {}) }];
-  const mode = LEGACY_MODES[data.mode] || (data.mode === "auto" || ROUTES.includes(data.mode) ? data.mode : "auto");
+  let mode = LEGACY_MODES[data.mode] || (data.mode === "auto" || ROUTES.includes(data.mode) ? data.mode : "auto");
   // The limit is read from the saved session, not taken from the request.
   if (typeof data.sessionId === "string") {
     const session = (await readSessions()).find((item) => item.id === data.sessionId);
     options = { ...options, sessionId: data.sessionId, accessLimit: session?.accessLimit || "", permissionMode: session?.permissionMode || "" };
+    // Keep coding follow-ups in the same workflow. Read-only thread limits still win.
+    mode = threadMode(mode, session, message);
   }
 
   if (mode === "auto" || mode === "route") {
@@ -1835,12 +1877,15 @@ async function handleRemoteAdmin(req, res, url) {
     return json(res, 200, await remoteState());
   }
   if (req.method === "POST" && url.pathname === "/api/remote/devices") {
-    const name = String((await bodyJson(req)).name || "").replace(/\s+/g, " ").trim().slice(0, 60) || "Device";
-    const token = randomBytes(32).toString("base64url");
+    const data = await bodyJson(req);
+    const name = String(data.name || "").replace(/\s+/g, " ").trim().slice(0, 60) || "Device";
+    const token = data.token || randomBytes(32).toString("base64url");
+    if (typeof token !== "string" || !/^[\x21-\x7e]{24,128}$/.test(token)) return json(res, 400, { error: "Use 24–128 printable characters without spaces for a custom key." });
     const device = { id: randomUUID(), name, tokenHash: tokenHash(token), createdAt: new Date().toISOString() };
     const added = await withFileLock(SETTINGS_FILE, async () => {
       const config = (await rawSettings()).remoteAccess || {};
       const devices = Array.isArray(config.devices) ? config.devices : [];
+      if (devices.some((item) => item.tokenHash === device.tokenHash)) return false;
       if (devices.length >= 20) return false;
       await writeSettings({ remoteAccess: { ...config, devices: [...devices, device] } });
       return true;
@@ -1850,6 +1895,21 @@ async function handleRemoteAdmin(req, res, url) {
     return json(res, 201, { device: shown, token, url: remote.server ? `http://${remote.address}:${remote.port}` : "" });
   }
   const deviceMatch = url.pathname.match(/^\/api\/remote\/devices\/([a-f0-9-]{36})$/i);
+  if (req.method === "POST" && deviceMatch) {
+    const token = randomBytes(32).toString("base64url");
+    const updated = await withFileLock(SETTINGS_FILE, async () => {
+      const config = (await rawSettings()).remoteAccess || {};
+      const devices = config.devices || [];
+      const device = devices.find((item) => item.id === deviceMatch[1]);
+      if (!device) return false;
+      device.tokenHash = tokenHash(token);
+      await writeSettings({ remoteAccess: { ...config, devices } });
+      return true;
+    });
+    if (!updated) return json(res, 404, { error: "Device not found." });
+    remote.server?.closeAllConnections();
+    return json(res, 200, { token, url: remote.server ? `http://${remote.address}:${remote.port}` : "" });
+  }
   if (req.method === "DELETE" && deviceMatch) {
     const removed = await withFileLock(SETTINGS_FILE, async () => {
       const config = (await rawSettings()).remoteAccess || {};
@@ -2115,6 +2175,33 @@ async function handleRequest(req, res, fromRemote = false) {
       await withFileLock(SESSIONS_FILE, async () => writeSessions([...(await readSessions()), session]));
       return json(res, 201, session);
     }
+    if (req.method === "POST" && /^\/api\/sessions\/[^/]+\/(rename|project)$/.test(url.pathname)) {
+      const id = url.pathname.split("/")[3];
+      const action = url.pathname.split("/")[4];
+      const data = await bodyJson(req);
+      if (action === "rename" && (typeof data.title !== "string" || !data.title.trim() || data.title.trim().length > 200)) {
+        return json(res, 400, { error: "Enter a session title of 1–200 characters." });
+      }
+      const destination = action === "project" ? await projectFor(data.projectId) : null;
+      if (action === "project" && (!destination || destination.scope !== "single" || (await projectParents())[destination.id])) {
+        return json(res, 400, { error: "Choose an unmerged project folder." });
+      }
+      return await withFileLock(SESSIONS_FILE, async () => {
+        const sessions = await readSessions();
+        const session = sessions.find((item) => item.id === id);
+        if (!session) return json(res, 404, { error: "Session not found." });
+        if (action === "project" && (isRunning(id) || followupTails.has(id) || editingSession(id))) {
+          return json(res, 409, { error: "Wait for active and queued work to finish before moving this session." });
+        }
+        if (action === "rename") session.title = data.title.trim();
+        else session.projectId = destination.id;
+        // Reviewed imports must not be automatically reassigned or topic-merged on reindex.
+        delete session.importedFrom;
+        session.updatedAt = new Date().toISOString();
+        await writeSessions(sessions);
+        return json(res, 200, session);
+      });
+    }
     if (req.method === "POST" && url.pathname.startsWith("/api/sessions/") && url.pathname.endsWith("/messages")) {
       const id = url.pathname.split("/")[3];
       const { status, body } = await appendExchange(id, await bodyJson(req));
@@ -2183,8 +2270,10 @@ async function handleRequest(req, res, fromRemote = false) {
     }
     if (req.method === "POST" && url.pathname === "/api/chat/stream") {
       const data = await bodyJson(req);
+      await waitForRun(data);
       const run = await claimRun(data);
-      if (run.error) return json(res, run.status, { error: run.error });
+      if (run.error) { data.releaseQueue?.(); return json(res, run.status, { error: run.error }); }
+      run.releaseQueue = data.releaseQueue;
       const { controller } = run;
       // A run without a session can't be found again, so closing its stream still stops it.
       if (!run.sessionId) res.on("close", () => { if (!res.writableEnded) controller.abort(); });
@@ -2226,7 +2315,7 @@ async function handleRequest(req, res, fromRemote = false) {
       const run = await claimRun(data);
       if (run.error) return json(res, run.status, { error: run.error });
       try { return json(res, 200, await handleChat(data, { signal: run.controller.signal, onStatus: (status) => { run.status = status; } })); }
-      finally { if (run.sessionId && activeRuns.get(run.sessionId) === run) activeRuns.delete(run.sessionId); }
+      finally { run.final = { event: "done" }; run.resolveFinished?.(); if (run.sessionId && activeRuns.get(run.sessionId) === run) activeRuns.delete(run.sessionId); }
     }
     if (req.method === "GET" && url.pathname === "/api/runs") {
       // Running runs, plus failed or stopped ones (`failed`) whose error a reloaded page can still show.

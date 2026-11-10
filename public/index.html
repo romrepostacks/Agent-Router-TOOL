@@ -213,6 +213,13 @@
             <button id="run-setup" type="button" class="context-button">Run setup again</button>
           </section>
           <section class="settings-section settings-page" data-settings-page="routing" hidden>
+            <h3>Local models (Colibri)</h3>
+            <label class="settings-check"><input id="local-only" type="checkbox"> Local models only: every step, including Route Planning and task chains, runs on Colibri, never on a cloud provider</label>
+            <p class="settings-help">Each task uses its own Colibri model from the list below. Colibri holds one model at a time, so the router switches models between steps and waits until the next one has loaded.</p>
+            <ul id="local-models" class="local-models" aria-live="polite"></ul>
+            <div class="model-catalog-tools"><button id="open-model-manager" type="button" class="context-button">Add or manage models…</button><span id="local-models-status" aria-live="polite"></span></div>
+          </section>
+          <section class="settings-section settings-page" data-settings-page="routing" hidden>
             <h3>Provider by task</h3>
             <p class="settings-help">Choose a provider and model for each kind of work. Every backup can use a different provider.</p>
             <div class="model-catalog-tools"><button id="refresh-models" type="button" class="context-button">Refresh model list</button><span id="model-catalog-status" aria-live="polite">Loading available models…</span></div>

@@ -393,3 +393,6 @@ html[data-theme="dark"] .setup-missing { background: none; }
 .error-text { color: var(--red) !important; }
 .session-edit { flex: 1; min-width: 0; height: 30px; padding: 0 8px; border: 1px solid var(--accent, #888); border-radius: 7px; font: inherit; background: var(--surface, transparent); color: inherit; }
 .project-button.drop-target { outline: 2px dashed var(--green); outline-offset: -2px; }
+.local-models { list-style: none; margin: 8px 0; padding: 0; display: grid; gap: 6px; }
+.local-models li { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
+.local-models li span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

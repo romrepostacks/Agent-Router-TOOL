@@ -1613,11 +1613,53 @@ async function openSettings() {
   $("skills-limit").value = state.pendingSkillsLimit;
   $("shortcut-key").value = settings.shortcut ?? "Control+Shift+Space";
   $("auto-merge-imports").checked = Boolean(settings.autoMergeImports);
+  $("local-only").checked = Boolean(settings.localOnly);
+  $("local-models-status").textContent = "";
+  loadLocalModels();
   applyTheme($("theme-choice").value);
   selectSettingsTab("general");
   renderApprovedSkills();
   if (!$("settings-dialog").open) $("settings-dialog").showModal();
   await loadModelChoices(settings);
+}
+
+// Colibri's installed models (folders next to the loaded one). Load switches the server now; routes switch on use.
+async function loadLocalModels() {
+  const list = $("local-models");
+  list.replaceChildren();
+  try {
+    const data = await request("/api/local-models");
+    if (!data.installed) $("local-models-status").textContent = "Colibri isn't set up on this computer. Run START-HERE.bat in the colibri folder.";
+    $("open-model-manager").disabled = !data.installed;
+    for (const model of data.models) {
+      const item = document.createElement("li");
+      const name = document.createElement("span");
+      name.textContent = model.name;
+      item.append(name);
+      if (model.inUse) {
+        const badge = document.createElement("span");
+        badge.className = "session-source";
+        badge.textContent = "loaded";
+        item.append(badge);
+      } else {
+        const load = document.createElement("button");
+        load.type = "button";
+        load.className = "context-button";
+        load.textContent = "Load now";
+        load.setAttribute("aria-label", `Load ${model.name} in Colibri now`);
+        load.addEventListener("click", async () => {
+          load.disabled = true;
+          $("local-models-status").textContent = `Loading ${model.name}… a big model can take minutes.`;
+          try { await request("/api/local-models/use", { method: "POST", body: JSON.stringify({ name: model.name }) }); $("local-models-status").textContent = `${model.name} is loaded.`; }
+          catch (error) { $("local-models-status").textContent = error.message; }
+          loadLocalModels();
+        });
+        item.append(load);
+      }
+      list.append(item);
+    }
+    if (data.installed && !data.models.length) $("local-models-status").textContent = "No models installed yet. Add one with the Model Manager.";
+  } catch (error) { $("local-models-status").textContent = error.message; }
 }
 
 function fillModelSelect(id, choices, selected, emptyLabel, preserveMissing = true) {
@@ -1787,7 +1829,7 @@ async function saveSettings() {
   try {
     const roles = ["routePlanning", "longTermPlanning", "coding", "review", "security", "ui", "art", "github", "quick"];
     const modelSettings = Object.fromEntries(roles.flatMap((role) => [[`${role}Primary`, $(`${role}-primary`).value], [`${role}Fallback`, $(`${role}-fallback`).value]]));
-    const settings = await request("/api/settings", { method: "POST", body: JSON.stringify({ projectsRoot: $("projects-root").value, theme: $("theme-choice").value, skillsLimit, shortcut: $("shortcut-key").value, autoMergeImports: $("auto-merge-imports").checked, ...modelSettings, preapprovedSkillIds: state.pendingPreapprovedSkillIds }) });
+    const settings = await request("/api/settings", { method: "POST", body: JSON.stringify({ projectsRoot: $("projects-root").value, theme: $("theme-choice").value, skillsLimit, shortcut: $("shortcut-key").value, autoMergeImports: $("auto-merge-imports").checked, localOnly: $("local-only").checked, ...modelSettings, preapprovedSkillIds: state.pendingPreapprovedSkillIds }) });
     const rootChanged = state.settingsRoot !== settings.projectsRoot;
     state.settingsRoot = settings.projectsRoot;
     state.settingsConfigured = true;
@@ -1824,6 +1866,10 @@ $("new-session").addEventListener("click", newSession);
 $("import-sessions").addEventListener("click", () => importSessions());
 $("reindex-sessions").addEventListener("click", () => {
   if (confirm("Re-file every imported session you haven't continued or merged by hand: move each to the project it fits best, then merge ones on the same topic within each project?")) importSessions({ reindex: true });
+});
+$("open-model-manager").addEventListener("click", async () => {
+  try { await request("/api/local-models/manager", { method: "POST" }); $("local-models-status").textContent = "The Model Manager opened on this computer. Refresh the model list when you're done."; }
+  catch (error) { $("local-models-status").textContent = error.message; }
 });
 $("merge-sessions").addEventListener("click", () => {
   const ids = state.session && state.sessions.some((item) => item.id === state.session.id) ? [state.session.id, ...state.sessions.filter((item) => item.id !== state.session.id).map((item) => item.id)] : state.sessions.map((item) => item.id);
@@ -1897,7 +1943,7 @@ $("new-project-form").addEventListener("submit", async (event) => {
 });
 $("close-settings").addEventListener("click", () => $("settings-dialog").close());
 $("save-settings").addEventListener("click", saveSettings);
-$("refresh-models").addEventListener("click", () => loadModelChoices(state.modelPrefs, true, true));
+$("refresh-models").addEventListener("click", () => { loadModelChoices(state.modelPrefs, true, true); loadLocalModels(); });
 document.querySelectorAll("[data-settings-tab]").forEach((button) => button.addEventListener("click", () => selectSettingsTab(button.dataset.settingsTab)));
 document.querySelector(".settings-tabs").addEventListener("keydown", (event) => {
   const tabs = [...document.querySelectorAll("[data-settings-tab]")];

@@ -10,6 +10,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { remember, recall, memorySection } from "./project-memory.mjs";
 import { buildRoutePrompt, parseRoute, buildChainPrompt, parseChainPlan, buildStepsOverlap, CHAIN_BUILD_ROUTES } from "./route-rules.mjs";
 import { fetchGithubSkill } from "./skill-scan.mjs";
+import { colibriGate, colibriModels, colibriSetup, managerScript, openManager } from "./colibri.mjs";
 import { MAX_MESSAGES, bestProject, fetchCodexCloudSessions, groupSessions, mergeMessages, scanLocalCliSessions, topicIndex } from "./import-sessions.mjs";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
@@ -811,6 +812,9 @@ async function availableModelCatalog(force = false) {
   catalog.openai = openai;
   catalog.anthropic = anthropic;
   catalog.colibri = local.filter((model) => typeof model.id === "string").map((model) => ({ id: model.id, name: model.id }));
+  for (const model of await colibriModels(await colibriSetup())) {
+    if (!catalog.colibri.some((item) => item.id === model.name)) catalog.colibri.push({ id: model.name, name: model.inUse ? `${model.name} (loaded)` : `${model.name} (loads when used)` });
+  }
   catalog.codex = codex;
   if (hasClaude) catalog.claude = [{ id: "opus", name: "Opus (current)" }, { id: "sonnet", name: "Sonnet (current)" }];
   if (hasCopilot) catalog.copilot = COPILOT_MODELS.map((id) => ({ id, name: id === "auto" ? "Auto choose" : id }));
@@ -820,7 +824,14 @@ async function availableModelCatalog(force = false) {
   return catalog;
 }
 
-async function queryColibri(messages, tools = [], { signal, onDelta, model: requestedModel, maxTokens = 1600 } = {}) {
+// Installed Colibri models load on demand: a request naming another model folder waits its turn and switches the server.
+const acquireColibri = colibriGate();
+async function queryColibri(messages, tools = [], options = {}) {
+  const release = await acquireColibri(options.model || COLIBRI_MODEL, { signal: options.signal, onStatus: options.onStatus });
+  try { return await queryColibriNow(messages, tools, options); } finally { release(); }
+}
+
+async function queryColibriNow(messages, tools = [], { signal, onDelta, model: requestedModel, maxTokens = 1600 } = {}) {
   // Node's fetch only says "fetch failed" when nothing answers; say which address.
   const modelList = await fetch(`${COLIBRI_BASE_URL}/models`, { signal: signal || AbortSignal.timeout(3500) })
     .catch((error) => { throw signal?.aborted ? error : new Error(`Can't reach the local model at ${COLIBRI_BASE_URL} (${error.cause?.code || error.message}). Start it, or change its address in Settings.`); });
@@ -1041,6 +1052,13 @@ function choiceParts(choice, defaultProvider = "codex") {
   return model.length && (CLI[provider] || CHAT_PROVIDERS.has(provider)) ? { provider, model: model.join("::") } : { provider: defaultProvider, model: String(choice || "") };
 }
 
+// Local models only: each route keeps its own Colibri choice (preferred, else fallback, else the default local
+// model) and never falls back to a cloud provider.
+function localChoices(settings, role) {
+  const local = [settings[`${role}Primary`], settings[`${role}Fallback`]].filter((choice) => choiceParts(choice || "").provider === "colibri");
+  return { primary: local[0] || `colibri::${settings.colibriModel || COLIBRI_MODEL}`, fallback: local[1] || "" };
+}
+
 function roleChoices(settings, role, defaultChoice) {
   return {
     primary: settings[`${role}Primary`] || defaultChoice,
@@ -1195,7 +1213,9 @@ async function providerReady(provider) {
   if (CLI[provider]) return Boolean(await cliAvailable(CLI[provider]));
   if (API_PROVIDERS[provider]) return Boolean(await apiKey(provider));
   if (provider === "colibri") {
-    try { return (await fetch(`${COLIBRI_BASE_URL}/models`, { signal: AbortSignal.timeout(2500) })).ok; } catch { return false; }
+    // A stopped standard Colibri install counts as ready: it starts on first use.
+    const answering = await fetch(`${COLIBRI_BASE_URL}/models`, { signal: AbortSignal.timeout(2500) }).then((response) => response.ok, () => false);
+    return answering || Boolean((await colibriSetup())?.launcher);
   }
   return false;
 }
@@ -1221,7 +1241,7 @@ async function runRoleTask(role, defaultChoice, prompt, project, kind, options =
     ...await recall(memoryFile),
   ], kind);
   const settings = await readSettings();
-  const choices = roleChoices(settings, role, defaultChoice);
+  const choices = settings.localOnly ? localChoices(settings, role) : roleChoices(settings, role, defaultChoice);
   const invoke = async (choice) => {
     const content = await runProviderTask(choice, prompt, project, kind, options);
     if (memoryFile) {
@@ -1235,8 +1255,11 @@ async function runRoleTask(role, defaultChoice, prompt, project, kind, options =
     }
     return content;
   };
+  if (settings.localOnly && !(await providerReady("colibri"))) {
+    throw new Error(`Local models only is on, and no local model is answering at ${COLIBRI_BASE_URL}. Start Colibri, or turn the setting off in Settings → Routing & models.`);
+  }
   // Skip a provider that isn't installed or set up: try the fallback, then the best ready provider for this role.
-  if (!(await providerReady(choiceParts(choices.primary).provider))) {
+  if (!settings.localOnly && !(await providerReady(choiceParts(choices.primary).provider))) {
     const ready = await readyProviders();
     const alternate = choices.fallback && ready.has(choiceParts(choices.fallback).provider) ? choices.fallback : bestChoice(role, ready);
     if (!alternate) throw new Error("No AI provider is set up yet. Open Settings → Run setup to install or connect one.");
@@ -1252,7 +1275,7 @@ async function runRoleTask(role, defaultChoice, prompt, project, kind, options =
     let alternate = choices.fallback;
     if (!alternate) {
       const catalog = await availableModelCatalog();
-      const all = catalog.all || [];
+      const all = (catalog.all || []).filter((entry) => !settings.localOnly || choiceParts(entry.id).provider === "colibri");
       const primary = choiceParts(choices.primary);
       const entries = all.filter((entry) => {
         const candidate = choiceParts(entry.id);
@@ -2070,7 +2093,7 @@ async function handleRequest(req, res, fromRemote = false) {
           [`${role}Fallback`, saved[`${role}Fallback`] || (oldFallback ? `${fallbackProvider}::${oldFallback}` : "")],
         ];
       }));
-      return json(res, 200, { projectsRoot: PROJECTS_ROOT, colibriModel: saved.colibriModel || COLIBRI_MODEL, localBaseUrl: COLIBRI_BASE_URL, configured: Boolean(saved.configured), setupComplete: Boolean(saved.setupComplete || saved.configured), theme: saved.theme || "system", skillsLimit, shortcut: saved.shortcut ?? "Control+Shift+Space", autoMergeImports: Boolean(saved.autoMergeImports), claudeDefaultMode: await claudeDefaultMode(), ...routing, preapprovedSkillIds: Array.isArray(saved.preapprovedSkillIds) ? saved.preapprovedSkillIds : [] });
+      return json(res, 200, { projectsRoot: PROJECTS_ROOT, colibriModel: saved.colibriModel || COLIBRI_MODEL, localBaseUrl: COLIBRI_BASE_URL, configured: Boolean(saved.configured), setupComplete: Boolean(saved.setupComplete || saved.configured), theme: saved.theme || "system", skillsLimit, shortcut: saved.shortcut ?? "Control+Shift+Space", autoMergeImports: Boolean(saved.autoMergeImports), localOnly: Boolean(saved.localOnly), claudeDefaultMode: await claudeDefaultMode(), ...routing, preapprovedSkillIds: Array.isArray(saved.preapprovedSkillIds) ? saved.preapprovedSkillIds : [] });
     }
     if (req.method === "POST" && url.pathname === "/api/settings") {
       const data = await bodyJson(req);
@@ -2097,7 +2120,8 @@ async function handleRequest(req, res, fromRemote = false) {
       COLIBRI_MODEL = model;
       await mkdir(DATA_DIR, { recursive: true });
       const autoMergeImports = data.autoMergeImports === undefined ? Boolean(previous.autoMergeImports) : data.autoMergeImports === true;
-      const saved = { ...(await rawSettings()), projectsRoot: root, colibriModel: model, configured: true, theme, skillsLimit, shortcut, autoMergeImports, ...models, preapprovedSkillIds };
+      const localOnly = data.localOnly === undefined ? Boolean(previous.localOnly) : data.localOnly === true;
+      const saved = { ...(await rawSettings()), projectsRoot: root, colibriModel: model, configured: true, theme, skillsLimit, shortcut, autoMergeImports, localOnly, ...models, preapprovedSkillIds };
       await writeFile(SETTINGS_FILE, JSON.stringify(saved, null, 2), "utf8");
       globalThis.setRouterTheme?.(theme);
       return json(res, 200, saved);
@@ -2177,6 +2201,25 @@ async function handleRequest(req, res, fromRemote = false) {
       return session ? json(res, 200, session) : json(res, 404, { error: "Session not found." });
     }
     if (req.method === "POST" && url.pathname === "/api/sessions/import") return json(res, 200, await importCliSessions({ reindex: (await bodyJson(req)).reindex === true }));
+    if (req.method === "GET" && url.pathname === "/api/local-models") {
+      const cfg = await colibriSetup();
+      return json(res, 200, { installed: Boolean(cfg), models: (await colibriModels(cfg)).map(({ name, inUse }) => ({ name, inUse })) });
+    }
+    if (req.method === "POST" && url.pathname === "/api/local-models/use") {
+      const { name } = await bodyJson(req);
+      const cfg = await colibriSetup();
+      if (typeof name !== "string" || !(await colibriModels(cfg)).some((model) => model.name === name)) return json(res, 400, { error: "Choose an installed Colibri model." });
+      try { (await acquireColibri(name))(); } catch (error) { return json(res, 500, { error: error.message }); }
+      return json(res, 200, { loaded: name });
+    }
+    if (req.method === "POST" && url.pathname === "/api/local-models/manager") {
+      const cfg = await colibriSetup();
+      if (!cfg) return json(res, 400, { error: "Colibri isn't set up on this computer. Run START-HERE.bat in the colibri folder first." });
+      const script = await managerScript(cfg, [path.join(PROJECTS_ROOT, "colibri")]);
+      if (!script) return json(res, 400, { error: "Couldn't find Colibri's Model Manager (model_adder\\model_adder.py) next to Colibri or in Projects\\colibri." });
+      openManager(script); // fixed command: Colibri's own model_adder.py, no page input
+      return json(res, 200, { opened: true });
+    }
     if (req.method === "POST" && url.pathname === "/api/projects/merge") {
       const data = await bodyJson(req);
       try { return json(res, 200, await mergeProjects(data.parentId, data.childId)); } catch (error) { return json(res, 400, { error: error.message }); }

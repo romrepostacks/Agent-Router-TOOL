@@ -2,8 +2,10 @@
 
 ## 0.21.0
 
-- Add server APIs to rename sessions and assign reviewed sessions to a project, preserving history and thread permissions.
-- Reject project moves during active or queued work. Desktop controls and app acceptance remain pending.
+- **Rename sessions** with ✎ on a session row, and **move sessions** out of All Projects by dragging them onto a project (or ⇥ → Move to…).
+- **Merging projects keeps every file:** the merged folder moves into `<project>\obsolete\<name>`, the move is written to `obsolete\MOVED.md`, and agents are told the new location. Splitting moves it back.
+- **More local models (Colibri):** Settings → Routing & models lists every model installed in Colibri. Any task can use any of them; Colibri switches to the right model (and starts if stopped) before the task runs. **Add or manage models…** opens Colibri's Model Manager.
+- **Local models only:** one switch keeps every step, including Route Planning and task chains, on Colibri, with no cloud fallback. Each task uses its own Colibri model.
 
 
 ## 0.20.0

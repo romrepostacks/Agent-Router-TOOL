@@ -52,6 +52,11 @@ General goals from the old list (secure links between components, Tailscale comp
 
 The automated test suite uses synthetic projects, keys, and providers. No real credentials or provider accounts are required.
 
-## Current stop (0.21.0)
+## Current stop (0.21.0, 2026-11-10)
 
-App acceptance is blocked: npm.cmd start fails with Electron install_dir_access.cc:52 because Windows denies its sandbox access to node_modules/electron/dist. Human guidance is required to repair runtime access; no system ACLs were changed. Subsequent server backlog items have not been implemented.
+Everything that could be built and tested without a person is done (session rename/move, folder-preserving merges, more local models, Local models only). What's left needs a decision or hands:
+
+- **#3 skill scanners:** installing the scanners was refused by the agent's safety check (third-party code). Cisco's is on PyPI as `cisco-ai-skill-scanner` (2.3.2); NVIDIA SkillSpector isn't on PyPI and its GitHub page wasn't reachable from the cloud session. Needs the owner's OK to install them and the SkillSpector source.
+- **Desktop app acceptance on the PC:** `npm.cmd start` still fails on Electron's sandbox ACL for `node_modules\electron\dist`; fixing it is a Windows permission change the owner has to make or approve.
+- **Real Colibri run:** the Colibri switching was tested against a fake Colibri only; it needs one run on the PC (pick a different installed model for Quick, ask something, watch Colibri switch).
+- **Automatic server discovery** and **iOS notification timing:** need a design choice for discovery over Tailscale and a real iPhone.

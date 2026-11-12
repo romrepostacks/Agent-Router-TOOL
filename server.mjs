@@ -783,7 +783,7 @@ async function status() {
 
 // Feedback: anonymous reports go to a relay (feedback-relay/) that files a GitHub issue. Only what's listed here is
 // sent, and the user sees it first: no names, paths, host names, IP addresses, keys, chats or files.
-const FEEDBACK_URL = process.env.AGENT_ROUTER_FEEDBACK_URL ?? "";
+const FEEDBACK_URL = process.env.AGENT_ROUTER_FEEDBACK_URL ?? "https://agent-router-feedback.kylemeadows-522.workers.dev";
 const FEEDBACK_ROLES = ["routePlanning", "longTermPlanning", "coding", "review", "security", "ui", "art", "github", "quick"];
 
 async function gpus() {

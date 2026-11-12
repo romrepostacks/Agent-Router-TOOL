@@ -47,3 +47,10 @@ test("the chosen role is saved for the app and shown in the version", () => {
 test("the phone apps aren't packed into the Windows app", () => {
   assert.ok(config.files.some((pattern) => /^!\{[^}]*\bmobile\b/.test(pattern)));
 });
+
+test("uninstalling asks before deleting user data, and updates or silent uninstalls never delete it", () => {
+  const un = nsh.slice(nsh.indexOf("!ifdef BUILD_UNINSTALLER"));
+  assert.match(un, /!macro customUnInstall[\s\S]*\$\{ifNot\} \$\{isUpdated\}[\s\S]*IfSilent keepData[\s\S]*MB_DEFBUTTON2[\s\S]*IDNO keepData[\s\S]*RMDir \/r "\$R2\\LocalAgentRouterData"/);
+  assert.equal(config.nsis.deleteAppDataOnUninstall, false);
+  assert.match(nsh, /CreateShortCut "\$SMPROGRAMS\\Uninstall Local Agent Router\.lnk" "\$INSTDIR\\\$\{UNINSTALL_FILENAME\}"/);
+});

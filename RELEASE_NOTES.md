@@ -7,6 +7,7 @@
 - **More local models (Colibri):** Settings → Routing & models lists every model installed in Colibri. Any task can use any of them; Colibri switches to the right model (and starts if stopped) before the task runs. **Add or manage models…** opens Colibri's Model Manager.
 - **Skill reviewers:** scanning a skill from GitHub now also runs NVIDIA SkillSpector and Cisco Skill Scanner and shows each verdict and its findings separately. If one isn't installed, **Install the missing reviewers…** sets them up.
 - **Send feedback:** Settings → General → Feedback sends a report anonymously with the app version, models, providers (subscription, API key or local), routes and basic machine specs (OS, CPU, memory, GPUs). **What's sent with it** shows exactly that before sending; no names, folders, keys, chats or files.
+- **Uninstall:** Start menu → Uninstall Local Agent Router (or Windows Settings → Apps). It asks whether to also delete your settings, chat history, saved keys and paired devices; the answer defaults to keeping them. Updates never delete them.
 - **Local models only:** one switch keeps every step, including Route Planning and task chains, on Colibri, with no cloud fallback. Each task uses its own Colibri model.
 
 

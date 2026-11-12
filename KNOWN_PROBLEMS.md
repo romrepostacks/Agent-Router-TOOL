@@ -48,7 +48,7 @@ General goals from the old list (secure links between components, Tailscale comp
 
 - [ ] Automatic server discovery over the supported remote network.
 - [ ] Exercise connection, plus menu, cross-device streaming, queue/steer and permissions on iOS and Android.
-- [ ] Visual desktop/mobile walkthrough. Playwright download failed with EACCES; installed Electron could not start because Windows denied its sandbox token access to the runtime directory. No system ACL changes were made.
+- [ ] Visual desktop/mobile walkthrough. Playwright download failed with EACCES; Electron now starts on the PC (2026-11-12); the click-through of the new screens is still to do.
 
 The automated test suite uses synthetic projects, keys, and providers. No real credentials or provider accounts are required.
 
@@ -57,6 +57,6 @@ The automated test suite uses synthetic projects, keys, and providers. No real c
 Everything that could be built and tested without a person is done (session rename/move, folder-preserving merges, more local models, Local models only). What's left needs a decision or hands:
 
 - **#3 skill scanners:** done (owner OK'd the install, 2026-11-10); installed on the PC with the app's own installer command.
-- **Desktop app acceptance on the PC:** `npm.cmd start` still fails on Electron's sandbox ACL for `node_modules\electron\dist`; fixing it is a Windows permission change the owner has to make or approve.
+- **Desktop app on the PC (fixed 2026-11-12):** `npm.cmd start` opens the window and the server answers; the sandbox ACL error didn't recur. If it does, grant ALL APPLICATION PACKAGES read/execute on `node_modules\electron\dist` (`icacls ... /grant "*S-1-15-2-1:(OI)(CI)(RX)" /t`).
 - **Real Colibri run:** the Colibri switching was tested against a fake Colibri only; it needs one run on the PC (pick a different installed model for Quick, ask something, watch Colibri switch).
 - **Automatic server discovery** and **iOS notification timing:** need a design choice for discovery over Tailscale and a real iPhone.

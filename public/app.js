@@ -2273,6 +2273,13 @@ $("setup-next").addEventListener("click", setupNext);
 $("setup-back").addEventListener("click", () => { setup.step = Math.max(0, setup.step - 1); $("setup-status").textContent = ""; renderSetup(); });
 $("setup-dialog").addEventListener("cancel", (event) => { if (setup.firstRun) event.preventDefault(); });
 $("run-setup").addEventListener("click", () => { $("settings-dialog").close(); openSetup(false); });
+// Feedback goes to the public repo's issue form, prefilled; the user reviews and submits it there with their own account.
+$("submit-feedback").addEventListener("click", () => {
+  const text = $("feedback-text").value.trim();
+  const title = text.split("\n")[0].slice(0, 80) || "Feedback";
+  const body = `${text || "(describe the problem)"}\n\n---\nApp: ${$("app-version").textContent || "unknown"}\nSystem: ${navigator.userAgent}`;
+  window.open(`https://github.com/romrepostacks/Agent-Router-TOOL/issues/new?${new URLSearchParams({ title, body, labels: "feedback" })}`, "_blank");
+});
 
 refreshStatus();
 refreshWindowsAccent();

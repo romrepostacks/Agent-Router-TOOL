@@ -241,7 +241,7 @@ body.sidebar-hidden .topbar-settings { display: inline-flex; }
 .settings-section { display: grid; gap: 8px; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
 .settings-section h3 { margin: 0; color: var(--ink); font-size: 13px; }
 .settings-field { display: grid; gap: 5px; color: var(--muted); font-size: 11px; }
-.settings-field input, .settings-field select, #approved-skill-search { width: 100%; border: 1px solid var(--line); border-radius: 7px; padding: 8px 9px; color: var(--ink); background: var(--surface); font: inherit; font-size: 12px; }
+.settings-field input, .settings-field select, .settings-field textarea, #approved-skill-search { width: 100%; border: 1px solid var(--line); border-radius: 7px; padding: 8px 9px; color: var(--ink); background: var(--surface); font: inherit; font-size: 12px; }
 .settings-check { display: flex; align-items: center; gap: 8px; color: var(--ink); font-size: 12px; }
 .settings-check input { accent-color: var(--green); }
 .settings-help { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.5; }

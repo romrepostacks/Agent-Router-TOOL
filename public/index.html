@@ -234,6 +234,12 @@
             <div class="model-role"><h4>Quick questions</h4><label class="settings-field">Preferred provider and model<select id="quick-primary"></select></label><label class="settings-field">Fallback provider and model<select id="quick-fallback"></select></label></div>
             <p class="settings-help">On a provider usage-limit error, the selected fallback is retried. If no fallback is selected, another installed provider is picked automatically. Account-wide limits may still prevent a retry.</p>
           </section>
+          <section class="settings-section settings-page" data-settings-page="general">
+            <h3>Feedback</h3>
+            <label class="settings-field">What went wrong, or what would help?<textarea id="feedback-text" rows="4" placeholder="What you did, what you expected, what happened"></textarea></label>
+            <p class="settings-help">Opens a new GitHub issue in your browser with this text and your app version filled in. Nothing is sent until you press Submit there. Chats and files are never included.</p>
+            <button id="submit-feedback" type="button" class="context-button">Submit feedback…</button>
+          </section>
           <section class="settings-section settings-page" data-settings-page="general" hidden>
             <h3>Keyboard shortcut</h3>
             <p class="settings-help">Set a system-wide shortcut to open the app and jump to the message box.</p>

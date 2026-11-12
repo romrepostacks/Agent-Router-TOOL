@@ -131,7 +131,7 @@
           <textarea id="prompt" rows="3" placeholder="Describe a task…" aria-label="Task"></textarea>
           <div class="composer-bottom">
             <span id="workspace-note">Choose a project before asking a question.</span>
-            <button id="send" class="send-button" type="submit" disabled><span>Send</span><span aria-hidden="true">↑</span></button>
+            <button id="steer" type="submit" hidden>Steer</button><button id="send" class="send-button" type="submit" disabled><span>Send</span><span aria-hidden="true">↑</span></button>
           </div>
         </form>
         <div class="privacy-note">PDF text is extracted on this computer. Images are sent only to the Quick questions provider. Text context may be included in cloud prompts; keep credentials and secrets out of context. Saved attachments stay on this computer.</div>
@@ -213,6 +213,13 @@
             <button id="run-setup" type="button" class="context-button">Run setup again</button>
           </section>
           <section class="settings-section settings-page" data-settings-page="routing" hidden>
+            <h3>Local models (Colibri)</h3>
+            <label class="settings-check"><input id="local-only" type="checkbox"> Local models only: every step, including Route Planning and task chains, runs on Colibri, never on a cloud provider</label>
+            <p class="settings-help">Each task uses its own Colibri model from the list below. Colibri holds one model at a time, so the router switches models between steps and waits until the next one has loaded.</p>
+            <ul id="local-models" class="local-models" aria-live="polite"></ul>
+            <div class="model-catalog-tools"><button id="open-model-manager" type="button" class="context-button">Add or manage models…</button><span id="local-models-status" aria-live="polite"></span></div>
+          </section>
+          <section class="settings-section settings-page" data-settings-page="routing" hidden>
             <h3>Provider by task</h3>
             <p class="settings-help">Choose a provider and model for each kind of work. Every backup can use a different provider.</p>
             <div class="model-catalog-tools"><button id="refresh-models" type="button" class="context-button">Refresh model list</button><span id="model-catalog-status" aria-live="polite">Loading available models…</span></div>
@@ -226,6 +233,13 @@
             <div class="model-role"><h4>GitHub requests</h4><label class="settings-field">Preferred provider and model<select id="github-primary"></select></label><label class="settings-field">Fallback provider and model<select id="github-fallback"></select></label></div>
             <div class="model-role"><h4>Quick questions</h4><label class="settings-field">Preferred provider and model<select id="quick-primary"></select></label><label class="settings-field">Fallback provider and model<select id="quick-fallback"></select></label></div>
             <p class="settings-help">On a provider usage-limit error, the selected fallback is retried. If no fallback is selected, another installed provider is picked automatically. Account-wide limits may still prevent a retry.</p>
+          </section>
+          <section class="settings-section settings-page" data-settings-page="general">
+            <h3>Feedback</h3>
+            <label class="settings-field">What went wrong, or what would help?<textarea id="feedback-text" rows="4" maxlength="5000" placeholder="What you did, what you expected, what happened"></textarea></label>
+            <p class="settings-help">Sent anonymously with the details below, so problems can be traced to a model, provider or machine. No names, folders, keys, chats or files are included.</p>
+            <details id="feedback-details"><summary>What's sent with it</summary><pre id="feedback-preview" class="feedback-preview">Loading…</pre></details>
+            <div class="shortcut-row"><button id="submit-feedback" type="button" class="context-button">Send feedback</button><span id="feedback-status" class="settings-help" aria-live="polite"></span></div>
           </section>
           <section class="settings-section settings-page" data-settings-page="general" hidden>
             <h3>Keyboard shortcut</h3>
@@ -246,7 +260,7 @@
           </section>
           <section class="settings-section settings-page" data-settings-page="add-skills" hidden>
             <h3>Add a skill from GitHub</h3>
-            <p class="settings-help">Paste a link to a skill on GitHub: its SKILL.md file, its folder, or the repo. Scan reads it and checks for risky instructions. Nothing is installed until you choose Install.</p>
+            <p class="settings-help">Paste a link to a skill on GitHub: its SKILL.md file, its folder, or the repo. Scan reads it, checks it for risky instructions, and runs NVIDIA SkillSpector and Cisco Skill Scanner on it. Nothing is installed until you choose Install.</p>
             <form id="skill-scan-form" class="skill-url-row">
               <input id="skill-url" type="url" required placeholder="https://github.com/owner/repo/tree/main/skills/my-skill" aria-label="GitHub link to a skill" autocomplete="off">
               <button id="scan-skill" type="submit" class="context-button">Scan</button>
@@ -257,7 +271,10 @@
               <p id="scan-source" class="scan-source"></p>
               <h5>Purpose</h5>
               <p id="scan-purpose" class="scan-purpose"></p>
-              <h5>Warnings</h5>
+              <h5>Skill reviewers</h5>
+              <div id="scan-reviewers" class="scan-reviewers"></div>
+              <button id="install-reviewers" type="button" class="context-button" hidden>Install the missing reviewers…</button>
+              <h5>Built-in pattern check</h5>
               <ul id="scan-warnings" class="scan-warnings"></ul>
               <details class="scan-full"><summary>Read the full skill</summary><pre id="scan-instructions"></pre></details>
               <label class="settings-field">Category<input id="scan-category" list="skill-categories" maxlength="40" value="General"></label>
@@ -280,13 +297,13 @@
             <p class="settings-help">Each device gets its own token, shown once. A token can run tasks on this PC with your provider settings, so treat it like a password. Remove a device to cut it off at once.</p>
             <form id="remote-add-form" class="remote-row">
               <input id="remote-device-name" type="text" maxlength="60" placeholder="My iPhone" aria-label="New device name" autocomplete="off">
-              <button id="remote-add" type="submit" class="context-button">Add device</button>
+              <input id="remote-custom-key" type="password" minlength="24" maxlength="128" placeholder="Custom key (optional, 24+ characters)" aria-label="Custom device key" autocomplete="new-password"><button id="remote-add" type="submit" class="context-button">Add device</button>
             </form>
             <div id="remote-token" class="remote-token" hidden>
               <strong>Enter these on the device now. The token won't be shown again.</strong>
               <span>Server address: <code id="remote-token-url"></code></span>
               <span>Token: <code id="remote-token-value"></code></span>
-              <div class="remote-row"><button id="remote-copy" type="button" class="context-button">Copy token</button><button id="remote-token-done" type="button" class="context-button">Done</button></div>
+              <div class="remote-row"><button id="remote-copy-connection" type="button">Copy connection code</button><button id="remote-copy" type="button" class="context-button">Copy token</button><button id="remote-token-done" type="button" class="context-button">Done</button></div>
             </div>
             <ul id="remote-devices" class="remote-devices" aria-label="Paired devices"></ul>
           </section>

@@ -13,6 +13,8 @@ Guidance for any AI agent (Claude Code, Codex, Copilot, etc.) working on this re
 - `desktop.cjs` – Electron main process: window, global shortcut, Windows-encrypted secrets (`safeStorage`), external links.
 - `server.mjs` – local-only HTTP server (127.0.0.1) holding all logic: routes, providers, settings, setup, staging/diff proposals.
 - `import-sessions.mjs` – reads Claude Code / Codex CLI history and Codex Cloud tasks for session import; merge ordering.
+- `colibri.mjs` – Colibri's standard install (`%LOCALAPPDATA%\colibri\setup.json`): installed models, switching (`coli stop` + `coli setup --model-dir`), `colibriGate()` so only one model is loaded at a time, and finding the Model Manager.
+- `feedback-relay/` – Cloudflare Worker that turns anonymous Settings → Feedback reports into GitHub issues (deployed separately, not in the installer). The app's side is `diagnostics()` and `/api/feedback` in server.mjs; `FEEDBACK_URL` names the deployed relay.
 - `route-rules.mjs` – route-selector prompt and parser. `lessons.md` – extra routing hints.
 - `public/` – vanilla JS UI (`app.js`, `index.html`, `style.css`). No framework, no build step.
 - User data: `%LOCALAPPDATA%\LocalAgentRouterData\` (settings, sessions, proposals, and the user's own `skills.md` + `skills/`). Skills are personal and never committed or bundled.
@@ -25,7 +27,7 @@ Guidance for any AI agent (Claude Code, Codex, Copilot, etc.) working on this re
 
 ## Checks before committing
 - `node --check server.mjs import-sessions.mjs public/app.js desktop.cjs`
-- `node --test test/` (needs `npm install` first)
+- `npm test` (= `node --test test/*.test.mjs`; needs `npm install` first)
 - Start the app (`npm start`) and exercise the changed screen. 
 
 ## Don'ts

@@ -1,7 +1,7 @@
 import { runCli, runClaudeStream, isUsageLimitError } from "./cli-runner.mjs";
 import { execFile, spawn } from "node:child_process";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { copyFile, lstat, mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
+import { appendFile, copyFile, lstat, mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { createReadStream } from "node:fs";
 import http from "node:http";
 import os from "node:os";
@@ -9,7 +9,8 @@ import path from "node:path";
 import Anthropic from "@anthropic-ai/sdk";
 import { remember, recall, memorySection } from "./project-memory.mjs";
 import { buildRoutePrompt, parseRoute, buildChainPrompt, parseChainPlan, buildStepsOverlap, CHAIN_BUILD_ROUTES } from "./route-rules.mjs";
-import { fetchGithubSkill } from "./skill-scan.mjs";
+import { fetchGithubSkill, runReviewers } from "./skill-scan.mjs";
+import { colibriGate, colibriModels, colibriSetup, managerScript, openManager } from "./colibri.mjs";
 import { MAX_MESSAGES, bestProject, fetchCodexCloudSessions, groupSessions, mergeMessages, scanLocalCliSessions, topicIndex } from "./import-sessions.mjs";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
@@ -523,6 +524,8 @@ async function importCliSessions({ reindex = false } = {}) {
     return { id: project.id, remote, repos };
   }));
   const parentOf = await projectParents();
+  // Merged folders moved into <parent>/obsolete still match history recorded under their old path.
+  for (const member of Object.keys(parentOf)) if (!projects.some((project) => project.id === member)) projects.push({ id: member, remote: "", repos: [] });
   const assign = (item) => bestProject(item, projects, PROJECTS_ROOT, parentOf) || "__all_projects__";
   const stagingDir = path.join(DATA_DIR, "staging").toLowerCase();
   // The app's own provider runs are headless (`claude -p`, `codex exec`); they're already in the app's sessions.
@@ -604,11 +607,26 @@ async function mergeProjects(parentId, childId) {
   const parent = await projectFolder(parents[parentId] || parentId), child = await projectFolder(childId);
   if (!parent || !child) throw new Error("Choose two project folders.");
   if (parent.id === child.id) throw new Error("A project can't be merged into itself.");
+  if ([...activeRuns.values()].some((run) => !run.final && [parent.id, child.id].includes(run.projectId)) || [parent, child].some((item) => editLocks.has(editLockKey(item)))) {
+    throw new Error("Wait for running work in these projects to finish before merging them.");
+  }
+  // Files are kept, never deleted: the child folder moves whole into <parent>/obsolete/<child>, and the move is
+  // recorded (settings.projectMoves + obsolete/MOVED.md) so agents can find the files and fix stale references.
+  const obsolete = path.join(parent.path, "obsolete");
+  await mkdir(obsolete, { recursive: true });
+  let target = path.join(obsolete, child.id);
+  for (let n = 2; await stat(target).then(() => true, () => false); n++) target = path.join(obsolete, `${child.id}-${n}`);
+  try { await rename(child.path, target); } catch (error) {
+    throw new Error(`Couldn't move ${child.id} into ${parent.id}${error.code === "EPERM" || error.code === "EBUSY" ? ": a file in it is open in another program. Close it and try again" : `: ${error.message}`}. Nothing was changed.`);
+  }
+  const moves = (await rawSettings()).projectMoves || {};
+  moves[child.id] = { from: child.path, to: target, parent: parent.id, at: new Date().toISOString() };
+  await appendFile(path.join(obsolete, "MOVED.md"), `${(await stat(path.join(obsolete, "MOVED.md")).catch(() => null)) ? "" : "# Folders merged into this project\n\nKept as they were, nothing deleted. References to an old path should point to its new one.\n\n"}- ${moves[child.id].at.slice(0, 10)}: \`${child.path}\` → \`${target}\`\n`);
   // Flat groups: the child and anything already under it now sit under the parent.
   for (const [member, owner] of Object.entries(parents)) if (owner === child.id) parents[member] = parent.id;
   parents[child.id] = parent.id;
   delete parents[parent.id];
-  await writeSettings({ projectParents: parents });
+  await writeSettings({ projectParents: parents, projectMoves: moves });
   const moved = await withFileLock(SESSIONS_FILE, async () => {
     const sessions = await readSessions();
     let count = 0;
@@ -616,7 +634,24 @@ async function mergeProjects(parentId, childId) {
     if (count) await writeSessions(sessions);
     return count;
   });
-  return { parentId: parent.id, moved };
+  return { parentId: parent.id, moved, folder: target };
+}
+
+// Undoes a merge: the folder moves back from obsolete/ if its old place is still free.
+async function splitProject(childId) {
+  const parents = await projectParents();
+  if (typeof childId !== "string" || !parents[childId]) throw new Error("That folder isn't part of a project group.");
+  const moves = (await rawSettings()).projectMoves || {};
+  const move = moves[childId];
+  if (move) {
+    if (await stat(move.from).then(() => true, () => false)) throw new Error(`${move.from} exists again, so ${childId} can't move back. Its files are still in ${move.to}.`);
+    try { await rename(move.to, move.from); } catch (error) { throw new Error(`Couldn't move ${childId} back: ${error.message}. Its files are still in ${move.to}.`); }
+    await appendFile(path.join(path.dirname(move.to), "MOVED.md"), `- ${new Date().toISOString().slice(0, 10)}: moved back to \`${move.from}\`\n`);
+    delete moves[childId];
+  }
+  delete parents[childId];
+  await writeSettings({ projectParents: parents, projectMoves: moves });
+  return { split: childId };
 }
 
 function mergeSessions(ids, extra = {}) {
@@ -680,7 +715,8 @@ async function linkedProjects(id) {
 async function projectFor(id) {
   if (id === "__all_projects__") return { id, name: "All Projects", path: PROJECTS_ROOT, scope: "all" };
   const folder = await projectFolder(id);
-  return folder && { ...folder, linked: await linkedProjects(id) };
+  const moved = Object.entries((await rawSettings()).projectMoves || {}).filter(([, move]) => move.parent === id).map(([name, move]) => ({ name, from: move.from, to: move.to }));
+  return folder && { ...folder, linked: await linkedProjects(id), moved };
 }
 
 async function listProjects() {
@@ -690,7 +726,7 @@ async function listProjects() {
   const parents = await projectParents();
   const folders = [...names]
     .map((name) => ({ id: name, name, path: path.join(PROJECTS_ROOT, name), scope: "single", linked: (Array.isArray(saved[name]) ? saved[name] : []).filter((other) => typeof other === "string" && other !== name && (names.has(other) || path.isAbsolute(other))),
-      ...(names.has(parents[name]) ? { parent: parents[name] } : { members: [...names].filter((other) => parents[other] === name).sort() }) }))
+      ...(names.has(parents[name]) ? { parent: parents[name] } : { members: Object.keys(parents).filter((other) => parents[other] === name).sort() }) }))
     .sort((a, b) => a.name.localeCompare(b.name));
   return [{ id: "__all_projects__", name: "All Projects", path: PROJECTS_ROOT, scope: "all" }, ...folders];
 }
@@ -745,6 +781,41 @@ async function status() {
   };
 }
 
+// Feedback: anonymous reports go to a relay (feedback-relay/) that files a GitHub issue. Only what's listed here is
+// sent, and the user sees it first: no names, paths, host names, IP addresses, keys, chats or files.
+const FEEDBACK_URL = process.env.AGENT_ROUTER_FEEDBACK_URL ?? "https://agent-router-feedback.kylemeadows-522.workers.dev";
+const FEEDBACK_ROLES = ["routePlanning", "longTermPlanning", "coding", "review", "security", "ui", "art", "github", "quick"];
+
+async function gpus() {
+  const run = (exe, args) => execFileAsync(exe, args, { timeout: 8000, windowsHide: true, maxBuffer: 64_000 }).then((result) => result.stdout, () => "");
+  const nvidia = (await run("nvidia-smi", ["--query-gpu=name,memory.total,driver_version", "--format=csv,noheader"]))
+    .split(/\r?\n/).filter(Boolean).map((line) => { const [name, vram, driver] = line.split(",").map((part) => part.trim()); return { name, vram, driver }; });
+  if (nvidia.length || process.platform !== "win32") return nvidia;
+  const raw = await run("powershell.exe", ["-NoProfile", "-Command", "Get-CimInstance Win32_VideoController | Select-Object Name,AdapterRAM,DriverVersion | ConvertTo-Json -Compress"]);
+  try {
+    // AdapterRAM is a 32-bit field: cards with more than 4 GB report 4 GB or less here.
+    return [JSON.parse(raw)].flat().map((gpu) => ({ name: gpu.Name, vram: gpu.AdapterRAM ? `${Math.round(gpu.AdapterRAM / 2 ** 20)} MiB (max 4 GiB reported)` : "", driver: gpu.DriverVersion }));
+  } catch { return []; }
+}
+
+async function diagnostics() {
+  const [current, settings, cfg, gpuList] = await Promise.all([status(), readSettings(), colibriSetup(), gpus()]);
+  const cpus = os.cpus();
+  const gib = (bytes) => `${(bytes / 2 ** 30).toFixed(1)} GiB`;
+  return {
+    app: { version: APP_VERSION, role: APP_ROLE },
+    system: { os: `${os.type()} ${os.release()}`, arch: os.arch(), cpu: cpus[0]?.model?.trim() || "", cores: cpus.length, memory: gib(os.totalmem()), freeMemory: gib(os.freemem()), gpus: gpuList },
+    // CLI tools sign in with the user's subscription; API providers use a saved key (only whether one exists is sent).
+    providers: {
+      ...Object.fromEntries(Object.entries(current.commands).map(([id, cli]) => [id, { access: "subscription (CLI sign-in)", installed: cli.available, signIn: cli.signIn }])),
+      ...Object.fromEntries(Object.entries(current.apis).map(([id, hasKey]) => [id, { access: "API key", keySaved: hasKey }])),
+      colibri: { access: "local", online: current.colibri.online, serving: current.colibri.models, installed: (await colibriModels(cfg)).map((model) => model.name), backend: cfg?.requested_backend || "", context: cfg?.ctx || "" },
+    },
+    routes: Object.fromEntries(FEEDBACK_ROLES.map((role) => [role, [settings[`${role}Primary`], settings[`${role}Fallback`]].filter(Boolean)])),
+    localOnly: Boolean(settings.localOnly),
+  };
+}
+
 async function readSettings() {
   try {
     const saved = JSON.parse(await readFile(SETTINGS_FILE, "utf8"));
@@ -776,6 +847,9 @@ async function availableModelCatalog(force = false) {
   catalog.openai = openai;
   catalog.anthropic = anthropic;
   catalog.colibri = local.filter((model) => typeof model.id === "string").map((model) => ({ id: model.id, name: model.id }));
+  for (const model of await colibriModels(await colibriSetup())) {
+    if (!catalog.colibri.some((item) => item.id === model.name)) catalog.colibri.push({ id: model.name, name: model.inUse ? `${model.name} (loaded)` : `${model.name} (loads when used)` });
+  }
   catalog.codex = codex;
   if (hasClaude) catalog.claude = [{ id: "opus", name: "Opus (current)" }, { id: "sonnet", name: "Sonnet (current)" }];
   if (hasCopilot) catalog.copilot = COPILOT_MODELS.map((id) => ({ id, name: id === "auto" ? "Auto choose" : id }));
@@ -785,7 +859,14 @@ async function availableModelCatalog(force = false) {
   return catalog;
 }
 
-async function queryColibri(messages, tools = [], { signal, onDelta, model: requestedModel, maxTokens = 1600 } = {}) {
+// Installed Colibri models load on demand: a request naming another model folder waits its turn and switches the server.
+const acquireColibri = colibriGate();
+async function queryColibri(messages, tools = [], options = {}) {
+  const release = await acquireColibri(options.model || COLIBRI_MODEL, { signal: options.signal, onStatus: options.onStatus });
+  try { return await queryColibriNow(messages, tools, options); } finally { release(); }
+}
+
+async function queryColibriNow(messages, tools = [], { signal, onDelta, model: requestedModel, maxTokens = 1600 } = {}) {
   // Node's fetch only says "fetch failed" when nothing answers; say which address.
   const modelList = await fetch(`${COLIBRI_BASE_URL}/models`, { signal: signal || AbortSignal.timeout(3500) })
     .catch((error) => { throw signal?.aborted ? error : new Error(`Can't reach the local model at ${COLIBRI_BASE_URL} (${error.cause?.code || error.message}). Start it, or change its address in Settings.`); });
@@ -1006,6 +1087,13 @@ function choiceParts(choice, defaultProvider = "codex") {
   return model.length && (CLI[provider] || CHAT_PROVIDERS.has(provider)) ? { provider, model: model.join("::") } : { provider: defaultProvider, model: String(choice || "") };
 }
 
+// Local models only: each route keeps its own Colibri choice (preferred, else fallback, else the default local
+// model) and never falls back to a cloud provider.
+function localChoices(settings, role) {
+  const local = [settings[`${role}Primary`], settings[`${role}Fallback`]].filter((choice) => choiceParts(choice || "").provider === "colibri");
+  return { primary: local[0] || `colibri::${settings.colibriModel || COLIBRI_MODEL}`, fallback: local[1] || "" };
+}
+
 function roleChoices(settings, role, defaultChoice) {
   return {
     primary: settings[`${role}Primary`] || defaultChoice,
@@ -1020,6 +1108,12 @@ const ACCESS = { route: "none", quick: "none", review: "read", security: "read",
 // Per-thread cap (session.accessLimit). It can only narrow a route's ACCESS, never widen it.
 // "": route default · staged: edits go to a reviewed copy, no git · read: no edits or git · none: Quick questions only
 const THREAD_ACCESS = ["", "staged", "read", "none"];
+export function threadMode(mode, session, message) {
+  if (mode !== "auto" || !EDIT_ROUTES.includes(session?.workMode) || ["read", "none"].includes(session?.accessLimit)) return mode;
+  // Only implementation follow-ups inherit the workflow; questions and explicit reviews still route normally.
+  if (/\b(review|audit|explain|summarize|what|why|how)\b/i.test(message)) return mode;
+  return /\b(continue|resume|proceed|implement|fix|correct|change|add|remove|build|finish|yes|do it)\b/i.test(message) ? session.workMode : mode;
+}
 const EDIT_ROUTES = ["code", "ui", "art"];
 function threadBlocks(limit, route) {
   if (route === "route") return "";
@@ -1085,6 +1179,7 @@ async function runProviderTask(choice, prompt, project, kind, options = {}) {
   options = { ...options, onDelta: (text) => { onDelta?.(text); activity(text); } };
   const gitNote = "You cannot run git or gh commands from this provider. Inspect what you can and give the exact commands the user should run.";
   const linked = access === "none" ? [] : project?.linked || [];
+  if (access !== "none" && project?.moved?.length) prompt += `\n\nFolders merged into this project (files kept, moved): ${project.moved.map((item) => `${item.from} is now ${item.to}`).join("; ")}. Treat references to an old path as pointing to its new one, and update them when you edit those files.`;
   if (linked.length) prompt += `\n\nLinked folders (read-only reference; read them as needed, never edit them or run commands in them):\n${linked.map((item) => `- ${item.name}: ${item.path}`).join("\n")}`;
   if (CHAT_PROVIDERS.has(provider)) {
     let content = prompt;
@@ -1153,7 +1248,9 @@ async function providerReady(provider) {
   if (CLI[provider]) return Boolean(await cliAvailable(CLI[provider]));
   if (API_PROVIDERS[provider]) return Boolean(await apiKey(provider));
   if (provider === "colibri") {
-    try { return (await fetch(`${COLIBRI_BASE_URL}/models`, { signal: AbortSignal.timeout(2500) })).ok; } catch { return false; }
+    // A stopped standard Colibri install counts as ready: it starts on first use.
+    const answering = await fetch(`${COLIBRI_BASE_URL}/models`, { signal: AbortSignal.timeout(2500) }).then((response) => response.ok, () => false);
+    return answering || Boolean((await colibriSetup())?.launcher);
   }
   return false;
 }
@@ -1179,7 +1276,7 @@ async function runRoleTask(role, defaultChoice, prompt, project, kind, options =
     ...await recall(memoryFile),
   ], kind);
   const settings = await readSettings();
-  const choices = roleChoices(settings, role, defaultChoice);
+  const choices = settings.localOnly ? localChoices(settings, role) : roleChoices(settings, role, defaultChoice);
   const invoke = async (choice) => {
     const content = await runProviderTask(choice, prompt, project, kind, options);
     if (memoryFile) {
@@ -1193,8 +1290,11 @@ async function runRoleTask(role, defaultChoice, prompt, project, kind, options =
     }
     return content;
   };
+  if (settings.localOnly && !(await providerReady("colibri"))) {
+    throw new Error(`Local models only is on, and no local model is answering at ${COLIBRI_BASE_URL}. Start Colibri, or turn the setting off in Settings → Routing & models.`);
+  }
   // Skip a provider that isn't installed or set up: try the fallback, then the best ready provider for this role.
-  if (!(await providerReady(choiceParts(choices.primary).provider))) {
+  if (!settings.localOnly && !(await providerReady(choiceParts(choices.primary).provider))) {
     const ready = await readyProviders();
     const alternate = choices.fallback && ready.has(choiceParts(choices.fallback).provider) ? choices.fallback : bestChoice(role, ready);
     if (!alternate) throw new Error("No AI provider is set up yet. Open Settings → Run setup to install or connect one.");
@@ -1210,7 +1310,7 @@ async function runRoleTask(role, defaultChoice, prompt, project, kind, options =
     let alternate = choices.fallback;
     if (!alternate) {
       const catalog = await availableModelCatalog();
-      const all = catalog.all || [];
+      const all = (catalog.all || []).filter((entry) => !settings.localOnly || choiceParts(entry.id).provider === "colibri");
       const primary = choiceParts(choices.primary);
       const entries = all.filter((entry) => {
         const candidate = choiceParts(entry.id);
@@ -1362,6 +1462,11 @@ async function runRoute(route, messages, project, skillText = "", localSkillText
   const delegated = (name) => via ? [via, name] : [name];
   const blocked = threadBlocks(options.accessLimit, route);
   if (blocked) return { content: blocked, route: label("Thread access"), delegated: delegated("Thread access") };
+  if (options.sessionId && EDIT_ROUTES.includes(route)) await withFileLock(SESSIONS_FILE, async () => {
+    const sessions = await readSessions();
+    const session = sessions.find((item) => item.id === options.sessionId);
+    if (session) { session.workMode = route; await writeSessions(sessions); }
+  });
   if (options.accessLimit === "staged" && EDIT_ROUTES.includes(route)) options = { ...options, staged: true };
   if (project?.scope === "all" && ["chain", "code", "ui", "art", "github", "push"].includes(route)) {
     return { content: "This request can change project files or GitHub. All Projects scope is read-only; select one project folder to continue.", route: label("All Projects"), delegated: delegated("All Projects") };
@@ -1439,6 +1544,31 @@ const editingSession = (sessionId) => [...editLocks.values()].some((lock) => loc
 const activeRuns = new Map();
 const FAILED_RUN_KEEP_MS = 30 * 60 * 1000;
 const isRunning = (id) => Boolean(activeRuns.get(id) && !activeRuns.get(id).final);
+const followupTails = new Map();
+
+// Queue waits on the actual run lifecycle, rather than a client's connection.
+async function waitForRun(data) {
+  if (!["queue", "steer"].includes(data.delivery)) return;
+  const tail = followupTails.get(data.sessionId) || Promise.resolve();
+  let release;
+  const next = new Promise((resolve) => { release = resolve; });
+  followupTails.set(data.sessionId, next);
+  data.releaseQueue = () => {
+    release();
+    if (followupTails.get(data.sessionId) === next) followupTails.delete(data.sessionId);
+  };
+  await tail;
+  let previous;
+  while ((previous = activeRuns.get(data.sessionId)) && !previous.final) {
+    if (data.delivery === "steer") {
+      data.message = `Continue this task with the following correction. Inspect current files before continuing.\n\nOriginal task:\n${previous.request.message}\n\nCorrection:\n${data.message}`;
+      data.delivery = "queue";
+      previous.controller.abort();
+    }
+    await previous.finished;
+  }
+  if (data.sessionId) data.history = (await readSessions()).find((s) => s.id === data.sessionId)?.messages || [];
+}
 
 async function claimRun(data) {
   if (data.sessionId === undefined) return { controller: new AbortController(), content: "", live: "", listeners: new Set(), approvals: new Map(), final: null };
@@ -1448,6 +1578,7 @@ async function claimRun(data) {
   const run = {
     sessionId: data.sessionId,
     projectId: typeof data.projectId === "string" ? data.projectId : "",
+    requestId: typeof data.requestId === "string" ? data.requestId.slice(0, 100) : "",
     startedAt: new Date().toISOString(),
     status: "Starting…",
     controller: new AbortController(),
@@ -1460,6 +1591,7 @@ async function claimRun(data) {
     final: null,
   };
   activeRuns.set(run.sessionId, run);
+  run.finished = new Promise((resolve) => { run.resolveFinished = resolve; });
   return run;
 }
 
@@ -1479,7 +1611,7 @@ function emitRun(run, event, value) {
 export function approvalTitle(tool, input = {}) {
   if (tool === "ExitPlanMode") return "Approve this plan?";
   if (/^(Bash|PowerShell)$/.test(tool)) return `Run this ${tool === "Bash" ? "command" : "PowerShell command"}?`;
-  if (/^(Write|Edit|MultiEdit|NotebookEdit)$/.test(tool) && (input.file_path || input.notebook_path)) return `${tool === "Write" ? "Write" : "Edit"} ${path.basename(String(input.file_path || input.notebook_path))}?`;
+  if (/^(Write|Edit|MultiEdit|NotebookEdit)$/.test(tool) && (input.file_path || input.notebook_path)) return `${tool === "Write" ? "Write" : "Edit"} ${String(input.file_path || input.notebook_path).split(/[\\/]/).pop()}?`;
   return `Allow ${tool || "this tool"}?`;
 }
 export function approvalDetail(tool, input = {}) {
@@ -1537,13 +1669,15 @@ function notify(run, type, text, cardId) {
 
 function runSnapshot(run) {
   return {
-    sessionId: run.sessionId, projectId: run.projectId, startedAt: run.startedAt, status: run.status, editing: editingSession(run.sessionId),
+    requestId: run.requestId, sessionId: run.sessionId, projectId: run.projectId, startedAt: run.startedAt, status: run.status, editing: editingSession(run.sessionId),
     running: !run.final, content: run.content, live: run.live, approvals: [...run.approvals.values()].map((item) => item.card), final: run.final,
   };
 }
 
 function finishRun(run, event, value) {
   run.final = { event, value };
+  run.resolveFinished?.();
+  run.releaseQueue?.();
   notify(run, event === "done" ? "done" : value?.cancelled ? "stopped" : "failed", event === "done" ? "Finished." : value?.error);
   for (const res of run.listeners) { sseWrite(res, event, value); res.end(); }
   run.listeners.clear();
@@ -1612,11 +1746,13 @@ async function handleChat(data, options = {}) {
     : [];
   const images = (Array.isArray(data.attachments) ? data.attachments : []).filter((attachment) => /^image\/(png|jpeg|webp)$/.test(attachment?.mimeType || "")).map(({ name, mimeType, dataUrl }) => ({ name, mimeType, dataUrl }));
   const messages = [...history, { role: "user", content: message + contextText, ...(images.length ? { images } : {}) }];
-  const mode = LEGACY_MODES[data.mode] || (data.mode === "auto" || ROUTES.includes(data.mode) ? data.mode : "auto");
+  let mode = LEGACY_MODES[data.mode] || (data.mode === "auto" || ROUTES.includes(data.mode) ? data.mode : "auto");
   // The limit is read from the saved session, not taken from the request.
   if (typeof data.sessionId === "string") {
     const session = (await readSessions()).find((item) => item.id === data.sessionId);
     options = { ...options, sessionId: data.sessionId, accessLimit: session?.accessLimit || "", permissionMode: session?.permissionMode || "" };
+    // Keep coding follow-ups in the same workflow. Read-only thread limits still win.
+    mode = threadMode(mode, session, message);
   }
 
   if (mode === "auto" || mode === "route") {
@@ -1835,12 +1971,15 @@ async function handleRemoteAdmin(req, res, url) {
     return json(res, 200, await remoteState());
   }
   if (req.method === "POST" && url.pathname === "/api/remote/devices") {
-    const name = String((await bodyJson(req)).name || "").replace(/\s+/g, " ").trim().slice(0, 60) || "Device";
-    const token = randomBytes(32).toString("base64url");
+    const data = await bodyJson(req);
+    const name = String(data.name || "").replace(/\s+/g, " ").trim().slice(0, 60) || "Device";
+    const token = data.token || randomBytes(32).toString("base64url");
+    if (typeof token !== "string" || !/^[\x21-\x7e]{24,128}$/.test(token)) return json(res, 400, { error: "Use 24–128 printable characters without spaces for a custom key." });
     const device = { id: randomUUID(), name, tokenHash: tokenHash(token), createdAt: new Date().toISOString() };
     const added = await withFileLock(SETTINGS_FILE, async () => {
       const config = (await rawSettings()).remoteAccess || {};
       const devices = Array.isArray(config.devices) ? config.devices : [];
+      if (devices.some((item) => item.tokenHash === device.tokenHash)) return false;
       if (devices.length >= 20) return false;
       await writeSettings({ remoteAccess: { ...config, devices: [...devices, device] } });
       return true;
@@ -1850,6 +1989,21 @@ async function handleRemoteAdmin(req, res, url) {
     return json(res, 201, { device: shown, token, url: remote.server ? `http://${remote.address}:${remote.port}` : "" });
   }
   const deviceMatch = url.pathname.match(/^\/api\/remote\/devices\/([a-f0-9-]{36})$/i);
+  if (req.method === "POST" && deviceMatch) {
+    const token = randomBytes(32).toString("base64url");
+    const updated = await withFileLock(SETTINGS_FILE, async () => {
+      const config = (await rawSettings()).remoteAccess || {};
+      const devices = config.devices || [];
+      const device = devices.find((item) => item.id === deviceMatch[1]);
+      if (!device) return false;
+      device.tokenHash = tokenHash(token);
+      await writeSettings({ remoteAccess: { ...config, devices } });
+      return true;
+    });
+    if (!updated) return json(res, 404, { error: "Device not found." });
+    remote.server?.closeAllConnections();
+    return json(res, 200, { token, url: remote.server ? `http://${remote.address}:${remote.port}` : "" });
+  }
   if (req.method === "DELETE" && deviceMatch) {
     const removed = await withFileLock(SETTINGS_FILE, async () => {
       const config = (await rawSettings()).remoteAccess || {};
@@ -1928,14 +2082,22 @@ async function handleRequest(req, res, fromRemote = false) {
     if (req.method === "POST" && url.pathname === "/api/skills/scan") {
       const data = await bodyJson(req);
       try {
-        const scan = await fetchGithubSkill(data.url);
+        const { text, ...scan } = await fetchGithubSkill(data.url);
         const id = randomUUID();
+        scan.reviewers = await runReviewers(text, path.join(DATA_DIR, "staging", `skill-scan-${id}`));
         for (const [key, value] of skillScans) if (Date.now() - value.at > 30 * 60_000) skillScans.delete(key);
         skillScans.set(id, { ...scan, at: Date.now() });
         return json(res, 200, { scanId: id, ...scan });
       } catch (error) {
         return json(res, error.status || 502, { error: error.status ? error.message : `Could not reach GitHub: ${error.message}` });
       }
+    }
+    if (req.method === "POST" && url.pathname === "/api/skills/reviewers/install") {
+      // Fixed command, no page input: uv (installed first if missing) puts both tools in ~/.local/bin, already on the router's PATH.
+      try {
+        openTerminal("Install skill scanners", "if (-not (Get-Command uv -ErrorAction SilentlyContinue)) { irm https://astral.sh/uv/install.ps1 | iex; $env:Path = \"$env:USERPROFILE\\.local\\bin;$env:Path\" }; uv tool install --force cisco-ai-skill-scanner; uv tool install --force git+https://github.com/NVIDIA/skillspector.git");
+      } catch (error) { return json(res, 400, { error: error.message }); }
+      return json(res, 200, { opened: true });
     }
     if (req.method === "POST" && url.pathname === "/api/skills/install") {
       const data = await bodyJson(req);
@@ -1958,6 +2120,17 @@ async function handleRequest(req, res, fromRemote = false) {
         ...(device ? { device: { id: device.id, name: device.name }, client: /^[\w .-]{1,40}$/.test(client) ? client : null } : {}) });
     }
     if (req.method === "GET" && url.pathname === "/api/status") return json(res, 200, await status());
+    if (req.method === "GET" && url.pathname === "/api/feedback") return json(res, 200, { relay: Boolean(FEEDBACK_URL), diagnostics: await diagnostics() });
+    if (req.method === "POST" && url.pathname === "/api/feedback") {
+      const text = String((await bodyJson(req)).text || "").trim();
+      if (!text || text.length > 5000) return json(res, 400, { error: "Write between 1 and 5000 characters." });
+      if (!FEEDBACK_URL) return json(res, 503, { error: "Feedback isn't set up in this version." });
+      try {
+        const response = await fetch(FEEDBACK_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text, diagnostics: await diagnostics() }), signal: AbortSignal.timeout(15_000) });
+        if (!response.ok) return json(res, 502, { error: `The feedback service answered ${response.status}. Try again later.` });
+        return json(res, 200, { sent: true });
+      } catch { return json(res, 502, { error: "Couldn't reach the feedback service. Check your internet connection." }); }
+    }
     if (req.method === "GET" && url.pathname === "/api/models") return json(res, 200, { models: await availableModelCatalog(url.searchParams.get("refresh") === "1"), checkedAt: modelCatalogCheckedAt.value });
     if (req.method === "GET" && url.pathname === "/api/settings") {
       const saved = await readSettings();
@@ -1974,7 +2147,7 @@ async function handleRequest(req, res, fromRemote = false) {
           [`${role}Fallback`, saved[`${role}Fallback`] || (oldFallback ? `${fallbackProvider}::${oldFallback}` : "")],
         ];
       }));
-      return json(res, 200, { projectsRoot: PROJECTS_ROOT, colibriModel: saved.colibriModel || COLIBRI_MODEL, localBaseUrl: COLIBRI_BASE_URL, configured: Boolean(saved.configured), setupComplete: Boolean(saved.setupComplete || saved.configured), theme: saved.theme || "system", skillsLimit, shortcut: saved.shortcut ?? "Control+Shift+Space", autoMergeImports: Boolean(saved.autoMergeImports), claudeDefaultMode: await claudeDefaultMode(), ...routing, preapprovedSkillIds: Array.isArray(saved.preapprovedSkillIds) ? saved.preapprovedSkillIds : [] });
+      return json(res, 200, { projectsRoot: PROJECTS_ROOT, colibriModel: saved.colibriModel || COLIBRI_MODEL, localBaseUrl: COLIBRI_BASE_URL, configured: Boolean(saved.configured), setupComplete: Boolean(saved.setupComplete || saved.configured), theme: saved.theme || "system", skillsLimit, shortcut: saved.shortcut ?? "Control+Shift+Space", autoMergeImports: Boolean(saved.autoMergeImports), localOnly: Boolean(saved.localOnly), claudeDefaultMode: await claudeDefaultMode(), ...routing, preapprovedSkillIds: Array.isArray(saved.preapprovedSkillIds) ? saved.preapprovedSkillIds : [] });
     }
     if (req.method === "POST" && url.pathname === "/api/settings") {
       const data = await bodyJson(req);
@@ -2001,7 +2174,8 @@ async function handleRequest(req, res, fromRemote = false) {
       COLIBRI_MODEL = model;
       await mkdir(DATA_DIR, { recursive: true });
       const autoMergeImports = data.autoMergeImports === undefined ? Boolean(previous.autoMergeImports) : data.autoMergeImports === true;
-      const saved = { ...(await rawSettings()), projectsRoot: root, colibriModel: model, configured: true, theme, skillsLimit, shortcut, autoMergeImports, ...models, preapprovedSkillIds };
+      const localOnly = data.localOnly === undefined ? Boolean(previous.localOnly) : data.localOnly === true;
+      const saved = { ...(await rawSettings()), projectsRoot: root, colibriModel: model, configured: true, theme, skillsLimit, shortcut, autoMergeImports, localOnly, ...models, preapprovedSkillIds };
       await writeFile(SETTINGS_FILE, JSON.stringify(saved, null, 2), "utf8");
       globalThis.setRouterTheme?.(theme);
       return json(res, 200, saved);
@@ -2081,18 +2255,32 @@ async function handleRequest(req, res, fromRemote = false) {
       return session ? json(res, 200, session) : json(res, 404, { error: "Session not found." });
     }
     if (req.method === "POST" && url.pathname === "/api/sessions/import") return json(res, 200, await importCliSessions({ reindex: (await bodyJson(req)).reindex === true }));
+    if (req.method === "GET" && url.pathname === "/api/local-models") {
+      const cfg = await colibriSetup();
+      return json(res, 200, { installed: Boolean(cfg), models: (await colibriModels(cfg)).map(({ name, inUse }) => ({ name, inUse })) });
+    }
+    if (req.method === "POST" && url.pathname === "/api/local-models/use") {
+      const { name } = await bodyJson(req);
+      const cfg = await colibriSetup();
+      if (typeof name !== "string" || !(await colibriModels(cfg)).some((model) => model.name === name)) return json(res, 400, { error: "Choose an installed Colibri model." });
+      try { (await acquireColibri(name))(); } catch (error) { return json(res, 500, { error: error.message }); }
+      return json(res, 200, { loaded: name });
+    }
+    if (req.method === "POST" && url.pathname === "/api/local-models/manager") {
+      const cfg = await colibriSetup();
+      if (!cfg) return json(res, 400, { error: "Colibri isn't set up on this computer. Run START-HERE.bat in the colibri folder first." });
+      const script = await managerScript(cfg, [path.join(PROJECTS_ROOT, "colibri")]);
+      if (!script) return json(res, 400, { error: "Couldn't find Colibri's Model Manager (model_adder\\model_adder.py) next to Colibri or in Projects\\colibri." });
+      openManager(script); // fixed command: Colibri's own model_adder.py, no page input
+      return json(res, 200, { opened: true });
+    }
     if (req.method === "POST" && url.pathname === "/api/projects/merge") {
       const data = await bodyJson(req);
       try { return json(res, 200, await mergeProjects(data.parentId, data.childId)); } catch (error) { return json(res, 400, { error: error.message }); }
     }
     if (req.method === "POST" && url.pathname === "/api/projects/split") {
       // Sessions stay with the parent: once merged, there's no telling which folder each one belonged to.
-      const { childId } = await bodyJson(req);
-      const parents = await projectParents();
-      if (typeof childId !== "string" || !parents[childId]) return json(res, 400, { error: "That folder isn't part of a project group." });
-      delete parents[childId];
-      await writeSettings({ projectParents: parents });
-      return json(res, 200, { split: childId });
+      try { return json(res, 200, await splitProject((await bodyJson(req)).childId)); } catch (error) { return json(res, 400, { error: error.message }); }
     }
     if (req.method === "POST" && url.pathname === "/api/sessions/merge") {
       const data = await bodyJson(req);
@@ -2114,6 +2302,33 @@ async function handleRequest(req, res, fromRemote = false) {
       const session = { id: randomUUID(), title: "New session", projectId: project.id, createdAt: now, updatedAt: now, messages: [] };
       await withFileLock(SESSIONS_FILE, async () => writeSessions([...(await readSessions()), session]));
       return json(res, 201, session);
+    }
+    if (req.method === "POST" && /^\/api\/sessions\/[^/]+\/(rename|project)$/.test(url.pathname)) {
+      const id = url.pathname.split("/")[3];
+      const action = url.pathname.split("/")[4];
+      const data = await bodyJson(req);
+      if (action === "rename" && (typeof data.title !== "string" || !data.title.trim() || data.title.trim().length > 200)) {
+        return json(res, 400, { error: "Enter a session title of 1–200 characters." });
+      }
+      const destination = action === "project" ? await projectFor(data.projectId) : null;
+      if (action === "project" && (!destination || destination.scope !== "single" || (await projectParents())[destination.id])) {
+        return json(res, 400, { error: "Choose an unmerged project folder." });
+      }
+      return await withFileLock(SESSIONS_FILE, async () => {
+        const sessions = await readSessions();
+        const session = sessions.find((item) => item.id === id);
+        if (!session) return json(res, 404, { error: "Session not found." });
+        if (action === "project" && (isRunning(id) || followupTails.has(id) || editingSession(id))) {
+          return json(res, 409, { error: "Wait for active and queued work to finish before moving this session." });
+        }
+        if (action === "rename") session.title = data.title.trim();
+        else session.projectId = destination.id;
+        // Reviewed imports must not be automatically reassigned or topic-merged on reindex.
+        delete session.importedFrom;
+        session.updatedAt = new Date().toISOString();
+        await writeSessions(sessions);
+        return json(res, 200, session);
+      });
     }
     if (req.method === "POST" && url.pathname.startsWith("/api/sessions/") && url.pathname.endsWith("/messages")) {
       const id = url.pathname.split("/")[3];
@@ -2183,8 +2398,10 @@ async function handleRequest(req, res, fromRemote = false) {
     }
     if (req.method === "POST" && url.pathname === "/api/chat/stream") {
       const data = await bodyJson(req);
+      await waitForRun(data);
       const run = await claimRun(data);
-      if (run.error) return json(res, run.status, { error: run.error });
+      if (run.error) { data.releaseQueue?.(); return json(res, run.status, { error: run.error }); }
+      run.releaseQueue = data.releaseQueue;
       const { controller } = run;
       // A run without a session can't be found again, so closing its stream still stops it.
       if (!run.sessionId) res.on("close", () => { if (!res.writableEnded) controller.abort(); });
@@ -2226,7 +2443,7 @@ async function handleRequest(req, res, fromRemote = false) {
       const run = await claimRun(data);
       if (run.error) return json(res, run.status, { error: run.error });
       try { return json(res, 200, await handleChat(data, { signal: run.controller.signal, onStatus: (status) => { run.status = status; } })); }
-      finally { if (run.sessionId && activeRuns.get(run.sessionId) === run) activeRuns.delete(run.sessionId); }
+      finally { run.final = { event: "done" }; run.resolveFinished?.(); if (run.sessionId && activeRuns.get(run.sessionId) === run) activeRuns.delete(run.sessionId); }
     }
     if (req.method === "GET" && url.pathname === "/api/runs") {
       // Running runs, plus failed or stopped ones (`failed`) whose error a reloaded page can still show.

@@ -9,7 +9,7 @@ const root = await mkdtemp(path.join(os.tmpdir(), "router-access-"));
 const projects = path.join(root, "Projects");
 await mkdir(path.join(projects, "alpha"), { recursive: true });
 Object.assign(process.env, { USERPROFILE: root, HOME: root, LOCALAPPDATA: path.join(root, "local"), AGENT_ROUTER_PROJECTS_ROOT: projects });
-const { startServer } = await import("../server.mjs");
+const { startServer, threadMode } = await import("../server.mjs");
 const server = await startServer(0);
 const base = `http://127.0.0.1:${server.address().port}`;
 const call = async (url, body) => (await fetch(base + url, body === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })).json();
@@ -30,6 +30,17 @@ test("thread access narrows routes and is stored on the session", async () => {
 
   const cleared = await call(`/api/sessions/${session.id}/access`, { accessLimit: "" });
   assert.equal(cleared.accessLimit, undefined);
+});
+
+test("implementation follow-ups preserve workflow without widening thread limits", () => {
+  const session = { workMode: "code" };
+  assert.equal(threadMode("auto", session, "continue fixing the bug"), "code");
+  assert.equal(threadMode("auto", session, "yes do it"), "code");
+  assert.equal(threadMode("auto", session, "review the code"), "auto");
+  assert.equal(threadMode("auto", session, "what should we do next?"), "auto");
+  assert.equal(threadMode("auto", { ...session, accessLimit: "read" }, "fix it"), "auto");
+  assert.equal(threadMode("auto", { ...session, accessLimit: "none" }, "fix it"), "auto");
+  assert.equal(threadMode("review", session, "fix it"), "review");
 });
 
 test.after(() => server.close());

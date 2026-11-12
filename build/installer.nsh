@@ -5,7 +5,9 @@
 ; - electron-builder reuses an earlier install's folder and removes the old version before copying the new one.
 ;   customInit tells the user, preselects the earlier install's role, and moves people off the old Squirrel
 ;   installer (0.15.0 and earlier).
-; Everything is installer-only: the uninstaller build would fail on functions it never references.
+; - The uninstaller (Windows Settings -> Apps, or Start menu -> Uninstall Local Agent Router) asks whether to also
+;   delete the user's data. Updates and silent uninstalls never delete it.
+; Installer-only code sits in !ifndef BUILD_UNINSTALLER: the uninstaller build fails on functions it never references.
 
 !ifndef BUILD_UNINSTALLER
 !include nsDialogs.nsh
@@ -105,6 +107,7 @@ FunctionEnd
   FileWrite $0 $RouterRole
   FileClose $0
   WriteRegStr SHCTX "${UNINSTALL_REGISTRY_KEY}" "DisplayVersion" "${VERSION} $RouterRole"
+  CreateShortCut "$SMPROGRAMS\Uninstall Local Agent Router.lnk" "$INSTDIR\${UNINSTALL_FILENAME}"
 
   ; Remove the old Squirrel install. User data lives in LocalAgentRouterData and is not touched.
   ReadEnvStr $R2 LOCALAPPDATA
@@ -112,5 +115,21 @@ FunctionEnd
   IfFileExists "$R2\LocalAgentRouter\Update.exe" 0 squirrelDone
     ExecWait '"$R2\LocalAgentRouter\Update.exe" --uninstall -s'
   squirrelDone:
+!macroend
+!endif
+
+!ifdef BUILD_UNINSTALLER
+!macro customUnInstall
+  Delete "$SMPROGRAMS\Uninstall Local Agent Router.lnk"
+  ; An update runs the old uninstaller first: keep everything then, and in silent uninstalls.
+  ${ifNot} ${isUpdated}
+    IfSilent keepData
+    ReadEnvStr $R2 LOCALAPPDATA
+    ReadEnvStr $R3 APPDATA
+    MessageBox MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON2 "Also delete your Local Agent Router data?$\r$\n$\r$\nThis removes settings, chat history, saved API keys, paired devices and imported skills:$\r$\n$R2\LocalAgentRouterData$\r$\n$R3\Local Agent Router$\r$\n$\r$\nYour project folders and installed AI tools are not touched." IDNO keepData
+      RMDir /r "$R2\LocalAgentRouterData"
+      RMDir /r "$R3\Local Agent Router"
+    keepData:
+  ${endIf}
 !macroend
 !endif

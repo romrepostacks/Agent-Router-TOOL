@@ -241,7 +241,7 @@ body.sidebar-hidden .topbar-settings { display: inline-flex; }
 .settings-section { display: grid; gap: 8px; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
 .settings-section h3 { margin: 0; color: var(--ink); font-size: 13px; }
 .settings-field { display: grid; gap: 5px; color: var(--muted); font-size: 11px; }
-.settings-field input, .settings-field select, #approved-skill-search { width: 100%; border: 1px solid var(--line); border-radius: 7px; padding: 8px 9px; color: var(--ink); background: var(--surface); font: inherit; font-size: 12px; }
+.settings-field input, .settings-field select, .settings-field textarea, #approved-skill-search { width: 100%; border: 1px solid var(--line); border-radius: 7px; padding: 8px 9px; color: var(--ink); background: var(--surface); font: inherit; font-size: 12px; }
 .settings-check { display: flex; align-items: center; gap: 8px; color: var(--ink); font-size: 12px; }
 .settings-check input { accent-color: var(--green); }
 .settings-help { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
@@ -391,3 +391,14 @@ html[data-theme="dark"] .setup-missing { background: none; }
 .remote-devices li { display: flex; align-items: center; justify-content: space-between; gap: 8px; border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; font-size: 12px; }
 .remote-devices small { display: block; color: var(--muted); font-size: 10px; }
 .error-text { color: var(--red) !important; }
+.session-edit { flex: 1; min-width: 0; height: 30px; padding: 0 8px; border: 1px solid var(--accent, #888); border-radius: 7px; font: inherit; background: var(--surface, transparent); color: inherit; }
+.project-button.drop-target { outline: 2px dashed var(--green); outline-offset: -2px; }
+.local-models { list-style: none; margin: 8px 0; padding: 0; display: grid; gap: 6px; }
+.local-models li { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
+.local-models li span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.scan-reviewers { display: grid; gap: 8px; margin-bottom: 8px; }
+.scan-reviewer { font-size: 14px; padding: 8px 10px; border-radius: 8px; border-left: 4px solid var(--muted); background: var(--surface); }
+.scan-reviewer.clean { border-left-color: var(--green); }
+.scan-reviewer.high { border-left-color: var(--red); }
+.scan-reviewer .scan-warnings { margin: 6px 0 0; }
+.feedback-preview { max-height: 220px; overflow: auto; margin: 6px 0 0; padding: 8px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface); color: var(--muted); font-size: 11px; white-space: pre-wrap; }

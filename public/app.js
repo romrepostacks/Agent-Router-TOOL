@@ -1,3 +1,4 @@
+const pendingFollowups = new Map();
 const $ = (id) => document.getElementById(id);
 let recordingShortcut = false;
 const state = { projects: [], project: null, sessions: [], session: null, busy: false, runs: new Map(), skills: [], categories: [], selectedSkills: loadSelectedSkills(), preapprovedSkillIds: [], pendingPreapprovedSkillIds: [], skillsLimit: -1, pendingSkillsLimit: -1, theme: "system", settingsRoot: "", settingsConfigured: false, settingsPrompted: false, attachments: [], contextIds: [], contextFiles: [], contextProjectId: null, proposal: null, proposals: {}, lastRunStatus: "Ready when you are.", modelPrefs: {}, modelCatalog: null };
@@ -362,8 +363,9 @@ function renderApprovals() {
 function refreshRunControls() {
   const busy = Boolean(viewedRun()?.active);
   state.busy = busy;
+  $("steer").hidden = !busy;
   $("send").disabled = busy ? false : !state.project;
-  $("send").querySelector("span").textContent = busy ? "Stop" : "Send";
+  $("send").querySelector("span").textContent = busy ? "Queue / Stop" : "Send";
   $("send").title = busy ? "Stop this session's response" : "Send message";
   $("new-session").disabled = !state.project;
   $("choose-context").disabled = !state.project;
@@ -414,6 +416,20 @@ function renderProjects() {
       button.append(badge);
     }
     button.addEventListener("click", () => selectProject(project.id));
+    if (project.scope === "single") {
+      button.addEventListener("dragover", (event) => {
+        if (!event.dataTransfer.types.includes("application/x-agent-router-session")) return;
+        event.preventDefault();
+        button.classList.add("drop-target");
+      });
+      button.addEventListener("dragleave", () => button.classList.remove("drop-target"));
+      button.addEventListener("drop", (event) => {
+        event.preventDefault();
+        button.classList.remove("drop-target");
+        const id = event.dataTransfer.getData("application/x-agent-router-session");
+        if (id) moveSession(id, project.id);
+      });
+    }
     row.append(button);
     if (project.scope === "single" && state.project?.scope === "single" && state.project.id !== project.id) {
       row.append(iconButton("merge-session", "⇲", `Merge ${project.name} into ${state.project.name}`, () => mergeProject(state.project.id, project.id)));
@@ -425,7 +441,7 @@ function renderProjects() {
       const label = document.createElement("span");
       label.className = "project-button";
       label.textContent = `↳ ${member}`;
-      label.title = `Part of ${project.name}: its sessions are here and its files are read-only context`;
+      label.title = `Part of ${project.name}: its sessions are here and its files are in ${project.name}'s obsolete folder`;
       memberRow.append(label, iconButton("delete-session", "⇱", `Split ${member} out of ${project.name}`, () => splitProject(member)));
       list.append(memberRow);
     }
@@ -441,10 +457,10 @@ function blockedByRuns() {
 
 async function mergeProject(parentId, childId) {
   if (blockedByRuns()) return;
-  if (!confirm(`Merge ${childId} into ${parentId}? ${childId}'s sessions move to ${parentId}, new imports about it go there too, and its files become read-only context. The folder itself isn't touched.`)) return;
+  if (!confirm(`Merge ${childId} into ${parentId}? ${childId}'s sessions move to ${parentId} and new imports about it go there too. The ${childId} folder moves, with every file, into ${parentId}\\obsolete\\${childId}; nothing is deleted, and splitting it out later moves it back.`)) return;
   try {
     const result = await request("/api/projects/merge", { method: "POST", body: JSON.stringify({ parentId, childId }) });
-    $("import-status").textContent = `Merged ${childId} into ${result.parentId}${result.moved ? `, moving ${result.moved} sessions` : ""}. Press ⟳ to merge sessions on the same topic.`;
+    $("import-status").textContent = `Merged ${childId} into ${result.parentId}${result.moved ? `, moving ${result.moved} sessions` : ""}. Its files are now in ${result.folder}. Press ⟳ to merge sessions on the same topic.`;
     await reloadProjects(result.parentId);
   } catch (error) { $("import-status").textContent = error.message; }
 }
@@ -453,7 +469,7 @@ async function splitProject(childId) {
   if (blockedByRuns()) return;
   try {
     await request("/api/projects/split", { method: "POST", body: JSON.stringify({ childId }) });
-    $("import-status").textContent = `${childId} is its own project again. Its old sessions stay where they are.`;
+    $("import-status").textContent = `${childId} is its own project again and its folder is back in place. Its old sessions stay where they are.`;
     await reloadProjects(state.project?.id);
   } catch (error) { $("import-status").textContent = error.message; }
 }
@@ -464,6 +480,7 @@ async function reloadProjects(selectId) {
 }
 
 function renderSessions() {
+  if (state.editingSessionRow) return; // background refreshes would wipe an open title box or picker
   const list = $("sessions");
   list.replaceChildren();
   if (!state.project) {
@@ -522,9 +539,89 @@ function renderSessions() {
       event.stopPropagation();
       mergeSessions([state.session.id, session.id]);
     });
-    row.append(button, merge, remove);
+    const rename = document.createElement("button");
+    rename.type = "button";
+    rename.className = "merge-session";
+    rename.title = "Rename session";
+    rename.setAttribute("aria-label", `Rename ${session.title || "session"}`);
+    rename.textContent = "✎";
+    rename.addEventListener("click", (event) => { event.stopPropagation(); editSessionRow(row, session, "rename"); });
+    row.append(button, rename);
+    if (state.project.scope !== "single") {
+      const move = document.createElement("button");
+      move.type = "button";
+      move.className = "merge-session";
+      move.title = "Move to a project";
+      move.setAttribute("aria-label", `Move ${session.title || "session"} to a project`);
+      move.textContent = "⇥";
+      move.addEventListener("click", (event) => { event.stopPropagation(); editSessionRow(row, session, "move"); });
+      row.append(move);
+    }
+    row.append(merge, remove);
+    // Drag a session onto a project in the Projects list to move it there.
+    button.draggable = true;
+    button.addEventListener("dragstart", (event) => {
+      event.dataTransfer.setData("application/x-agent-router-session", session.id);
+      event.dataTransfer.effectAllowed = "move";
+    });
     list.append(row);
   }
+}
+
+// Replaces a session row with an inline title box or project picker (Electron has no prompt()).
+function editSessionRow(row, session, mode) {
+  const field = document.createElement(mode === "rename" ? "input" : "select");
+  field.className = "session-edit";
+  if (mode === "rename") {
+    field.value = session.title || "";
+    field.maxLength = 200;
+    field.setAttribute("aria-label", "Session title");
+  } else {
+    field.setAttribute("aria-label", "Move to project");
+    field.append(new Option("Move to…", ""));
+    for (const project of moveTargets()) field.append(new Option(project.name, project.id));
+  }
+  let done = false;
+  const finish = async (save) => {
+    if (done) return;
+    done = true;
+    state.editingSessionRow = false;
+    try {
+      if (save && mode === "rename" && field.value.trim() && field.value.trim() !== session.title) await renameSession(session.id, field.value.trim());
+      if (save && mode === "move" && field.value) await moveSession(session.id, field.value);
+    } finally { renderSessions(); }
+  };
+  field.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") { event.preventDefault(); finish(true); }
+    if (event.key === "Escape") { event.preventDefault(); finish(false); }
+  });
+  if (mode === "move") field.addEventListener("change", () => finish(true));
+  field.addEventListener("blur", () => finish(mode === "rename"));
+  state.editingSessionRow = true;
+  row.replaceChildren(field);
+  field.focus();
+  if (mode === "rename") field.select();
+}
+
+function moveTargets() {
+  return state.projects.filter((project) => project.scope === "single" && !project.parent);
+}
+
+async function renameSession(id, title) {
+  try {
+    const saved = await request(`/api/sessions/${encodeURIComponent(id)}/rename`, { method: "POST", body: JSON.stringify({ title }) });
+    if (state.session?.id === id) state.session.title = saved.title;
+    await loadSessions();
+  } catch (error) { $("import-status").textContent = error.message; }
+}
+
+async function moveSession(id, projectId) {
+  try {
+    await request(`/api/sessions/${encodeURIComponent(id)}/project`, { method: "POST", body: JSON.stringify({ projectId }) });
+    const name = state.projects.find((project) => project.id === projectId)?.name || projectId;
+    $("import-status").textContent = `Moved the session to ${name}.`;
+    await loadSessions();
+  } catch (error) { $("import-status").textContent = error.message; }
 }
 
 function renderMessages() {
@@ -839,7 +936,7 @@ function resetSkillScan(message = "") {
 async function scanSkill(event) {
   event.preventDefault();
   const button = $("scan-skill");
-  resetSkillScan("Scanning…");
+  resetSkillScan("Scanning… the two skill reviewers can take a minute.");
   button.disabled = true;
   try {
     skillScan = await request("/api/skills/scan", { method: "POST", body: JSON.stringify({ url: $("skill-url").value }) });
@@ -862,6 +959,7 @@ async function scanSkill(event) {
       }
       return item;
     }) : [Object.assign(document.createElement("li"), { className: "scan-warning clean", textContent: "No warnings found. This is a pattern check, so still read the skill if you don't know its author." })]));
+    renderReviewers(skillScan.reviewers || []);
     $("skill-scan-result").hidden = false;
     $("skill-scan-status").textContent = "";
   } catch (error) {
@@ -869,6 +967,38 @@ async function scanSkill(event) {
   } finally {
     button.disabled = false;
   }
+}
+
+// One card per outside reviewer, each with its own verdict; a missing reviewer says so instead of passing.
+function renderReviewers(reviewers) {
+  const sev = { critical: "high", high: "high", medium: "medium", low: "info", info: "info" };
+  $("scan-reviewers").replaceChildren(...reviewers.map((reviewer) => {
+    const card = document.createElement("div");
+    card.className = `scan-reviewer ${reviewer.status === "ok" ? (reviewer.safe ? "clean" : "high") : "unavailable"}`;
+    const title = document.createElement("strong");
+    title.textContent = reviewer.name;
+    const verdict = document.createElement("span");
+    verdict.textContent = reviewer.status === "ok" ? ` ${reviewer.safe ? "No problems found" : "Found problems"} (${reviewer.summary})`
+      : reviewer.status === "unavailable" ? " Not installed on this computer, so it didn't run." : ` Couldn't finish: ${reviewer.error}`;
+    card.append(title, verdict);
+    const findings = (reviewer.findings || []).filter((finding) => finding.severity !== "info");
+    if (findings.length) {
+      const list = document.createElement("ul");
+      list.className = "scan-warnings";
+      for (const finding of findings) {
+        const item = document.createElement("li");
+        item.className = `scan-warning ${sev[finding.severity] || "info"}`;
+        const badge = document.createElement("strong");
+        badge.textContent = finding.severity[0].toUpperCase() + finding.severity.slice(1);
+        item.append(badge, document.createTextNode(` ${finding.title}${finding.line ? ` (line ${finding.line})` : ""}`));
+        if (finding.detail) item.append(Object.assign(document.createElement("code"), { textContent: finding.detail }));
+        list.append(item);
+      }
+      card.append(list);
+    }
+    return card;
+  }));
+  $("install-reviewers").hidden = !reviewers.some((reviewer) => reviewer.status === "unavailable");
 }
 
 async function installScannedSkill() {
@@ -1022,7 +1152,10 @@ async function addAttachments(files) {
 async function loadSessions() {
   if (!state.project) return;
   const query = new URLSearchParams({ projectId: state.project.id, q: $("session-search").value.trim(), pending: $("pending-only").checked ? "1" : "0" });
-  state.sessions = await request(`/api/sessions?${query}`);
+  const projectId = state.project.id;
+  const sessions = await request(`/api/sessions?${query}`);
+  if (state.project?.id !== projectId) return;
+  state.sessions = sessions;
   renderSessions();
 }
 
@@ -1240,7 +1373,7 @@ async function submitRequest(requestData) {
 // were stopped while it was away, so their error and Retry show again).
 async function reattachRuns() {
   const runs = await request("/api/runs?all").catch(() => []);
-  await Promise.all(runs.filter((run) => !state.runs.get(run.sessionId)?.active).map(async (run) => {
+  await Promise.all(runs.filter((run) => !pendingFollowups.has(run.sessionId) && !state.runs.get(run.sessionId)?.active && !(run.failed && state.runs.has(run.sessionId))).map(async (run) => {
     const session = await request(`/api/sessions/${encodeURIComponent(run.sessionId)}`).catch(() => null);
     // Not found: the run finished (and saved) between the list and now.
     const response = session && await fetch(`/api/runs/${encodeURIComponent(run.sessionId)}/stream`).catch(() => null);
@@ -1358,12 +1491,13 @@ async function sendMessage(event) {
   event.preventDefault();
   const running = viewedRun();
   // Stop goes through the server: closing a stream only detaches this page from the run.
-  if (running?.active) {
+  if (running?.active && !$("prompt").value.trim()) {
     await request(`/api/runs/${encodeURIComponent(running.sessionId)}/cancel`, { method: "POST" }).catch(() => {});
     return;
   }
   const message = $("prompt").value.trim();
   if (!message || !state.project) return;
+  if (running?.active) return sendFollowup(event.submitter?.id === "steer" ? "steer" : "queue");
   await submitRequest({
     message,
     projectId: state.project.id,
@@ -1512,11 +1646,53 @@ async function openSettings() {
   $("skills-limit").value = state.pendingSkillsLimit;
   $("shortcut-key").value = settings.shortcut ?? "Control+Shift+Space";
   $("auto-merge-imports").checked = Boolean(settings.autoMergeImports);
+  $("local-only").checked = Boolean(settings.localOnly);
+  $("local-models-status").textContent = "";
+  loadLocalModels();
   applyTheme($("theme-choice").value);
   selectSettingsTab("general");
   renderApprovedSkills();
   if (!$("settings-dialog").open) $("settings-dialog").showModal();
   await loadModelChoices(settings);
+}
+
+// Colibri's installed models (folders next to the loaded one). Load switches the server now; routes switch on use.
+async function loadLocalModels() {
+  const list = $("local-models");
+  list.replaceChildren();
+  try {
+    const data = await request("/api/local-models");
+    if (!data.installed) $("local-models-status").textContent = "Colibri isn't set up on this computer. Run START-HERE.bat in the colibri folder.";
+    $("open-model-manager").disabled = !data.installed;
+    for (const model of data.models) {
+      const item = document.createElement("li");
+      const name = document.createElement("span");
+      name.textContent = model.name;
+      item.append(name);
+      if (model.inUse) {
+        const badge = document.createElement("span");
+        badge.className = "session-source";
+        badge.textContent = "loaded";
+        item.append(badge);
+      } else {
+        const load = document.createElement("button");
+        load.type = "button";
+        load.className = "context-button";
+        load.textContent = "Load now";
+        load.setAttribute("aria-label", `Load ${model.name} in Colibri now`);
+        load.addEventListener("click", async () => {
+          load.disabled = true;
+          $("local-models-status").textContent = `Loading ${model.name}… a big model can take minutes.`;
+          try { await request("/api/local-models/use", { method: "POST", body: JSON.stringify({ name: model.name }) }); $("local-models-status").textContent = `${model.name} is loaded.`; }
+          catch (error) { $("local-models-status").textContent = error.message; }
+          loadLocalModels();
+        });
+        item.append(load);
+      }
+      list.append(item);
+    }
+    if (data.installed && !data.models.length) $("local-models-status").textContent = "No models installed yet. Add one with the Model Manager.";
+  } catch (error) { $("local-models-status").textContent = error.message; }
 }
 
 function fillModelSelect(id, choices, selected, emptyLabel, preserveMissing = true) {
@@ -1608,7 +1784,14 @@ function renderRemote(info) {
       try { await request(`/api/remote/devices/${encodeURIComponent(device.id)}`, { method: "DELETE" }); await loadRemote(); }
       catch (error) { $("remote-status").textContent = error.message; remove.disabled = false; }
     });
-    item.append(text, remove);
+    const replace = document.createElement("button");
+    replace.type = "button"; replace.textContent = "Replace key";
+    replace.addEventListener("click", async () => {
+      if (!confirm("Replace this device's key? Its old key will stop working.")) return;
+      try { showDeviceKey(await request(`/api/remote/devices/${encodeURIComponent(device.id)}`, { method: "POST", body: "{}" })); }
+      catch (error) { $("remote-status").textContent = error.message; }
+    });
+    item.append(text, replace, remove);
     return item;
   }));
 }
@@ -1633,10 +1816,9 @@ $("remote-add-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   $("remote-add").disabled = true;
   try {
-    const added = await request("/api/remote/devices", { method: "POST", body: JSON.stringify({ name: $("remote-device-name").value }) });
-    $("remote-token-url").textContent = added.url || "Turn remote access on to get the address.";
-    $("remote-token-value").textContent = added.token;
-    $("remote-token").hidden = false;
+    const added = await request("/api/remote/devices", { method: "POST", body: JSON.stringify({ name: $("remote-device-name").value, token: $("remote-custom-key").value || undefined }) });
+    showDeviceKey(added);
+    $("remote-custom-key").value = "";
     $("remote-device-name").value = "";
     $("remote-copy").focus();
     await loadRemote();
@@ -1680,7 +1862,7 @@ async function saveSettings() {
   try {
     const roles = ["routePlanning", "longTermPlanning", "coding", "review", "security", "ui", "art", "github", "quick"];
     const modelSettings = Object.fromEntries(roles.flatMap((role) => [[`${role}Primary`, $(`${role}-primary`).value], [`${role}Fallback`, $(`${role}-fallback`).value]]));
-    const settings = await request("/api/settings", { method: "POST", body: JSON.stringify({ projectsRoot: $("projects-root").value, theme: $("theme-choice").value, skillsLimit, shortcut: $("shortcut-key").value, autoMergeImports: $("auto-merge-imports").checked, ...modelSettings, preapprovedSkillIds: state.pendingPreapprovedSkillIds }) });
+    const settings = await request("/api/settings", { method: "POST", body: JSON.stringify({ projectsRoot: $("projects-root").value, theme: $("theme-choice").value, skillsLimit, shortcut: $("shortcut-key").value, autoMergeImports: $("auto-merge-imports").checked, localOnly: $("local-only").checked, ...modelSettings, preapprovedSkillIds: state.pendingPreapprovedSkillIds }) });
     const rootChanged = state.settingsRoot !== settings.projectsRoot;
     state.settingsRoot = settings.projectsRoot;
     state.settingsConfigured = true;
@@ -1717,6 +1899,10 @@ $("new-session").addEventListener("click", newSession);
 $("import-sessions").addEventListener("click", () => importSessions());
 $("reindex-sessions").addEventListener("click", () => {
   if (confirm("Re-file every imported session you haven't continued or merged by hand: move each to the project it fits best, then merge ones on the same topic within each project?")) importSessions({ reindex: true });
+});
+$("open-model-manager").addEventListener("click", async () => {
+  try { await request("/api/local-models/manager", { method: "POST" }); $("local-models-status").textContent = "The Model Manager opened on this computer. Refresh the model list when you're done."; }
+  catch (error) { $("local-models-status").textContent = error.message; }
 });
 $("merge-sessions").addEventListener("click", () => {
   const ids = state.session && state.sessions.some((item) => item.id === state.session.id) ? [state.session.id, ...state.sessions.filter((item) => item.id !== state.session.id).map((item) => item.id)] : state.sessions.map((item) => item.id);
@@ -1790,7 +1976,7 @@ $("new-project-form").addEventListener("submit", async (event) => {
 });
 $("close-settings").addEventListener("click", () => $("settings-dialog").close());
 $("save-settings").addEventListener("click", saveSettings);
-$("refresh-models").addEventListener("click", () => loadModelChoices(state.modelPrefs, true, true));
+$("refresh-models").addEventListener("click", () => { loadModelChoices(state.modelPrefs, true, true); loadLocalModels(); });
 document.querySelectorAll("[data-settings-tab]").forEach((button) => button.addEventListener("click", () => selectSettingsTab(button.dataset.settingsTab)));
 document.querySelector(".settings-tabs").addEventListener("keydown", (event) => {
   const tabs = [...document.querySelectorAll("[data-settings-tab]")];
@@ -1872,6 +2058,10 @@ $("add-skill-toggle").addEventListener("click", () => {
 $("cancel-skill").addEventListener("click", () => { $("skill-form").hidden = true; });
 $("save-skill").addEventListener("click", saveSkill);
 $("skill-scan-form").addEventListener("submit", scanSkill);
+$("install-reviewers").addEventListener("click", async () => {
+  try { await request("/api/skills/reviewers/install", { method: "POST" }); $("skill-scan-status").textContent = "An install window opened. When it says Done, scan the link again."; }
+  catch (error) { $("skill-scan-status").textContent = error.message; }
+});
 $("install-skill").addEventListener("click", installScannedSkill);
 $("reject-skill").addEventListener("click", () => { $("skill-url").value = ""; resetSkillScan("Not installed."); $("skill-url").focus(); });
 $("refresh-projects").addEventListener("click", () => loadProjects().catch((error) => { $("projects").textContent = error.message; }));
@@ -2083,6 +2273,34 @@ $("setup-next").addEventListener("click", setupNext);
 $("setup-back").addEventListener("click", () => { setup.step = Math.max(0, setup.step - 1); $("setup-status").textContent = ""; renderSetup(); });
 $("setup-dialog").addEventListener("cancel", (event) => { if (setup.firstRun) event.preventDefault(); });
 $("run-setup").addEventListener("click", () => { $("settings-dialog").close(); openSetup(false); });
+// Feedback: the server adds the diagnostics shown in the preview and sends both to the anonymous relay. Without a
+// relay (a build that has none set), it falls back to a prefilled GitHub issue the user submits with their own account.
+let feedbackInfo = null;
+async function loadFeedbackInfo() {
+  feedbackInfo = await request("/api/feedback");
+  $("feedback-preview").textContent = JSON.stringify(feedbackInfo.diagnostics, null, 2);
+  return feedbackInfo;
+}
+$("feedback-details").addEventListener("toggle", () => { if ($("feedback-details").open) loadFeedbackInfo().catch((error) => { $("feedback-preview").textContent = error.message; }); });
+$("submit-feedback").addEventListener("click", async () => {
+  const text = $("feedback-text").value.trim();
+  if (!text) { $("feedback-status").textContent = "Write what happened first."; return; }
+  $("submit-feedback").disabled = true;
+  $("feedback-status").textContent = "Sending…";
+  try {
+    const info = feedbackInfo || await loadFeedbackInfo();
+    if (!info.relay) {
+      const body = `${text}\n\n<details><summary>Diagnostics</summary>\n\n\`\`\`json\n${JSON.stringify(info.diagnostics, null, 1)}\n\`\`\`\n</details>`;
+      window.open(`https://github.com/romrepostacks/Agent-Router-TOOL/issues/new?${new URLSearchParams({ title: text.split("\n")[0].slice(0, 80), body })}`, "_blank");
+      $("feedback-status").textContent = "Opened GitHub in your browser. Press Submit there.";
+    } else {
+      await request("/api/feedback", { method: "POST", body: JSON.stringify({ text }) });
+      $("feedback-text").value = "";
+      $("feedback-status").textContent = "Sent. Thank you!";
+    }
+  } catch (error) { $("feedback-status").textContent = error.message; }
+  $("submit-feedback").disabled = false;
+});
 
 refreshStatus();
 refreshWindowsAccent();
@@ -2098,3 +2316,32 @@ request("/api/version").then(({ version, role, client, remote }) => {
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { if (state.theme === "system") applyTheme("system"); });
 setInterval(refreshStatus, 30_000);
 setInterval(refreshWindowsAccent, 15_000);
+
+async function sendFollowup(delivery) {
+  const sessionId = state.session.id;
+  const originalRun = viewedRun();
+  pendingFollowups.set(sessionId, (pendingFollowups.get(sessionId) || 0) + 1);
+  const requestData = { message: $("prompt").value.trim(), projectId: state.project.id, mode: $("mode").value, skillIds: [...state.selectedSkills], contextIds: [...state.contextIds], attachments: state.attachments.map((f) => ({ ...f })) };
+  $("prompt").value = ""; state.attachments = []; renderContextControls();
+  $("context-count").textContent = delivery === "steer" ? "Restarting with your correction?" : "Message queued after this response.";
+  try {
+    const response = await fetch("/api/chat/stream", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...requestData, sessionId, delivery, attachmentNames: requestData.attachments.map((f) => f.name) }) });
+    while (originalRun?.active) await new Promise((resolve) => setTimeout(resolve, 100));
+    requestData.before = (await request(`/api/sessions/${encodeURIComponent(sessionId)}`)).messages;
+    await followRun({ sessionId, projectName: state.projects.find((p) => p.id === requestData.projectId)?.name || "Project", title: requestData.message.slice(0, 60), requestData, attachmentNames: requestData.attachments.map((f) => f.name), response });
+  } catch (error) { $("context-count").textContent = error.message; }
+  finally { const left = pendingFollowups.get(sessionId) - 1; if (left) pendingFollowups.set(sessionId, left); else pendingFollowups.delete(sessionId); }
+}
+let syncingRuns = false;
+setInterval(async () => {
+  if (syncingRuns) return; syncingRuns = true;
+  try { await reattachRuns(); await loadSessions(); } catch {} finally { syncingRuns = false; }
+}, 2000);
+function showDeviceKey(added) {
+  $("remote-token-url").textContent = added.url || "Turn remote access on to get the address.";
+  $("remote-token-value").textContent = added.token; $("remote-token").hidden = false;
+}
+$("remote-copy-connection").addEventListener("click", async () => {
+  try { await navigator.clipboard.writeText(JSON.stringify({ server: $("remote-token-url").textContent, token: $("remote-token-value").textContent })); $("remote-copy-connection").textContent = "Copied"; }
+  catch { $("remote-status").textContent = "Clipboard unavailable. Copy the address and key separately."; }
+});

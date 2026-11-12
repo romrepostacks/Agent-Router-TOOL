@@ -1,5 +1,24 @@
 # Release notes
 
+## 0.21.0
+
+- **Rename sessions** with ✎ on a session row, and **move sessions** out of All Projects by dragging them onto a project (or ⇥ → Move to…).
+- **Merging projects keeps every file:** the merged folder moves into `<project>\obsolete\<name>`, the move is written to `obsolete\MOVED.md`, and agents are told the new location. Splitting moves it back.
+- **More local models (Colibri):** Settings → Routing & models lists every model installed in Colibri. Any task can use any of them; Colibri switches to the right model (and starts if stopped) before the task runs. **Add or manage models…** opens Colibri's Model Manager.
+- **Skill reviewers:** scanning a skill from GitHub now also runs NVIDIA SkillSpector and Cisco Skill Scanner and shows each verdict and its findings separately. If one isn't installed, **Install the missing reviewers…** sets them up.
+- **Send feedback:** Settings → General → Feedback sends a report anonymously with the app version, models, providers (subscription, API key or local), routes and basic machine specs (OS, CPU, memory, GPUs). **What's sent with it** shows exactly that before sending; no names, folders, keys, chats or files.
+- **Uninstall:** Start menu → Uninstall Local Agent Router (or Windows Settings → Apps). It asks whether to also delete your settings, chat history, saved keys and paired devices; the answer defaults to keeping them. Updates never delete them.
+- **Local models only:** one switch keeps every step, including Route Planning and task chains, on Colibri, with no cloud fallback. Each task uses its own Colibri model.
+
+
+## 0.20.0
+
+- Desktop discovers mobile-started work while open.
+- Mobile keyboard Send, server project context and linked-folder choices.
+- Optional custom pairing keys, replacement keys, and copyable connection codes.
+- Queue follow-ups or restart a running task with Steer; implementation follow-ups retain their route within thread access limits.
+- Automatic network discovery and native-device acceptance remain tracked in KNOWN_PROBLEMS.md.
+
 ## 0.19.0
 
 - **Fixed: the installer wouldn't build.** electron-builder stopped with a `builder-util` error; the cause was the Server/Client setup page using an installer macro that isn't loaded yet at that point. The page now sets its heading directly.

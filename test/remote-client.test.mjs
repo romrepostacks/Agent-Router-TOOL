@@ -99,4 +99,45 @@ test("paired devices reach the server over the remote listener; others don't", a
   await assert.rejects(fetch(remoteBase + "/api/version", asDevice(token)));
 });
 
+test("custom keys validate, stay hashed, and can be replaced", async () => {
+  await fetch(local + "/api/remote", post({ enabled: true, port: free }));
+  const token = "test-custom-device-key-0123456789";
+  assert.equal((await fetch(local + "/api/remote/devices", post({ token: "short" }))).status, 400);
+  const added = await (await fetch(local + "/api/remote/devices", post({ name: "custom", token }))).json();
+  assert.equal(added.token, token);
+  assert.equal((await fetch(remoteBase + "/api/version", asDevice(token))).status, 200);
+  assert.equal((await fetch(local + "/api/remote/devices", post({ token }))).status, 400);
+  const replacement = await (await fetch(local + `/api/remote/devices/${added.device.id}`, post({}))).json();
+  assert.notEqual(replacement.token, token);
+  assert.equal((await fetch(remoteBase + "/api/version", asDevice(token))).status, 401);
+  assert.equal((await fetch(remoteBase + "/api/version", asDevice(replacement.token))).status, 200);
+  const saved = await readFile(path.join(root, "local", "LocalAgentRouterData", "settings.json"), "utf8");
+  assert.ok(!saved.includes(token) && !saved.includes(replacement.token));
+  assert.equal((await fetch(remoteBase + `/api/remote/devices/${added.device.id}`, asDevice(replacement.token, post({})))).status, 403);
+});
+
+test("sessions can be renamed and assigned without losing history or access limits", async () => {
+  const session = await (await fetch(local + "/api/sessions", post({ projectId: "__all_projects__" }))).json();
+  await fetch(local + `/api/sessions/${session.id}/access`, post({ accessLimit: "read" }));
+  const rename = await fetch(local + `/api/sessions/${session.id}/rename`, post({ title: "  Reviewed task  " }));
+  assert.equal(rename.status, 200);
+  assert.equal((await rename.json()).title, "Reviewed task");
+  for (const title of ["", "   ", 123, "x".repeat(201)]) {
+    assert.equal((await fetch(local + `/api/sessions/${session.id}/rename`, post({ title }))).status, 400);
+  }
+  for (const projectId of ["missing", "__all_projects__"]) {
+    assert.equal((await fetch(local + `/api/sessions/${session.id}/project`, post({ projectId }))).status, 400);
+  }
+  const moved = await fetch(local + `/api/sessions/${session.id}/project`, post({ projectId: "alpha" }));
+  assert.equal(moved.status, 200);
+  const saved = await moved.json();
+  assert.equal(saved.projectId, "alpha");
+  assert.equal(saved.title, "Reviewed task");
+  assert.equal(saved.accessLimit, "read");
+  assert.deepEqual(saved.messages, session.messages);
+  const current = await (await fetch(local + `/api/sessions/${session.id}`)).json();
+  assert.equal(current.accessLimit, saved.accessLimit);
+  assert.equal((await fetch(local + "/api/sessions/missing/rename", post({ title: "name" }))).status, 404);
+});
+
 test.after(() => { server.close(); model.close(); });

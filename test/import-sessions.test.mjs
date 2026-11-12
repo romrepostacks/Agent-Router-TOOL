@@ -1,6 +1,7 @@
 // node --test test/  — imports fake Claude Code / Codex history through the real server, then merges.
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, unlink, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { mkdir, mkdtemp, readFile, rm, unlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -119,10 +120,14 @@ test("merging a project folder into a parent moves its sessions; reindex threads
   assert.equal((await call("/api/sessions?projectId=beta")).length, 2);
 
   assert.match((await call("/api/projects/merge", { parentId: "alpha", childId: "alpha" })).error, /itself/);
-  assert.deepEqual(await call("/api/projects/merge", { parentId: "alpha", childId: "beta" }), { parentId: "alpha", moved: 2 });
+  await writeFile(path.join(beta, "keep.txt"), "beta file");
+  const movedTo = path.join(projects, "alpha", "obsolete", "beta");
+  assert.deepEqual(await call("/api/projects/merge", { parentId: "alpha", childId: "beta" }), { parentId: "alpha", moved: 2, folder: movedTo });
+  assert.equal(await readFile(path.join(movedTo, "keep.txt"), "utf8"), "beta file", "files kept, moved under obsolete/");
+  assert.equal(existsSync(beta), false);
+  assert.match(await readFile(path.join(projects, "alpha", "obsolete", "MOVED.md"), "utf8"), /beta.*→.*obsolete/);
   const list = await call("/api/projects");
-  assert.equal(list.find((p) => p.id === "beta").parent, "alpha");
-  assert.deepEqual(list.find((p) => p.id === "alpha").members, ["beta"]);
+  assert.equal(list.some((p) => p.id === "beta"), false, "moved folder is no longer a top-level project");
   assert.equal((await call("/api/sessions?projectId=beta")).length, 0);
 
   await claudeSession("b3", "Widget cache invalidation in cache.mjs once more", "2026-03-03T10:00:00Z", beta);
@@ -133,7 +138,11 @@ test("merging a project folder into a parent moves its sessions; reindex threads
   const threads = await Promise.all((await call("/api/sessions?projectId=alpha")).map(async (s) => (await call(`/api/sessions/${s.id}`)).messages.map((m) => m.content)));
   assert.ok(threads.some((c) => c.filter((text) => text.startsWith("Widget cache")).length === 3), "the three widget sessions became one thread");
 
+  await mkdir(beta);
+  assert.match((await call("/api/projects/split", { childId: "beta" })).error, /exists again/, "never overwrites a folder");
+  await rm(beta, { recursive: true });
   assert.deepEqual(await call("/api/projects/split", { childId: "beta" }), { split: "beta" });
+  assert.equal(await readFile(path.join(beta, "keep.txt"), "utf8"), "beta file", "split moves the folder back");
   assert.equal((await call("/api/projects")).find((p) => p.id === "beta").parent, undefined);
   assert.match((await call("/api/projects/split", { childId: "beta" })).error, /isn't part/);
 });

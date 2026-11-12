@@ -13,7 +13,7 @@ const model = http.createServer(async (req, res) => {
   let body = "";
   for await (const chunk of req) body += chunk;
   const prompt = JSON.parse(body).messages.at(-1).content;
-  const key = ["alpha-task", "beta-task"].find((name) => prompt.includes(name));
+  const key = ["alpha-task", "beta-task"].filter((name) => prompt.includes(name)).sort((a, b) => prompt.lastIndexOf(b) - prompt.lastIndexOf(a))[0];
   res.writeHead(200, { "Content-Type": "text/event-stream" });
   res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: `${key} started ` } }] })}\n\n`);
   waiting.set(key, (text) => res.end(`data: ${JSON.stringify({ choices: [{ delta: { content: text } }] })}\n\ndata: [DONE]\n\n`));
@@ -30,9 +30,9 @@ const base = `http://127.0.0.1:${server.address().port}`;
 const call = async (url, body) => (await fetch(base + url, body === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })).json();
 
 // Starts a streamed run and collects its events until it ends.
-function stream(sessionId, projectId, message) {
+function stream(sessionId, projectId, message, delivery) {
   const events = [];
-  const done = fetch(base + "/api/chat/stream", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message, projectId, sessionId, mode: "quick" }) })
+  const done = fetch(base + "/api/chat/stream", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message, projectId, sessionId, mode: "quick", delivery }) })
     .then(async (response) => {
       if (!response.ok) return { status: response.status, ...(await response.json()) };
       for (const block of (await response.text()).split("\n\n").filter(Boolean)) {
@@ -167,6 +167,55 @@ test("results saved at the same moment are both kept", async () => {
   await Promise.all([a, b, a, b].map((session, index) => call(`/api/sessions/${session.id}/messages`, { user: `q${index}`, assistant: `a${index}`, route: "Quick questions" })));
   assert.equal((await call(`/api/sessions/${a.id}`)).messages.length, 4);
   assert.equal((await call(`/api/sessions/${b.id}`)).messages.length, 4);
+});
+
+test("queued messages run in order with saved history", async () => {
+  waiting.clear();
+  const session = await call("/api/sessions", { projectId: "alpha" });
+  const first = stream(session.id, "alpha", "alpha-task");
+  await until(() => waiting.has("alpha-task"));
+  const queued = stream(session.id, "alpha", "beta-task", "queue");
+  await new Promise((resolve) => setTimeout(resolve, 60));
+  assert.equal(waiting.has("beta-task"), false);
+  waiting.get("alpha-task")("first done");
+  await first.done;
+  await until(() => waiting.has("beta-task"));
+  waiting.get("beta-task")("second done");
+  assert.equal((await queued.done).name, "done");
+  const saved = await call(`/api/sessions/${session.id}`);
+  assert.deepEqual(saved.messages.filter((m) => m.role === "user").map((m) => m.content), ["alpha-task", "beta-task"]);
+});
+
+test("multiple queued messages serialize without a busy-session rejection", async () => {
+  waiting.clear();
+  const session = await call("/api/sessions", { projectId: "alpha" });
+  const first = stream(session.id, "alpha", "alpha-task");
+  await until(() => waiting.has("alpha-task"));
+  const second = stream(session.id, "alpha", "beta-task second", "queue");
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  const third = stream(session.id, "alpha", "alpha-task third", "queue");
+  waiting.get("alpha-task")("first"); waiting.delete("alpha-task");
+  await first.done; await until(() => waiting.has("beta-task"));
+  assert.equal(waiting.has("alpha-task"), false);
+  waiting.get("beta-task")("second"); await second.done;
+  await until(() => waiting.has("alpha-task")); waiting.get("alpha-task")("third");
+  assert.equal((await third.done).name, "done");
+  assert.equal((await call(`/api/sessions/${session.id}`)).messages.length, 6);
+});
+
+test("steering stops the old run before starting the correction", async () => {
+  waiting.clear();
+  const session = await call("/api/sessions", { projectId: "alpha" });
+  const first = stream(session.id, "alpha", "alpha-task");
+  await until(() => waiting.has("alpha-task"));
+  waiting.delete("alpha-task");
+  const steering = stream(session.id, "alpha", "use smaller output", "steer");
+  assert.equal((await first.done).value.cancelled, true);
+  await until(() => waiting.has("alpha-task"));
+  waiting.get("alpha-task")("corrected");
+  assert.equal((await steering.done).name, "done");
+  const saved = await call(`/api/sessions/${session.id}`);
+  assert.match(saved.messages[0].content, /Original task:[\s\S]*alpha-task[\s\S]*Correction:[\s\S]*use smaller output/);
 });
 
 test.after(() => { server.close(); model.close(); });

@@ -1,5 +1,8 @@
 # Local Agent Router
 
+Session integration (0.21.0): clients can POST a {title} to /api/sessions/:id/rename and a {projectId} to /api/sessions/:id/project. Titles must contain 1?200 characters; project assignment requires an unmerged project and no active or queued work. Both return the saved session. Existing thread access and permission settings are retained. Desktop controls are pending.
+
+
 A Windows desktop app that sends each request to the AI tool best suited for it: Claude Code, Codex, GitHub Copilot, a local model (Ollama, LM Studio, Colibri), or an OpenAI / Anthropic API key.
 
 ## Install (for anyone, starting from nothing)
@@ -181,6 +184,10 @@ Only one session can edit a project's files at a time. While a session is editin
 
 The **Routing & models** settings tab offers provider/model dropdowns populated from Colibri's live model endpoint, Codex's model catalog, and supported Claude Code and Copilot CLI choices when those tools are installed. Configure a preferred provider/model and a cross-provider fallback for Route Planning, Long Term Project planning, Coding, Reviewing, Security audit, UI Designer, Art Asset generation, GitHub requests, and Quick questions. A selected fallback is tried after a provider error; when a usage limit is reached and no fallback is selected, the router chooses another available provider/model. The art role creates project-ready assets such as SVG where supported; these CLI providers do not expose a shared raster image-generation endpoint. Provider plan limits can apply across models, so retries may still fail. **General** lets you set a system-wide keyboard shortcut to open the app and focus the message box, or turn it off. The default shortcut is `Control+Shift+Space`.
 
+**Skill reviewers.** Settings → Add new skills scans a skill from GitHub three ways: the built-in pattern check, NVIDIA SkillSpector (static analysis only, no API key, nothing uploaded) and Cisco Skill Scanner. Each verdict is shown separately; nothing is installed until you choose Install. If a reviewer is missing, **Install the missing reviewers…** opens a window that installs both with uv (`uv tool install cisco-ai-skill-scanner` and `uv tool install git+https://github.com/NVIDIA/skillspector.git`). `SKILLSPECTOR_CLI` and `SKILL_SCANNER_CLI` override where they are found.
+
+**Local models (Colibri).** If Colibri is installed the standard way (START-HERE.bat), Settings → Routing & models lists its installed models. Pick any of them for any task: Colibri holds one model at a time, so when a task needs a different one the router waits for running local requests, switches Colibri (`coli stop`, then `coli setup --model-dir`, keeping its port, backend and context size) and waits until the model has loaded. A stopped Colibri is started the same way. **Load now** switches right away; **Add or manage models…** opens Colibri's Model Manager to download, import, rename or delete models. **Local models only** keeps every step, including Route Planning and task chains, on Colibri: each task uses its Colibri choice (preferred, else fallback, else the default local model) and never falls back to a cloud provider.
+
 Set `AGENT_ROUTER_PROJECTS_ROOT` to change the folder shown as the project list. Set `COLIBRI_BASE_URL` or `COLIBRI_MODEL` to override Colibri's local endpoint or model. The internal service listens only on this computer; the desktop app embeds the interface and does not open Chrome.
 
 Run `node evaluate-routing.mjs` to score the GPT route selector against synthetic engineering and everyday prompts. The evaluator is read-only and does not invoke Claude or Copilot.
@@ -193,3 +200,13 @@ Choose **Task chain**, or use Auto for an app/spec request needing multiple role
 Every project provider run now receives recent saved reports across threads and restarts. Review and security reports have a separate history so ordinary coding tasks do not crowd them out. Reports live in the app data folder under `project-memory/`, separate from the latest-task handoff. Reviews and security audits must reconcile earlier findings with current files and distinguish verified fixes from unverified claims; other routes get the history as background only, so their answers stay short. Recent context is bounded (12 records per history, 64 KB tail); full histories remain on disk. Memory contains provider reports, not independently verified security verdicts. Staged edits still require applying and verification.
 
 CLI tasks may run longer than 15 minutes while producing output. After 15 minutes without stdout or stderr, the router stops the process tree and reports an inactivity timeout. Stop remains available. Provider usage limits require waiting for reset or using another provider.
+
+### Mobile and cross-device updates (0.20.0)
+
+Desktop discovers active phone requests about every two seconds. In mobile chat, Enter sends and Shift+Enter inserts a newline. The plus menu offers phone attachments, server project text files, and linking an existing server project folder.
+
+While a response runs, submit a nonempty message to queue it. **Steer** stops the current provider run and restarts its task with your correction; it is not live provider input. Submit with an empty composer to stop. Queued work belongs to the running server and does not survive a server restart.
+
+In server **Settings ? Remote access**, optionally enter a custom device key (24?128 printable characters, no spaces). Choose a unique, hard-to-guess key. **Replace key** on a paired device invalidates its previous key and shows a fresh one to copy. The original key cannot be recovered because only its hash is stored. **Copy connection code** includes address and key: paste it into the phone's Connect screen to fill both without typing the address. Treat that code like a password. Automatic network discovery remains pending.
+
+Auto remembers an implementation workflow for implementation follow-ups while retaining saved thread limits. Explicit read-only threads remain read-only; questions and reviews still route normally. See [KNOWN_PROBLEMS.md](KNOWN_PROBLEMS.md) for remaining device acceptance.

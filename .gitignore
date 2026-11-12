@@ -10,3 +10,6 @@ skills.md
 error.log
 
 .tools/
+
+# Folders merged into this project (Merge projects) stay on this PC only
+/obsolete/

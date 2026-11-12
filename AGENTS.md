@@ -27,7 +27,7 @@ Guidance for any AI agent (Claude Code, Codex, Copilot, etc.) working on this re
 
 ## Checks before committing
 - `node --check server.mjs import-sessions.mjs public/app.js desktop.cjs`
-- `node --test test/` (needs `npm install` first)
+- `npm test` (= `node --test test/*.test.mjs`; needs `npm install` first)
 - Start the app (`npm start`) and exercise the changed screen. 
 
 ## Don'ts

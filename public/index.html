@@ -236,9 +236,10 @@
           </section>
           <section class="settings-section settings-page" data-settings-page="general">
             <h3>Feedback</h3>
-            <label class="settings-field">What went wrong, or what would help?<textarea id="feedback-text" rows="4" placeholder="What you did, what you expected, what happened"></textarea></label>
-            <p class="settings-help">Opens a new GitHub issue in your browser with this text and your app version filled in. Nothing is sent until you press Submit there. Chats and files are never included.</p>
-            <button id="submit-feedback" type="button" class="context-button">Submit feedback…</button>
+            <label class="settings-field">What went wrong, or what would help?<textarea id="feedback-text" rows="4" maxlength="5000" placeholder="What you did, what you expected, what happened"></textarea></label>
+            <p class="settings-help">Sent anonymously with the details below, so problems can be traced to a model, provider or machine. No names, folders, keys, chats or files are included.</p>
+            <details id="feedback-details"><summary>What's sent with it</summary><pre id="feedback-preview" class="feedback-preview">Loading…</pre></details>
+            <div class="shortcut-row"><button id="submit-feedback" type="button" class="context-button">Send feedback</button><span id="feedback-status" class="settings-help" aria-live="polite"></span></div>
           </section>
           <section class="settings-section settings-page" data-settings-page="general" hidden>
             <h3>Keyboard shortcut</h3>

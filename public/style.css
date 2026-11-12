@@ -401,3 +401,4 @@ html[data-theme="dark"] .setup-missing { background: none; }
 .scan-reviewer.clean { border-left-color: var(--green); }
 .scan-reviewer.high { border-left-color: var(--red); }
 .scan-reviewer .scan-warnings { margin: 6px 0 0; }
+.feedback-preview { max-height: 220px; overflow: auto; margin: 6px 0 0; padding: 8px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface); color: var(--muted); font-size: 11px; white-space: pre-wrap; }

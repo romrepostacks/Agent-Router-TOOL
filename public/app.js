@@ -2273,12 +2273,33 @@ $("setup-next").addEventListener("click", setupNext);
 $("setup-back").addEventListener("click", () => { setup.step = Math.max(0, setup.step - 1); $("setup-status").textContent = ""; renderSetup(); });
 $("setup-dialog").addEventListener("cancel", (event) => { if (setup.firstRun) event.preventDefault(); });
 $("run-setup").addEventListener("click", () => { $("settings-dialog").close(); openSetup(false); });
-// Feedback goes to the public repo's issue form, prefilled; the user reviews and submits it there with their own account.
-$("submit-feedback").addEventListener("click", () => {
+// Feedback: the server adds the diagnostics shown in the preview and sends both to the anonymous relay. Without a
+// relay (a build that has none set), it falls back to a prefilled GitHub issue the user submits with their own account.
+let feedbackInfo = null;
+async function loadFeedbackInfo() {
+  feedbackInfo = await request("/api/feedback");
+  $("feedback-preview").textContent = JSON.stringify(feedbackInfo.diagnostics, null, 2);
+  return feedbackInfo;
+}
+$("feedback-details").addEventListener("toggle", () => { if ($("feedback-details").open) loadFeedbackInfo().catch((error) => { $("feedback-preview").textContent = error.message; }); });
+$("submit-feedback").addEventListener("click", async () => {
   const text = $("feedback-text").value.trim();
-  const title = text.split("\n")[0].slice(0, 80) || "Feedback";
-  const body = `${text || "(describe the problem)"}\n\n---\nApp: ${$("app-version").textContent || "unknown"}\nSystem: ${navigator.userAgent}`;
-  window.open(`https://github.com/romrepostacks/Agent-Router-TOOL/issues/new?${new URLSearchParams({ title, body, labels: "feedback" })}`, "_blank");
+  if (!text) { $("feedback-status").textContent = "Write what happened first."; return; }
+  $("submit-feedback").disabled = true;
+  $("feedback-status").textContent = "Sending…";
+  try {
+    const info = feedbackInfo || await loadFeedbackInfo();
+    if (!info.relay) {
+      const body = `${text}\n\n<details><summary>Diagnostics</summary>\n\n\`\`\`json\n${JSON.stringify(info.diagnostics, null, 1)}\n\`\`\`\n</details>`;
+      window.open(`https://github.com/romrepostacks/Agent-Router-TOOL/issues/new?${new URLSearchParams({ title: text.split("\n")[0].slice(0, 80), body })}`, "_blank");
+      $("feedback-status").textContent = "Opened GitHub in your browser. Press Submit there.";
+    } else {
+      await request("/api/feedback", { method: "POST", body: JSON.stringify({ text }) });
+      $("feedback-text").value = "";
+      $("feedback-status").textContent = "Sent. Thank you!";
+    }
+  } catch (error) { $("feedback-status").textContent = error.message; }
+  $("submit-feedback").disabled = false;
 });
 
 refreshStatus();

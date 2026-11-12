@@ -10,7 +10,7 @@ module.exports = {
   files: [
     "**/*",
     // mobile/ holds the phone apps; they are built and installed separately.
-    "!{out,release,build,test,skills,mobile,.agent-router}{,/**}",
+    "!{out,release,build,test,skills,mobile,feedback-relay,.agent-router}{,/**}",
     "!skills.md",
     "!**/*.exe",
     "!*.cmd",

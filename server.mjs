@@ -781,6 +781,41 @@ async function status() {
   };
 }
 
+// Feedback: anonymous reports go to a relay (feedback-relay/) that files a GitHub issue. Only what's listed here is
+// sent, and the user sees it first: no names, paths, host names, IP addresses, keys, chats or files.
+const FEEDBACK_URL = process.env.AGENT_ROUTER_FEEDBACK_URL ?? "";
+const FEEDBACK_ROLES = ["routePlanning", "longTermPlanning", "coding", "review", "security", "ui", "art", "github", "quick"];
+
+async function gpus() {
+  const run = (exe, args) => execFileAsync(exe, args, { timeout: 8000, windowsHide: true, maxBuffer: 64_000 }).then((result) => result.stdout, () => "");
+  const nvidia = (await run("nvidia-smi", ["--query-gpu=name,memory.total,driver_version", "--format=csv,noheader"]))
+    .split(/\r?\n/).filter(Boolean).map((line) => { const [name, vram, driver] = line.split(",").map((part) => part.trim()); return { name, vram, driver }; });
+  if (nvidia.length || process.platform !== "win32") return nvidia;
+  const raw = await run("powershell.exe", ["-NoProfile", "-Command", "Get-CimInstance Win32_VideoController | Select-Object Name,AdapterRAM,DriverVersion | ConvertTo-Json -Compress"]);
+  try {
+    // AdapterRAM is a 32-bit field: cards with more than 4 GB report 4 GB or less here.
+    return [JSON.parse(raw)].flat().map((gpu) => ({ name: gpu.Name, vram: gpu.AdapterRAM ? `${Math.round(gpu.AdapterRAM / 2 ** 20)} MiB (max 4 GiB reported)` : "", driver: gpu.DriverVersion }));
+  } catch { return []; }
+}
+
+async function diagnostics() {
+  const [current, settings, cfg, gpuList] = await Promise.all([status(), readSettings(), colibriSetup(), gpus()]);
+  const cpus = os.cpus();
+  const gib = (bytes) => `${(bytes / 2 ** 30).toFixed(1)} GiB`;
+  return {
+    app: { version: APP_VERSION, role: APP_ROLE },
+    system: { os: `${os.type()} ${os.release()}`, arch: os.arch(), cpu: cpus[0]?.model?.trim() || "", cores: cpus.length, memory: gib(os.totalmem()), freeMemory: gib(os.freemem()), gpus: gpuList },
+    // CLI tools sign in with the user's subscription; API providers use a saved key (only whether one exists is sent).
+    providers: {
+      ...Object.fromEntries(Object.entries(current.commands).map(([id, cli]) => [id, { access: "subscription (CLI sign-in)", installed: cli.available, signIn: cli.signIn }])),
+      ...Object.fromEntries(Object.entries(current.apis).map(([id, hasKey]) => [id, { access: "API key", keySaved: hasKey }])),
+      colibri: { access: "local", online: current.colibri.online, serving: current.colibri.models, installed: (await colibriModels(cfg)).map((model) => model.name), backend: cfg?.requested_backend || "", context: cfg?.ctx || "" },
+    },
+    routes: Object.fromEntries(FEEDBACK_ROLES.map((role) => [role, [settings[`${role}Primary`], settings[`${role}Fallback`]].filter(Boolean)])),
+    localOnly: Boolean(settings.localOnly),
+  };
+}
+
 async function readSettings() {
   try {
     const saved = JSON.parse(await readFile(SETTINGS_FILE, "utf8"));
@@ -2085,6 +2120,17 @@ async function handleRequest(req, res, fromRemote = false) {
         ...(device ? { device: { id: device.id, name: device.name }, client: /^[\w .-]{1,40}$/.test(client) ? client : null } : {}) });
     }
     if (req.method === "GET" && url.pathname === "/api/status") return json(res, 200, await status());
+    if (req.method === "GET" && url.pathname === "/api/feedback") return json(res, 200, { relay: Boolean(FEEDBACK_URL), diagnostics: await diagnostics() });
+    if (req.method === "POST" && url.pathname === "/api/feedback") {
+      const text = String((await bodyJson(req)).text || "").trim();
+      if (!text || text.length > 5000) return json(res, 400, { error: "Write between 1 and 5000 characters." });
+      if (!FEEDBACK_URL) return json(res, 503, { error: "Feedback isn't set up in this version." });
+      try {
+        const response = await fetch(FEEDBACK_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text, diagnostics: await diagnostics() }), signal: AbortSignal.timeout(15_000) });
+        if (!response.ok) return json(res, 502, { error: `The feedback service answered ${response.status}. Try again later.` });
+        return json(res, 200, { sent: true });
+      } catch { return json(res, 502, { error: "Couldn't reach the feedback service. Check your internet connection." }); }
+    }
     if (req.method === "GET" && url.pathname === "/api/models") return json(res, 200, { models: await availableModelCatalog(url.searchParams.get("refresh") === "1"), checkedAt: modelCatalogCheckedAt.value });
     if (req.method === "GET" && url.pathname === "/api/settings") {
       const saved = await readSettings();

@@ -48,7 +48,7 @@ General goals from the old list (secure links between components, Tailscale comp
 
 - [ ] Automatic server discovery over the supported remote network.
 - [ ] Exercise connection, plus menu, cross-device streaming, queue/steer and permissions on iOS and Android.
-- [ ] Visual desktop/mobile walkthrough. Playwright download failed with EACCES; Electron now starts on the PC (2026-11-12); the click-through of the new screens is still to do.
+- [ ] Visual desktop/mobile walkthrough. Playwright download failed with EACCES; Electron starts on the PC, and a clean install → use → uninstall of 0.21.0 passed in Windows Sandbox (2026-11-12).
 
 The automated test suite uses synthetic projects, keys, and providers. No real credentials or provider accounts are required.
 

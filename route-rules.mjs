@@ -106,6 +106,31 @@ export function parseChainPlan(output) {
   return { summary: typeof plan.summary === "string" ? plan.summary.trim().slice(0, 4000) : "", steps };
 }
 
+// A step's report, cut to what the next step needs. Providers end with a short summary and "Files changed",
+// so keep the start (decisions) and the end (summary, changed files, integration needs).
+export function compactHandoff(text, max = 1500) {
+  const clean = String(text || "").trim();
+  if (clean.length <= max) return clean;
+  const head = Math.floor(max / 3);
+  return `${clean.slice(0, head)}\n…[${clean.length - max} characters left out]…\n${clean.slice(-(max - head))}`;
+}
+
+// One chain step's prompt: its own task, the plan in one line per step, and compact handoffs from earlier steps.
+// Full results stay in the final chain report; each step only gets what it needs, so prompts don't grow step by step.
+export function chainStepPrompt(task, plan, step, results = []) {
+  const steps = plan.steps.map((item, index) => `${index + 1}. ${item.route}${item === step ? " (you)" : ""}: ${item.task.split("\n")[0].slice(0, 160)}${item.files.length ? ` [${item.files.join(", ")}]` : ""}`);
+  const review = !CHAIN_BUILD_ROUTES.includes(step.route);
+  const handoffs = results.map((result) => `### ${result.index}. ${result.route}${result.failed ? " (failed)" : ""}\n${compactHandoff(result.content)}`);
+  return [
+    `Overall request (context only): ${compactHandoff(task, 3000)}`,
+    plan.summary ? `Plan: ${plan.summary}` : "",
+    `Steps:\n${steps.join("\n")}`,
+    `Your task: ${step.task}`,
+    review ? "Check the finished work in the current project files; the handoffs below are the build tasks' own reports, not proof." : `Assigned paths: ${step.files.join(", ")}\nOnly edit assigned paths. Do not commit. Report integration needs.`,
+    handoffs.length ? `Handoffs from earlier tasks:\n${handoffs.join("\n\n")}` : "",
+  ].filter(Boolean).join("\n");
+}
+
 // Build tasks may run together only when each lists its files and no file or folder overlaps another task's.
 export function buildStepsOverlap(steps) {
   const build = steps.filter((step) => CHAIN_BUILD_ROUTES.includes(step.route));

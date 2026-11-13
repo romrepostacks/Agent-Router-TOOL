@@ -1,5 +1,10 @@
 # Release notes
 
+## 0.22.0
+
+- **Task chains fit local models:** chain steps no longer resend the full plan and every earlier result. Each step gets its own task, a one-line list of the other steps and a short handoff from each earlier step (the start and end of its report, including changed files). Reviews are told to check the current files. Full results still appear in the final chain report.
+- **Smaller chain context:** planner and step prompts carry only the latest 4 project-memory reports, shortened and without their old task text, and chat providers (Colibri) get at most ~12,000 characters of project files instead of 40,000. Chain steps no longer repeat the shared handoff note.
+
 ## 0.21.0
 
 - **Rename sessions** with ✎ on a session row, and **move sessions** out of All Projects by dragging them onto a project (or ⇥ → Move to…).

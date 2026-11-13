@@ -7,8 +7,8 @@ import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import Anthropic from "@anthropic-ai/sdk";
-import { remember, recall, memorySection } from "./project-memory.mjs";
-import { buildRoutePrompt, parseRoute, buildChainPrompt, parseChainPlan, buildStepsOverlap, CHAIN_BUILD_ROUTES } from "./route-rules.mjs";
+import { remember, recall, memorySection, compactMemory } from "./project-memory.mjs";
+import { buildRoutePrompt, parseRoute, buildChainPrompt, parseChainPlan, buildStepsOverlap, chainStepPrompt, CHAIN_BUILD_ROUTES } from "./route-rules.mjs";
 import { fetchGithubSkill, runReviewers } from "./skill-scan.mjs";
 import { colibriGate, colibriModels, colibriSetup, managerScript, openManager } from "./colibri.mjs";
 import { MAX_MESSAGES, bestProject, fetchCodexCloudSessions, groupSessions, mergeMessages, scanLocalCliSessions, topicIndex } from "./import-sessions.mjs";
@@ -1183,7 +1183,7 @@ async function runProviderTask(choice, prompt, project, kind, options = {}) {
   if (linked.length) prompt += `\n\nLinked folders (read-only reference; read them as needed, never edit them or run commands in them):\n${linked.map((item) => `- ${item.name}: ${item.path}`).join("\n")}`;
   if (CHAT_PROVIDERS.has(provider)) {
     let content = prompt;
-    if (project && access !== "none") content = `${await colibriProjectContext(project, prompt)}\n\n${prompt}`;
+    if (project && access !== "none") content = `${await colibriProjectContext(project, prompt, options.compactContext ? 12_000 : undefined)}\n\n${prompt}`;
     if (access === "git") content += `\n\n${gitNote}`;
     if (access === "edit") content += "\n\nTo create or change a file, output its complete new contents exactly like this, once per file, with a path relative to the project root:\n<<<FILE path/to/file.ext\n...full file contents...\n>>>END\nOutside those blocks, briefly explain what you changed.";
     const user = { role: "user", content, ...(options.images?.length ? { images: options.images } : {}) };
@@ -1271,10 +1271,10 @@ async function runRoleTask(role, defaultChoice, prompt, project, kind, options =
   const memoryFile = project && project.scope !== "all"
     ? path.join(DATA_DIR, "project-memory", createHash("sha256").update(`${PROJECTS_ROOT.toLowerCase()}\n${project.id}`).digest("hex") + ".jsonl") : null;
   const originalPrompt = prompt;
-  if (memoryFile) prompt += memorySection([
-    ...await recall(`${memoryFile}.reviews`),
-    ...await recall(memoryFile),
-  ], kind);
+  if (memoryFile) {
+    const entries = [...await recall(`${memoryFile}.reviews`), ...await recall(memoryFile)];
+    prompt += memorySection(options.compactContext ? compactMemory(entries) : entries, kind);
+  }
   const settings = await readSettings();
   const choices = settings.localOnly ? localChoices(settings, role) : roleChoices(settings, role, defaultChoice);
   const invoke = async (choice) => {
@@ -1355,7 +1355,7 @@ async function implementWithRole(role, task, project, skillText, options, { plan
     }
     const workingProject = { ...project, path: staged ? stageDir : project.path, linked };
     const where = staged ? "Work only in this private project copy." : "Edit the project folder directly; stay inside it.";
-    const prompt = `${kind === "ui" ? "Act as a UI designer and frontend engineer. Inspect the existing interface and implement the requested visual and interaction changes, matching the project's conventions." : kind === "art" ? "Create or update the requested visual assets in the project. Prefer editable SVG or existing project asset formats; if this provider cannot render raster images, create a usable vector asset or a clear asset brief rather than claiming a raster was generated." : "Inspect the project and implement the requested changes."} ${where} You may run the project's syntax checks and tests (node --check, node --test, npm test). Follow existing conventions and shared project instructions. Do not access credentials, API keys, environment variables, or secret files. Finish with what you changed in a few lines.${NEXT_STEPS_RULE}${skillText}\n\nTask:\n${task}${plan ? `\n\nPlan:\n${plan}` : ""}${sharedHandoffSection(await readHandoff(project))}`;
+    const prompt = `${kind === "ui" ? "Act as a UI designer and frontend engineer. Inspect the existing interface and implement the requested visual and interaction changes, matching the project's conventions." : kind === "art" ? "Create or update the requested visual assets in the project. Prefer editable SVG or existing project asset formats; if this provider cannot render raster images, create a usable vector asset or a clear asset brief rather than claiming a raster was generated." : "Inspect the project and implement the requested changes."} ${where} You may run the project's syntax checks and tests (node --check, node --test, npm test). Follow existing conventions and shared project instructions. Do not access credentials, API keys, environment variables, or secret files. Finish with what you changed in a few lines.${NEXT_STEPS_RULE}${skillText}\n\nTask:\n${task}${plan ? `\n\nPlan:\n${plan}` : ""}${options.chained ? "" : sharedHandoffSection(await readHandoff(project))}`;
     options.onStatus?.(staged ? `${role} is working in a private project copy…` : `${role} is editing the project folder…`);
     const content = await runRoleTask(role, role === "art" ? "codex::" : "claude::opus", prompt, workingProject, kind, { ...options, stagedCopy: staged || options.stagedCopy });
     if (!staged && options.chained) return { content, route: role, proposal: null };
@@ -1377,7 +1377,8 @@ async function implementWithRole(role, task, project, skillText, options, { plan
 
 
 async function runChain(task, project, skillText, options) {
-  const quiet = { ...options, onDelta: undefined };
+  // compactContext: every chain prompt (plan and steps) gets smaller project-file and memory budgets for local model context limits.
+  const quiet = { ...options, onDelta: undefined, compactContext: true };
   options.onStatus?.("Planning task chain?");
   const plan = parseChainPlan(await runRoleTask("longTermPlanning", "codex::", buildChainPrompt(task, skillText), project, "longterm", quiet));
   const staged = options.accessLimit === "staged" || STAGED_REQUEST.test(task);
@@ -1392,7 +1393,7 @@ async function runChain(task, project, skillText, options) {
       const index = plan.steps.indexOf(step) + 1;
       const status = (message) => options.onStatus?.("[" + index + ": " + step.route + "] " + message);
       status("Starting?");
-      const prompt = "Overall request: " + task + "\nShared plan: " + JSON.stringify(plan) + "\nYour task: " + step.task + "\nAssigned paths: " + step.files.join(", ") + "\nOnly edit assigned paths. Do not commit. Report integration needs. Prior task results: " + JSON.stringify(results);
+      const prompt = chainStepPrompt(task, plan, step, results);
       try {
         const result = await runRoute(step.route, [{ role: "user", content: prompt }], working, skillText, "", { ...quiet, onStatus: status, staged: false, stagedCopy: staged, chained: true });
         return { index, route: step.route, content: result.content, failed: false };

@@ -1,5 +1,11 @@
 # Local Agent Router — Project Status
 
+## Current change (v0.22.0, 2026-11-12)
+
+- **Chain prompt trimming (owner report: every local-only chain request failed on Colibri context size).** Cause: each step got the full request, `JSON.stringify(plan)` and `JSON.stringify(results)` of all earlier steps, plus 12 memory entries (each up to 2,000 chars of task + 6,000 of summary), the shared handoff and up to 40,000 chars of project files. Now: `chainStepPrompt()` / `compactHandoff()` in `route-rules.mjs` build each step prompt (own task, one line per step, ~1,500-char handoff per earlier result keeping head and tail; reviews told to inspect current files); `runChain()` sets `compactContext`, which makes `runRoleTask()` use `compactMemory()` (latest 4, 800 chars, no task text) and `runProviderTask()` cap Colibri project context at 12,000 chars; `implementWithRole()` skips the shared handoff for chained steps. Non-chain routes unchanged. Test: `test/chain.test.mjs` (step prompt under 6,000 chars with two 50,000-char results). 79/79 pass.
+- Not done: skill text (`skillText`) is still appended to every chain step; with many selected skills it can still be large. Not yet tried against the real Colibri.
+- Next: run a local-only chain on the PC with Colibri; if it still overflows, cap or drop skill text for chain steps.
+
 ## Current change (v0.21.0, continued 2026-11-10)
 
 - **Committed at last:** the 0.20.0/0.21.0 work that was stuck uncommitted on the PC (git lock files) is now commit bdd05cd on branch `claude/project-thread-eob1g2` (GitHub). `approvalTitle()` now splits paths on both `\\` and `/`, so `test/permission-modes.test.mjs` also passes off Windows. 66/66 tests pass.

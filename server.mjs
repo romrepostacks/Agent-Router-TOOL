@@ -214,6 +214,22 @@ function withFileLock(file, fn) {
   return run;
 }
 
+// Atomic save: write a temp file, then rename it over the target. On Windows the rename fails with EPERM/EACCES/EBUSY
+// while anything else has the target open (another read in this app, antivirus, the search indexer), so retry briefly.
+export async function replaceFile(file, contents, attempts = 10) {
+  const temp = `${file}.${process.pid}.${randomUUID()}.tmp`;
+  await writeFile(temp, contents, "utf8");
+  for (let attempt = 1; ; attempt++) {
+    try { return await rename(temp, file); } catch (error) {
+      if (attempt >= attempts || !["EPERM", "EACCES", "EBUSY"].includes(error.code)) {
+        await rm(temp, { force: true }).catch(() => {});
+        throw error;
+      }
+      await new Promise((resolve) => setTimeout(resolve, attempt * 50));
+    }
+  }
+}
+
 async function readProposals() {
   try {
     const data = JSON.parse(await readFile(PROPOSALS_FILE, "utf8"));
@@ -226,9 +242,7 @@ async function readProposals() {
 
 async function saveProposals(proposals) {
   await mkdir(DATA_DIR, { recursive: true });
-  const temp = `${PROPOSALS_FILE}.${randomUUID()}.tmp`;
-  await writeFile(temp, JSON.stringify(proposals, null, 2), "utf8");
-  await rename(temp, PROPOSALS_FILE);
+  await replaceFile(PROPOSALS_FILE, JSON.stringify(proposals, null, 2));
 }
 
 const MAX_PROPOSAL_CHARS = 3_000_000;
@@ -312,9 +326,7 @@ async function fileHash(file) {
 
 async function writeProjectFile(file, contents) {
   await mkdir(path.dirname(file), { recursive: true });
-  const temp = `${file}.${randomUUID()}.tmp`;
-  await writeFile(temp, contents, "utf8");
-  await rename(temp, file);
+  await replaceFile(file, contents);
 }
 
 function approveProposal(id) {
@@ -507,9 +519,7 @@ async function feedbackSummary() {
 
 async function writeSessions(sessions) {
   await mkdir(DATA_DIR, { recursive: true });
-  const temp = `${SESSIONS_FILE}.${randomUUID()}.tmp`;
-  await writeFile(temp, JSON.stringify(sessions, null, 2), "utf8");
-  await rename(temp, SESSIONS_FILE);
+  await replaceFile(SESSIONS_FILE, JSON.stringify(sessions, null, 2));
 }
 
 // Brings in Claude Code / Codex chats kept on this computer (cloud sessions included once the CLI has pulled
@@ -1048,9 +1058,7 @@ async function saveHandoff(project, { route, status, task, plan = "", provider =
       "",
     ].filter(Boolean).join("\n");
     await mkdir(path.dirname(file), { recursive: true });
-    const temp = `${file}.${process.pid}.${randomUUID()}.tmp`;
-    await writeFile(temp, contents, "utf8");
-    await rename(temp, file);
+    await replaceFile(file, contents);
   } catch (error) {
     process.stderr.write(`Could not update the shared project handoff: ${error.message}\n`);
   }
@@ -1772,9 +1780,7 @@ async function rawSettings() {
 async function writeSettings(changes) {
   await mkdir(DATA_DIR, { recursive: true });
   const next = { ...(await rawSettings()), ...changes };
-  const temp = `${SETTINGS_FILE}.${randomUUID()}.tmp`;
-  await writeFile(temp, JSON.stringify(next, null, 2), "utf8");
-  await rename(temp, SETTINGS_FILE);
+  await replaceFile(SETTINGS_FILE, JSON.stringify(next, null, 2));
   cachedModelCatalog = null;
   return next;
 }

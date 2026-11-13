@@ -1,5 +1,10 @@
 # Local Agent Router — Project Status
 
+## Current change (v0.22.2, 2026-11-12)
+
+- **Fix: "Merge listed sessions" failed with `EPERM: operation not permitted, rename '...sessions.json.<uuid>.tmp' -> '...sessions.json'` (owner report).** Cause: Windows refuses to rename over a file while anything has it open (another read of `sessions.json` in this app, antivirus, the search indexer), and every atomic save renamed once with no retry. Now all atomic saves (sessions, settings, proposals, project files, handoff) go through `replaceFile()` in `server.mjs`, which retries `EPERM`/`EACCES`/`EBUSY` up to 10 times with growing waits (~2.75 s total) and removes the temp file if it gives up. Test: `test/replace-file.test.mjs` (target held open for 150 ms). 80/80 pass.
+- Next: merge sessions in the running desktop app; remove any `sessions.json.*.tmp` files the old failures left in `%LOCALAPPDATA%\LocalAgentRouterData`.
+
 ## Current change (v0.22.1, 2026-11-12)
 
 - **Composer run buttons split (owner request).** While a run is active, `#send` hides and `#queue`, `#steer` (blue, `--blue` token), `#stop` show (`public/index.html` `.run-actions`). Enter submits with no submitter, which `sendMessage()` now treats as steer; only the Queue button queues. Stop is its own button calling `/api/runs/<id>/cancel`; the old "submit empty to stop" path is gone. `refreshFollowupButtons()` disables Queue/Steer while the prompt is empty. Phone app unchanged.

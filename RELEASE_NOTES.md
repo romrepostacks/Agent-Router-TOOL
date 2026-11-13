@@ -1,5 +1,9 @@
 # Release notes
 
+## 0.22.2
+
+- **Fix: merging sessions failed with "EPERM: operation not permitted, rename … sessions.json".** Saving now waits and retries when Windows briefly has the file open elsewhere (for example antivirus or another read), instead of failing at once. This applies to sessions, settings, change previews and project files.
+
 ## 0.22.1
 
 - **Separate Queue, Steer and Stop buttons:** while a response runs, the composer shows three buttons instead of one combined "Queue / Stop" button. Steer is blue and is what Enter does; Queue sends after the response; Stop ends it. Queue and Steer stay disabled until you type something.

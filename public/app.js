@@ -360,13 +360,19 @@ function renderApprovals() {
   }));
 }
 
+function refreshFollowupButtons() {
+  const empty = !$("prompt").value.trim();
+  $("queue").disabled = empty;
+  $("steer").disabled = empty;
+}
+
 function refreshRunControls() {
   const busy = Boolean(viewedRun()?.active);
   state.busy = busy;
-  $("steer").hidden = !busy;
-  $("send").disabled = busy ? false : !state.project;
-  $("send").querySelector("span").textContent = busy ? "Queue / Stop" : "Send";
-  $("send").title = busy ? "Stop this session's response" : "Send message";
+  for (const id of ["queue", "steer", "stop"]) $(id).hidden = !busy;
+  $("send").hidden = busy;
+  $("send").disabled = !state.project;
+  refreshFollowupButtons();
   $("new-session").disabled = !state.project;
   $("choose-context").disabled = !state.project;
   $("inspector-live").hidden = !busy;
@@ -1490,14 +1496,10 @@ async function followRun({ sessionId, projectName, title, requestData, attachmen
 async function sendMessage(event) {
   event.preventDefault();
   const running = viewedRun();
-  // Stop goes through the server: closing a stream only detaches this page from the run.
-  if (running?.active && !$("prompt").value.trim()) {
-    await request(`/api/runs/${encodeURIComponent(running.sessionId)}/cancel`, { method: "POST" }).catch(() => {});
-    return;
-  }
   const message = $("prompt").value.trim();
   if (!message || !state.project) return;
-  if (running?.active) return sendFollowup(event.submitter?.id === "steer" ? "steer" : "queue");
+  // While a run is active, Enter (no submitter) steers; only the Queue button queues.
+  if (running?.active) return sendFollowup(event.submitter?.id === "queue" ? "queue" : "steer");
   await submitRequest({
     message,
     projectId: state.project.id,
@@ -1889,6 +1891,12 @@ async function saveSettings() {
 }
 
 $("prompt-form").addEventListener("submit", sendMessage);
+$("prompt").addEventListener("input", refreshFollowupButtons);
+// Stop goes through the server: closing a stream only detaches this page from the run.
+$("stop").addEventListener("click", async () => {
+  const running = viewedRun();
+  if (running?.active) await request(`/api/runs/${encodeURIComponent(running.sessionId)}/cancel`, { method: "POST" }).catch(() => {});
+});
 $("prompt").addEventListener("keydown", (event) => {
   if (event.key === "Enter" && !event.shiftKey) {
     event.preventDefault();
@@ -2322,7 +2330,7 @@ async function sendFollowup(delivery) {
   const originalRun = viewedRun();
   pendingFollowups.set(sessionId, (pendingFollowups.get(sessionId) || 0) + 1);
   const requestData = { message: $("prompt").value.trim(), projectId: state.project.id, mode: $("mode").value, skillIds: [...state.selectedSkills], contextIds: [...state.contextIds], attachments: state.attachments.map((f) => ({ ...f })) };
-  $("prompt").value = ""; state.attachments = []; renderContextControls();
+  $("prompt").value = ""; state.attachments = []; renderContextControls(); refreshFollowupButtons();
   $("context-count").textContent = delivery === "steer" ? "Restarting with your correction?" : "Message queued after this response.";
   try {
     const response = await fetch("/api/chat/stream", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...requestData, sessionId, delivery, attachmentNames: requestData.attachments.map((f) => f.name) }) });

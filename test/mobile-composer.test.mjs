@@ -24,7 +24,20 @@ test('connection code fills both fields and rejects non-Tailscale hosts', () => 
   handler({ target:{ value:JSON.stringify({server:'https://example.com',token:'bad'}) }});
   assert.equal(nodes['server-token'].value,'test-key'); assert.match(nodes['connect-status'].textContent,/Paste/);
 });
-for (const file of ['public/app.js','mobile/www/app.js']) {
+test('public/app.js: Enter steers, Queue button queues, empty submission never stops', async () => {
+  const code = await readFile(new URL('../public/app.js', import.meta.url),'utf8');
+  let delivery, cancelled = 0;
+  const prompt = { value:'follow-up' };
+  const context = { $: () => prompt, state:{project:{id:'alpha'}}, viewedRun:()=>({active:true,sessionId:'test-session'}), sendFollowup:(value)=>{delivery=value}, request:async()=>{cancelled++} };
+  const start=code.indexOf('async function sendMessage(event)');
+  vm.createContext(context); vm.runInContext(code.slice(start,code.indexOf('\nasync function retryLastRequest',start)),context);
+  await context.sendMessage({preventDefault(){},submitter:null});assert.equal(delivery,'steer');
+  await context.sendMessage({preventDefault(){},submitter:{id:'queue'}});assert.equal(delivery,'queue');
+  await context.sendMessage({preventDefault(){},submitter:{id:'steer'}});assert.equal(delivery,'steer');
+  delivery=undefined; prompt.value='';await context.sendMessage({preventDefault(){},submitter:null});
+  assert.equal(delivery,undefined);assert.equal(cancelled,0);
+});
+for (const file of ['mobile/www/app.js']) {
   test(`${file}: drafts queue or steer; empty submission stops`, async () => {
     const code = await readFile(new URL('../' + file, import.meta.url),'utf8');
     let submit, delivery, cancelled = 0;

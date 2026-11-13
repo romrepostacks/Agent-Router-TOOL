@@ -19,6 +19,7 @@
   --accent-border: color-mix(in srgb, var(--green) 45%, var(--line));
   --red: #b54c49;
   --red-light: #fbefee;
+  --blue: #2563eb;
   --shadow: 0 12px 32px #1a17121f;
   font-family: Inter, "Segoe UI", system-ui, sans-serif;
 }
@@ -38,6 +39,7 @@ html[data-theme="dark"] {
   --green-light: color-mix(in srgb, var(--green) 24%, var(--paper));
   --red: #ff938b;
   --red-light: #482829;
+  --blue: #2f6fe4;
   --shadow: 0 12px 32px #00000066;
 }
 
@@ -307,6 +309,15 @@ html[data-theme="dark"] .diff-line.removed { color: #ffaaa4; background: #482829
 .send-button { display: inline-flex; align-items: center; gap: 10px; border: 0; border-radius: 8px; padding: 7px 10px; color: var(--accent-ink); background: var(--green); font-size: 11px; font-weight: 650; }
 .send-button:hover:not(:disabled) { filter: brightness(1.08); }
 .send-button:disabled { cursor: default; opacity: .4; }
+.run-actions [hidden] { display: none; }
+.run-actions { display: flex; align-items: center; gap: 6px; flex: none; }
+.run-button { border: 1px solid var(--line-strong); border-radius: 8px; padding: 7px 11px; color: var(--ink-2); background: var(--surface); font-size: 11px; font-weight: 650; }
+.run-button:hover:not(:disabled) { background: var(--hover-surface); }
+.run-button:disabled { cursor: default; opacity: .4; }
+.steer-button { border-color: var(--blue); color: #ffffff; background: var(--blue); }
+.steer-button:hover:not(:disabled) { background: var(--blue); filter: brightness(1.1); }
+.stop-button { border-color: color-mix(in srgb, var(--red) 45%, var(--line)); color: var(--red); }
+.stop-button:hover:not(:disabled) { background: var(--red-light); }
 .privacy-note { width: min(820px, calc(100% - 48px)); margin: 8px auto 12px; color: var(--muted); font-size: 9px; text-align: center; }
 
 .setup-dialog { width: min(680px, calc(100% - 28px)); max-height: min(90vh, 820px); }

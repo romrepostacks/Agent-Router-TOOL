@@ -131,7 +131,12 @@
           <textarea id="prompt" rows="3" placeholder="Describe a task…" aria-label="Task"></textarea>
           <div class="composer-bottom">
             <span id="workspace-note">Choose a project before asking a question.</span>
-            <button id="steer" type="submit" hidden>Steer</button><button id="send" class="send-button" type="submit" disabled><span>Send</span><span aria-hidden="true">↑</span></button>
+            <div class="run-actions">
+              <button id="queue" type="submit" class="run-button" hidden title="Send after this response finishes">Queue</button>
+              <button id="steer" type="submit" class="run-button steer-button" hidden title="Restart this response with your correction (Enter)">Steer</button>
+              <button id="stop" type="button" class="run-button stop-button" hidden title="Stop this session's response">Stop</button>
+              <button id="send" class="send-button" type="submit" disabled><span>Send</span><span aria-hidden="true">↑</span></button>
+            </div>
           </div>
         </form>
         <div class="privacy-note">PDF text is extracted on this computer. Images are sent only to the Quick questions provider. Text context may be included in cloud prompts; keep credentials and secrets out of context. Saved attachments stay on this computer.</div>

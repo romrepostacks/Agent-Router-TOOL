@@ -1,5 +1,10 @@
 # Local Agent Router — Project Status
 
+## Current change (v0.22.1, 2026-11-12)
+
+- **Composer run buttons split (owner request).** While a run is active, `#send` hides and `#queue`, `#steer` (blue, `--blue` token), `#stop` show (`public/index.html` `.run-actions`). Enter submits with no submitter, which `sendMessage()` now treats as steer; only the Queue button queues. Stop is its own button calling `/api/runs/<id>/cancel`; the old "submit empty to stop" path is gone. `refreshFollowupButtons()` disables Queue/Steer while the prompt is empty. Phone app unchanged.
+- Next: check the three buttons in the running desktop app (light and dark).
+
 ## Current change (v0.22.0, 2026-11-12)
 
 - **Chain prompt trimming (owner report: every local-only chain request failed on Colibri context size).** Cause: each step got the full request, `JSON.stringify(plan)` and `JSON.stringify(results)` of all earlier steps, plus 12 memory entries (each up to 2,000 chars of task + 6,000 of summary), the shared handoff and up to 40,000 chars of project files. Now: `chainStepPrompt()` / `compactHandoff()` in `route-rules.mjs` build each step prompt (own task, one line per step, ~1,500-char handoff per earlier result keeping head and tail; reviews told to inspect current files); `runChain()` sets `compactContext`, which makes `runRoleTask()` use `compactMemory()` (latest 4, 800 chars, no task text) and `runProviderTask()` cap Colibri project context at 12,000 chars; `implementWithRole()` skips the shared handoff for chained steps. Non-chain routes unchanged. Test: `test/chain.test.mjs` (step prompt under 6,000 chars with two 50,000-char results). 79/79 pass.

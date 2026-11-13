@@ -1,5 +1,9 @@
 # Release notes
 
+## 0.22.1
+
+- **Separate Queue, Steer and Stop buttons:** while a response runs, the composer shows three buttons instead of one combined "Queue / Stop" button. Steer is blue and is what Enter does; Queue sends after the response; Stop ends it. Queue and Steer stay disabled until you type something.
+
 ## 0.22.0
 
 - **Task chains fit local models:** chain steps no longer resend the full plan and every earlier result. Each step gets its own task, a one-line list of the other steps and a short handoff from each earlier step (the start and end of its report, including changed files). Reviews are told to check the current files. Full results still appear in the final chain report.

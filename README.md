@@ -205,7 +205,7 @@ CLI tasks may run longer than 15 minutes while producing output. After 15 minute
 
 Desktop discovers active phone requests about every two seconds. In mobile chat, Enter sends and Shift+Enter inserts a newline. The plus menu offers phone attachments, server project text files, and linking an existing server project folder.
 
-While a response runs, submit a nonempty message to queue it. **Steer** stops the current provider run and restarts its task with your correction; it is not live provider input. Submit with an empty composer to stop. Queued work belongs to the running server and does not survive a server restart.
+While a response runs, three buttons replace Send: **Steer** (blue, also what Enter does) stops the current provider run and restarts its task with your correction; it is not live provider input. **Queue** sends your message after the response finishes. **Stop** ends the response. Queued work belongs to the running server and does not survive a server restart.
 
 In server **Settings ? Remote access**, optionally enter a custom device key (24?128 printable characters, no spaces). Choose a unique, hard-to-guess key. **Replace key** on a paired device invalidates its previous key and shows a fresh one to copy. The original key cannot be recovered because only its hash is stored. **Copy connection code** includes address and key: paste it into the phone's Connect screen to fill both without typing the address. Treat that code like a password. Automatic network discovery remains pending.
 

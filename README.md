@@ -61,9 +61,19 @@ Server PC only (the desktop page, `127.0.0.1`): `GET /api/remote` → `{ enabled
 
 ## Phone apps (iPhone and Android)
 
-The phone apps live in `mobile/` (Capacitor 7). **No APK or IPA has been built yet**; build them with the steps below. Both connect to a Server the same way a Client PC does: Tailscale on the phone, then the server address and a device token from **Settings → Remote access → Add device** on the server PC.
+The phone apps live in `mobile/` (Capacitor 7). Both connect to a Server the same way a Client PC does: Tailscale on the phone, then the server address and a device token from **Settings → Remote access → Add device** on the server PC (or paste the connection code copied there).
 
-Known gap before the apps work against a real server: the server answers plain `http://` on its Tailscale address. Android blocks plain HTTP from apps by default and iOS App Transport Security does too, so the app needs an exception for the Tailscale address (or HTTPS) before it can connect.
+What the phone app does (matches the desktop app as of 0.27):
+
+- **Projects and sessions:** open a project, search its sessions, filter to pending reviews, import CLI sessions, start a new session. **⋯** on a session renames it, moves it to another project, or deletes it.
+- **Tasks:** pick the route, shared skills, thread access and the Claude Code permission mode from the chips under the task box. **+** attaches phone files, server project files, or links another server project folder.
+- **While a response runs:** **Steer** (or Enter) restarts it with your correction, **Queue** sends after it, **Stop** ends it. **Output** shows the live agent output, including tokens per call.
+- **Approvals:** Always allow, Allow or Deny on approval cards, in the chat or the Inbox. Review and apply staged changes.
+- **Skills:** each skill in the **Skills** sheet shows its usage line (used in X of Y runs, average tokens). Skills you added in the app have a **×** to delete them.
+- **Settings:** server status, projects folder, skill limit, **Local models only**, routing and models per route, **Rules for every task**, and **Token use by provider**.
+- **Running** and **Inbox** tabs: every running task across projects, finished runs and approval requests. Alerts while the app is open or recently used; push for a fully closed app isn't built.
+
+Build with the scripts below rather than plain `npx cap` commands: `npm run build:android` / `npm run build:ios` (`mobile/scripts/build.mjs`) add the Capacitor runtime, allow plain `http://` to the server's Tailscale address, and set the app version from `mobile/package.json`.
 
 ### Android (APK)
 
@@ -73,12 +83,9 @@ You need a Windows, macOS or Linux PC with **Android Studio** (it includes the J
    ```
    cd mobile
    npm install
-   npx cap add android
-   npx cap sync android
-   cd android
-   gradlew assembleDebug
+   npm run build:android
    ```
-   The APK is `mobile/android/app/build/outputs/apk/debug/app-debug.apk`. A debug APK is signed with Android's debug key and is fine for your own phones.
+   The APK is `mobile/dist/AgentRouter-<version>-debug.apk`. A debug APK is signed with Android's debug key and is fine for your own phones.
 2. Install it on the phone, either:
    - copy the APK to the phone, open it in **Files**, and allow **Install unknown apps** for Files when Android asks; or
    - turn on **Developer options → USB debugging**, connect the phone, and run `adb install -r app-debug.apk`.
@@ -86,16 +93,15 @@ You need a Windows, macOS or Linux PC with **Android Studio** (it includes the J
 
 ### iPhone (IPA)
 
-An IPA can only be built on a **Mac with Xcode 16 or later**. It can't be built on Windows.
+An IPA can only be built on a **Mac with Xcode 16 or later** (and CocoaPods). It can't be built on Windows. Without a Mac, run the **ios-unsigned** GitHub Actions workflow (`.github/workflows/ios-unsigned.yml`): it builds `AgentRouter-<version>-unsigned.ipa`, which AltStore or Sideloadly signs with your Apple ID when it installs it.
 
 1. On the Mac:
    ```
    cd mobile
    npm install
-   npx cap add ios
-   npx cap sync ios
-   npx cap open ios
+   AR_IOS_TEAM=<your Team ID> npm run build:ios
    ```
+   The IPA lands in `mobile/dist/ios/`. `AR_IOS_UNSIGNED=1 npm run build:ios` builds the unsigned IPA instead. To install from Xcode rather than an IPA, run `npm run open:ios` after the build.
 2. In Xcode, select the **App** target → **Signing & Capabilities**, pick your **Team** (sign in with your Apple ID under Xcode → Settings → Accounts), and keep or change the bundle id `com.localagentrouter.mobile`.
 3. Pick how to install:
    - **Your own iPhone, no IPA file:** connect it, choose it as the run destination, and press **Run**. With a free Apple ID the app stops opening after 7 days; run it again from Xcode to renew. On the iPhone, turn on **Settings → Privacy & Security → Developer Mode** and trust your certificate under **Settings → General → VPN & Device Management** the first time.

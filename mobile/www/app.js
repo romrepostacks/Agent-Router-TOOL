@@ -422,8 +422,37 @@ function renderSessions() {
           el("span", { class: "row-title" }, source ? el("span", { class: "tag" }, source) : null, session.title || "New session"),
           el("span", { class: "row-sub" }, running ? "Running" : session.hasPendingReview ? "Changes waiting for review" : `${new Date(session.updatedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })} · ${session.messageCount || 0} messages`)),
         running ? el("i", { class: "live-dot", "aria-hidden": "true" }) : el("span", { class: "chevron", "aria-hidden": "true" }, "›")),
-      el("button", { type: "button", class: "row-action", "aria-label": `Delete ${session.title || "session"}`, onclick: () => deleteSession(session.id) }, "×"));
+      el("button", { type: "button", class: "row-action", "aria-label": `Rename, move or delete ${session.title || "session"}`, onclick: () => openSessionActions(session) }, "⋯"));
   }));
+}
+
+// Rename, move to another project, or delete: the desktop's ✎, ⇥/drag and × in one sheet.
+function openSessionActions(session) {
+  const title = el("input", { type: "text", maxLength: 200, required: true, value: session.title || "", "aria-label": "Session title" });
+  const status = el("p", { class: "hint", "aria-live": "polite" });
+  const rename = el("form", { class: "form-card", onsubmit: async (event) => {
+    event.preventDefault();
+    const value = title.value.trim();
+    if (!value || value === session.title) return closeSheet();
+    try {
+      const saved = await request(`/api/sessions/${encodeURIComponent(session.id)}/rename`, { method: "POST", body: JSON.stringify({ title: value }) });
+      if (state.session?.id === session.id) state.session.title = saved.title;
+      closeSheet();
+      await loadSessions();
+    } catch (error) { status.textContent = error.message; }
+  } }, el("label", { class: "field" }, "Title", title), el("button", { type: "submit", class: "primary-button" }, "Rename"), status);
+  const targets = state.projects.filter((project) => project.scope === "single" && !project.parent && project.id !== session.projectId);
+  const move = targets.length ? [el("div", { class: "group-label" }, "Move to project"), el("div", { class: "list glass" }, ...targets.map((project) =>
+    el("button", { type: "button", class: "row", onclick: async () => {
+      try {
+        await request(`/api/sessions/${encodeURIComponent(session.id)}/project`, { method: "POST", body: JSON.stringify({ projectId: project.id }) });
+        closeSheet();
+        toast(`Moved to ${project.name}.`);
+        await loadSessions();
+      } catch (error) { status.textContent = error.message; }
+    } }, el("span", { class: "row-text" }, el("span", { class: "row-title" }, project.name)), el("span", { class: "chevron", "aria-hidden": "true" }, "›"))))] : [];
+  openSheet("Session", "session", rename, ...move,
+    el("button", { type: "button", class: "text-button danger", onclick: () => { closeSheet(); deleteSession(session.id); } }, "Delete session"));
 }
 
 let searchTimer;
@@ -598,12 +627,10 @@ function approvalCard(sessionId, card) {
 function refreshComposer() {
   const run = viewedRun();
   const busy = Boolean(run?.active);
-  $("steer").hidden = !busy;
-  const send = $("send");
-  send.classList.toggle("stop", busy);
-  send.setAttribute("aria-label", busy ? "Send to queue; empty message stops response" : "Send");
-  send.firstElementChild.textContent = busy ? "■" : "↑";
-  send.disabled = !busy && !state.project;
+  $("run-actions").hidden = !busy;
+  $("send").hidden = busy;
+  $("send").disabled = !state.project;
+  refreshFollowupButtons();
   const allProjects = state.project?.scope === "all";
   if (allProjects && EDIT_ROUTES.has(state.mode)) state.mode = "auto";
   $("mode-chip").textContent = ROUTES.find(([id]) => id === state.mode)?.[1] || "Auto";
@@ -622,7 +649,16 @@ function growPrompt() {
   prompt.style.height = "auto";
   prompt.style.height = `${Math.min(prompt.scrollHeight, 168)}px`;
 }
-$("prompt").addEventListener("input", growPrompt);
+// Queue and Steer need something to send; Stop is always available while a response runs.
+function refreshFollowupButtons() {
+  const empty = !$("prompt").value.trim();
+  $("queue").disabled = $("steer").disabled = empty;
+}
+$("prompt").addEventListener("input", () => { growPrompt(); refreshFollowupButtons(); });
+$("stop").addEventListener("click", () => {
+  const running = viewedRun();
+  if (running?.active) request(`/api/runs/${encodeURIComponent(running.sessionId)}/cancel`, { method: "POST" }).catch(toastError);
+});
 
 $("mode-chip").addEventListener("click", () => {
   const allProjects = state.project?.scope === "all";
@@ -668,6 +704,31 @@ async function loadSkills() {
   const saved = JSON.parse(localStorage.getItem("ar-skills") || "[]");
   state.selectedSkills = (Array.isArray(saved) ? saved : []).filter((id) => available.has(id) && !state.preapproved.includes(id));
 }
+const k = (n) => n >= 1000 ? `${(n / 1000).toFixed(n >= 10_000 ? 0 : 1)}k` : String(n);
+
+// Same line as the desktop's Settings → Shared skills (public/app.js skillUsage): used = the provider opened the file.
+function skillUsage(skill) {
+  const parts = [`${k(skill.size || 0)} chars`];
+  const s = skill.stats;
+  if (s?.runs) parts.push(`used in ${s.runs} of ${s.sent || s.runs} run${(s.sent || s.runs) === 1 ? "" : "s"}: ${s.done} done, ${s.failed} failed, ${s.stopped} stopped`,
+    s.tokenRuns ? `avg ${k(Math.round(s.tokens / s.tokenRuns))} tokens per run` : `avg prompt ${k(Math.round(s.promptChars / s.runs))} chars`);
+  else if (s?.sent) parts.push(`sent ${s.sent} time${s.sent === 1 ? "" : "s"}, never used`);
+  else parts.push("not used yet");
+  if (s?.good || s?.bad) parts.push(`👍 ${s.good || 0} 👎 ${s.bad || 0}`);
+  return parts.join(" · ");
+}
+
+// Only skills added in the app (`own`, under skills/user-created) can be deleted; usage counts are kept.
+async function deleteSkill(skill, rerender) {
+  if (!confirm(`Delete the skill "${skill.name}"? Its file is removed; its usage counts are kept.`)) return;
+  try {
+    await request("/api/skills?id=" + encodeURIComponent(skill.id), { method: "DELETE" });
+    await loadSkills();
+    rerender();
+    refreshComposer();
+  } catch (error) { toastError(error); }
+}
+
 const skillSlots = () => (state.skillsLimit === -1 ? Infinity : Math.max(0, state.skillsLimit - state.preapproved.length));
 
 $("skills-chip").addEventListener("click", () => {
@@ -684,11 +745,13 @@ $("skills-chip").addEventListener("click", () => {
           render();
           refreshComposer();
         } });
-        return el("label", { class: "row" }, el("span", { class: "row-text" }, el("span", { class: "row-title" }, skill.name), el("span", { class: "row-sub" }, always ? "Pre-approved" : skill.description || "")), box);
+        const remove = skill.own ? el("button", { type: "button", class: "row-action", "aria-label": `Delete ${skill.name}`, onclick: (event) => { event.preventDefault(); deleteSkill(skill, render); } }, "×") : null;
+        return el("label", { class: "row" }, el("span", { class: "row-text" }, el("span", { class: "row-title" }, skill.name), el("span", { class: "row-sub" }, always ? "Pre-approved" : skill.description || ""), el("span", { class: "row-sub" }, skillUsage(skill))), box, remove);
       })))));
   };
   openSheet("Shared skills", "skills");
   render();
+  loadSkills().then(() => { if (state.sheet === "skills") render(); }).catch(() => {}); // fresh usage counts
 });
 
 // Attachments: small text files and images, the same limits as the desktop page. PDFs need the desktop app.
@@ -744,13 +807,10 @@ function renderAttachments() {
 $("composer").addEventListener("submit", async (event) => {
   event.preventDefault();
   const running = viewedRun();
-  if (running?.active && !$("prompt").value.trim()) {
-    await request(`/api/runs/${encodeURIComponent(running.sessionId)}/cancel`, { method: "POST" }).catch(toastError);
-    return;
-  }
   const message = $("prompt").value.trim();
-  if (!message || !state.project) return;
-  if (running?.active) return sendFollowup(event.submitter?.id === "steer" ? "steer" : "queue");
+  if (!message || !state.project) return; // an empty message never stops a run; Stop does
+  // Enter (no submitter) steers, like the desktop; only the Queue button queues.
+  if (running?.active) return sendFollowup(event.submitter?.id === "queue" ? "queue" : "steer");
   await submitRequest({ message, projectId: state.project.id, mode: state.mode, skillIds: [...state.selectedSkills], contextIds: [...state.contextIds], attachments: state.attachments.map((file) => ({ ...file })), before: state.session?.messages || [] }).catch(toastError);
 });
 
@@ -1124,6 +1184,9 @@ async function loadSettingsView() {
     state.settings = settings;
     $("projects-root").value = settings.projectsRoot || "";
     $("skills-limit").value = Number.isSafeInteger(settings.skillsLimit) ? settings.skillsLimit : -1;
+    $("local-only").checked = Boolean(settings.localOnly);
+    loadRules();
+    loadTokenUse();
     const lines = [["Local model", status.colibri?.online ? status.colibri.selectedModel || "Online" : "Offline"]];
     for (const [id, name] of [["claude", "Claude Code"], ["codex", "Codex"], ["copilot", "Copilot"]]) lines.push([name, status.commands?.[id]?.signIn || (status.commands?.[id]?.available ? "Installed" : "Not installed")]);
     $("server-status").replaceChildren(...lines.map(([label, value]) => el("div", { class: "row-line" }, el("span", {}, label), el("span", { class: "value" }, value))));
@@ -1157,12 +1220,50 @@ $("save-settings").addEventListener("click", async () => {
   status.textContent = "Saving…";
   try {
     const routing = Object.fromEntries(Object.keys(ROLES).flatMap((role) => [[`${role}Primary`, $(`${role}-primary`)?.value ?? state.settings?.[`${role}Primary`] ?? ""], [`${role}Fallback`, $(`${role}-fallback`)?.value ?? state.settings?.[`${role}Fallback`] ?? ""]]));
-    state.settings = await request("/api/settings", { method: "POST", body: JSON.stringify({ projectsRoot: $("projects-root").value, skillsLimit, ...routing }) });
+    state.settings = await request("/api/settings", { method: "POST", body: JSON.stringify({ projectsRoot: $("projects-root").value, skillsLimit, localOnly: $("local-only").checked, ...routing }) });
     state.skillsLimit = state.settings.skillsLimit;
     status.textContent = "Saved.";
     loadProjects().catch(() => {});
   } catch (error) { status.textContent = error.message; }
 });
+
+// Rules for every task (GET/POST /api/rules): saved only on Save rules, so a half-typed rule never goes out.
+let rulesSent = 4000;
+const rulesCount = () => {
+  const length = $("rules-text").value.length;
+  $("rules-count").textContent = length > rulesSent ? `${length.toLocaleString()} / ${rulesSent.toLocaleString()}: the last ${(length - rulesSent).toLocaleString()} characters are ignored.` : `${length.toLocaleString()} / ${rulesSent.toLocaleString()}`;
+};
+async function loadRules() {
+  try {
+    const rules = await request("/api/rules");
+    rulesSent = rules.sent || rulesSent;
+    $("rules-text").value = rules.text || "";
+    rulesCount();
+  } catch (error) { $("rules-count").textContent = error.message; }
+}
+$("rules-text").addEventListener("input", rulesCount);
+$("save-rules").addEventListener("click", async () => {
+  $("rules-count").textContent = "Saving…";
+  try { await request("/api/rules", { method: "POST", body: JSON.stringify({ text: $("rules-text").value }) }); rulesCount(); toast("Rules saved."); }
+  catch (error) { $("rules-count").textContent = error.message; }
+});
+
+// Token use by provider (GET /api/token-use), the same numbers as the desktop's Settings → Shared skills.
+async function loadTokenUse() {
+  const box = $("token-use");
+  try {
+    const stats = Object.entries(await request("/api/token-use")).sort((a, b) => b[1].total - a[1].total);
+    if (!stats.length) return box.replaceChildren(el("p", { class: "hint" }, "No streamed tasks recorded yet."));
+    box.replaceChildren(...stats.map(([key, s]) => {
+      const parts = [`${s.calls} call${s.calls === 1 ? "" : "s"}`];
+      if (s.measured) {
+        parts.push(`${k(s.total)} tokens (avg ${k(Math.round(s.total / s.measured))})${s.input || s.output ? `: ${k(s.input)} in${s.cached ? ` (${k(s.cached)} cached)` : ""}, ${k(s.output)} out` : ""}`);
+        if (s.measured < s.calls) parts.push(`${s.calls - s.measured} not reported`);
+      } else parts.push("tokens not reported");
+      return el("div", { class: "row-text" }, el("span", { class: "row-title" }, key.split("::").filter(Boolean).join(" · ")), el("span", { class: "row-sub" }, parts.join(" · ")));
+    }));
+  } catch (error) { box.replaceChildren(el("p", { class: "hint" }, error.message)); }
+}
 
 // ---- Start --------------------------------------------------------------------------------------------------
 LocalNotifications?.addListener("localNotificationActionPerformed", ({ notification }) => {
@@ -1184,8 +1285,8 @@ async function sendFollowup(delivery) {
   const originalRun = viewedRun();
   pendingFollowups.set(sessionId, (pendingFollowups.get(sessionId) || 0) + 1);
   const requestData = { requestId: crypto.randomUUID(), message: $("prompt").value.trim(), projectId, mode: state.mode, skillIds: [...state.selectedSkills], contextIds: [...state.contextIds], attachments: state.attachments.map((f) => ({ ...f })) };
-  $("prompt").value = ""; growPrompt(); state.attachments = []; renderAttachments();
-  toast(delivery === "steer" ? "Restarting with your correction?" : "Message queued after this response.");
+  $("prompt").value = ""; growPrompt(); refreshFollowupButtons(); state.attachments = []; renderAttachments();
+  toast(delivery === "steer" ? "Restarting with your correction…" : "Message queued after this response.");
   const response = stream("/api/chat/stream", { method: "POST", body: JSON.stringify({ ...requestData, sessionId, delivery, attachmentNames: requestData.attachments.map((f) => f.name) }) });
   response.catch(() => {});
   try {

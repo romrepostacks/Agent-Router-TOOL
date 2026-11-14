@@ -1,5 +1,14 @@
 # Release notes
 
+## 0.28.0
+
+- **Phone apps (APK and IPA) catch up with the desktop app as of 0.27.** The phone app's version is now the same as the desktop app's again.
+  - **Rename and move sessions:** **⋯** on a session row opens a sheet to rename it, move it to another project, or delete it.
+  - **Queue, Steer and Stop buttons** while a response runs, the same as the desktop. Enter steers. An empty message no longer stops the run; use **Stop**.
+  - **Skills sheet:** each skill shows its usage line (used in X of Y runs, average tokens per run, 👍/👎). Skills you added in the app can be deleted with **×**.
+  - **Settings:** **Local models only**, **Rules for every task** (saved only when you tap **Save rules**) and **Token use by provider**.
+- README → Phone apps now lists what the phone app does and builds with `npm run build:android` / `npm run build:ios`.
+
 ## 0.27.0
 
 - **Cleaner main screen.** The top bar is one slim row: panel buttons, the route menu, the project name, and small ready dots for the local model and AI tools. Hover a dot for the details. The separate status bar is gone.

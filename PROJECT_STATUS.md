@@ -1,5 +1,17 @@
 # Local Agent Router — Project Status
 
+## Current change (v0.28.0, 2026-11-14)
+
+- **Phone app brought up to desktop 0.27 (owner request).** `mobile/package.json` 0.21.0 → 0.28.0 (same as the root again; `build.mjs` writes it into the APK `versionName` and iOS `MARKETING_VERSION`). Only `mobile/www/` changed; no server change, every endpoint used was already open to paired devices (`LOCAL_ONLY_PATHS` unchanged).
+  - **Sessions (0.21):** the row's × is now ⋯ → `openSessionActions()` sheet: rename (`POST /api/sessions/:id/rename`), move to any other single, unmerged project (`POST /api/sessions/:id/project`), delete.
+  - **Composer (0.22.1):** `#run-actions` with `#queue`, `#steer` (accent) and `#stop` replaces the send-button-as-stop. `#send` hides while running; Enter (no submitter) steers, only Queue queues, an empty submit does nothing; `refreshFollowupButtons()` disables Queue/Steer while the prompt is empty. `test/mobile-composer.test.mjs` updated to the desktop's behaviour.
+  - **Skills (0.23–0.25):** the Skills sheet reloads `/api/skills` on open and shows `skillUsage()` (copy of the desktop's); `own` skills get × → `DELETE /api/skills?id=`.
+  - **Settings (0.21, 0.23, 0.25):** Local models only switch (saved with Save settings), Rules for every task (`GET/POST /api/rules`, live `n / 4,000` counter), Token use by provider (`GET /api/token-use`).
+  - Left out: 0.26 AI tools (installs only run on the server PC) and the 0.27 desktop layout (the phone layout is already one panel at a time). Token counts per call already reach the phone through the Output sheet's activity text.
+- README → Phone apps: feature list added; stale "no APK or IPA built" and plain-HTTP gap removed; build steps now use `npm run build:android` / `build:ios` (which apply the cleartext/ATS settings) instead of bare `npx cap`.
+- Not verified: no APK or IPA built for 0.28.0, and the phone UI wasn't opened (no browser preview in this session).
+- Next: `npm run build:android` on the PC and run the ios-unsigned workflow; on a phone, try ⋯ rename/move, Queue/Steer/Stop and Save rules.
+
 ## Current change (v0.27.0, 2026-11-14)
 
 - **Main screen decluttered (owner request).** Only the markup and styles changed, and all element IDs are the same, so existing handlers still work.

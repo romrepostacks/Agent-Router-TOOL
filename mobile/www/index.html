@@ -66,7 +66,13 @@
           <div class="composer-row">
             <button id="attach" type="button" class="round-button" aria-label="Attach files">+</button>
             <textarea enterkeyhint="send" id="prompt" rows="1" placeholder="Ask or describe a task…" aria-label="Task" enterkeyhint="send"></textarea>
-            <button id="steer" type="submit" hidden>Steer</button><button id="send" type="submit" class="round-button send" aria-label="Send"><span aria-hidden="true">↑</span></button>
+            <button id="send" type="submit" class="round-button send" aria-label="Send"><span aria-hidden="true">↑</span></button>
+          </div>
+          <!-- While a response runs (same as the desktop since 0.22.1): Enter or Steer restarts with the correction, Queue sends after it, Stop ends it. -->
+          <div id="run-actions" class="run-actions" hidden>
+            <button id="queue" type="submit" class="chip-button">Queue</button>
+            <button id="steer" type="submit" class="chip-button steer">Steer</button>
+            <button id="stop" type="button" class="chip-button stop">Stop</button>
           </div>
           <div class="composer-chips">
             <button id="mode-chip" type="button" class="chip-button">Auto</button>
@@ -112,9 +118,21 @@
           <p class="hint">−1 means unlimited, 0 sends no skills.</p>
         </div>
         <div class="group-label">Routing &amp; models</div>
+        <div class="card glass">
+          <label class="row-line">Local models only<input id="local-only" type="checkbox" role="switch"></label>
+          <p class="hint">Every step, including Route Planning and task chains, runs on the server's local model, never on a cloud provider.</p>
+        </div>
         <div id="routing" class="card glass"></div>
         <p id="settings-status" class="hint" aria-live="polite"></p>
         <button id="save-settings" type="button" class="primary-button">Save settings</button>
+        <div class="group-label">Rules for every task</div>
+        <div class="card glass form-card">
+          <textarea id="rules-text" rows="6" maxlength="20000" aria-label="Rules for every task" placeholder="Short rules sent with every request, on every route and provider."></textarea>
+          <p id="rules-count" class="hint" aria-live="polite"></p>
+          <button id="save-rules" type="button" class="secondary-button">Save rules</button>
+        </div>
+        <div class="group-label">Token use by provider</div>
+        <div id="token-use" class="card glass"></div>
       </section>
     </main>
 

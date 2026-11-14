@@ -251,6 +251,12 @@ function setPlusMenu(open) {
   $("plus-button").setAttribute("aria-expanded", String(open));
 }
 
+// Thin windows fold the thread pickers into a ⋯ menu (CSS decides when the button shows).
+function setOptionsMenu(open) {
+  $("options-wrap").classList.toggle("open", open);
+  $("options-button").setAttribute("aria-expanded", String(open));
+}
+
 function loadContextIds(projectId) {
   try {
     const value = JSON.parse(localStorage.getItem(`agent-router-context-${projectId}`) || "[]");
@@ -2227,8 +2233,11 @@ for (const button of document.querySelectorAll(".suggestions button")) {
 }
 
 $("plus-button").addEventListener("click", () => setPlusMenu($("plus-menu").hidden));
+$("options-button").addEventListener("click", () => setOptionsMenu(!$("options-wrap").classList.contains("open")));
+$("options-wrap").addEventListener("keydown", (event) => { if (event.key === "Escape" && $("options-wrap").classList.contains("open")) { setOptionsMenu(false); $("options-button").focus(); } });
 document.addEventListener("click", (event) => {
   if (!event.target.closest(".plus-wrap")) setPlusMenu(false);
+  if (!event.target.closest(".options-wrap")) setOptionsMenu(false);
   for (const menu of document.querySelectorAll(".heading-menu[open]")) if (!menu.contains(event.target) || event.target.closest(".heading-menu-list button")) menu.open = false;
   if (!event.target.closest(".route-picker") && !$("route-menu").hidden) setRouteMenu(false);
 });

@@ -8,6 +8,7 @@
   - **Skills sheet:** each skill shows its usage line (used in X of Y runs, average tokens per run, 👍/👎). Skills you added in the app can be deleted with **×**.
   - **Settings:** **Local models only**, **Rules for every task** (saved only when you tap **Save rules**) and **Token use by provider**.
 - README → Phone apps now lists what the phone app does and builds with `npm run build:android` / `npm run build:ios`.
+- **Thin windows no longer overlap.** When the main area is narrow (small window, or both side panels open), **Thread access** and the Claude Code permission picker fold into a **⋯** menu next to **+**, so Queue, Steer and Stop have room. The top bar shows the status as dots (hover for details), hides the project path, and shortens a long route name instead of pushing buttons off. The **+** and route menus no longer stick out past the window.
 
 ## 0.27.0
 

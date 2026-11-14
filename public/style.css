@@ -121,7 +121,8 @@ body.inspector-hidden .inspector-panel { display: none; }
 .sidebar-settings { display: flex; flex: 1; min-width: 0; align-items: center; gap: 9px; border: 0; border-radius: 8px; padding: 8px; color: var(--ink-2); background: transparent; font-size: 13px; text-align: left; }
 .sidebar-settings:hover { background: var(--hover-surface); color: var(--ink); }
 .sidebar-settings span:first-child { width: 18px; color: var(--muted); font-size: 16px; text-align: center; }
-.main-panel { display: flex; min-width: 0; min-height: 0; flex-direction: column; background: var(--paper); }
+/* The main panel is a size container, so thin layouts react to its own width (side panels open or not), not the window's. */
+.main-panel { container: main / inline-size; display: flex; min-width: 0; min-height: 0; flex-direction: column; background: var(--paper); }
 .inspector-panel { display: flex; flex-direction: column; min-width: 0; overflow-y: auto; padding: 19px 15px; background: var(--sidebar); border-left: 1px solid var(--line); }
 .inspector-heading { display: flex; flex: none; align-items: center; justify-content: space-between; margin-bottom: 18px; color: var(--ink); font-size: 13px; font-weight: 700; }
 .inspector-live { border-radius: 20px; padding: 3px 7px; color: var(--green); background: var(--green-light); font-size: 9px; letter-spacing: .08em; }
@@ -136,7 +137,7 @@ body.inspector-hidden .inspector-panel { display: none; }
 .plus-wrap { position: relative; }
 .plus-button { width: 30px; height: 30px; border: 1px solid var(--line); border-radius: 50%; padding: 0; color: var(--ink-2); background: transparent; font-size: 18px; line-height: 1; cursor: pointer; }
 .plus-button:hover, .plus-button[aria-expanded="true"] { border-color: var(--accent-border); color: var(--green); }
-.plus-menu { position: absolute; bottom: calc(100% + 8px); left: -6px; z-index: 20; width: 340px; max-height: min(70vh, 560px); overflow-y: auto; border: 1px solid var(--line); border-radius: 10px; padding: 6px; background: var(--paper); box-shadow: var(--shadow); }
+.plus-menu { position: absolute; bottom: calc(100% + 8px); left: -6px; z-index: 20; width: min(340px, calc(100cqw - 40px)); max-height: min(70vh, 560px); overflow-y: auto; border: 1px solid var(--line); border-radius: 10px; padding: 6px; background: var(--paper); box-shadow: var(--shadow); }
 .plus-item { display: block; width: 100%; border: 0; border-radius: 6px; padding: 7px 9px; color: var(--ink); background: transparent; font-size: 12px; text-align: left; cursor: pointer; }
 .plus-item:hover:not(:disabled) { background: var(--green-light); color: var(--green); }
 .plus-item:disabled { opacity: .5; cursor: default; }
@@ -159,11 +160,12 @@ body.inspector-hidden .inspector-panel { display: none; }
 body.sidebar-hidden .topbar-settings { display: inline-flex; }
 
 /* Route picker (ChatGPT-style): big borderless title button, menu with name, description and check. */
-.route-picker { position: relative; flex: 0 0 auto; }
-.route-button { display: inline-flex; align-items: center; gap: 6px; border: 0; border-radius: 9px; padding: 7px 10px; color: var(--ink); background: transparent; font-size: 16px; font-weight: 650; letter-spacing: -.01em; }
+.route-picker { position: relative; flex: 0 1 auto; min-width: 0; }
+#route-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.route-button { display: inline-flex; max-width: 100%; align-items: center; gap: 6px; border: 0; border-radius: 9px; padding: 7px 10px; color: var(--ink); background: transparent; font-size: 16px; font-weight: 650; letter-spacing: -.01em; }
 .route-button:hover, .route-button[aria-expanded="true"] { background: var(--hover-surface); }
 .route-chevron { color: var(--muted); font-size: 14px; transform: translateY(-2px); }
-.route-menu { position: absolute; top: calc(100% + 6px); left: 0; z-index: 30; width: 330px; max-height: min(70vh, 520px); overflow-y: auto; border: 1px solid var(--line); border-radius: 14px; padding: 6px; background: var(--paper); box-shadow: var(--shadow); }
+.route-menu { position: absolute; top: calc(100% + 6px); left: 0; z-index: 30; width: min(330px, calc(100cqw - 24px)); max-height: min(70vh, 520px); overflow-y: auto; border: 1px solid var(--line); border-radius: 14px; padding: 6px; background: var(--paper); box-shadow: var(--shadow); }
 .route-item { display: grid; grid-template-columns: minmax(0, 1fr) 18px; gap: 1px 8px; width: 100%; border: 0; border-radius: 9px; padding: 8px 10px; color: var(--ink); background: transparent; text-align: left; }
 .route-item:hover:not(:disabled), .route-item:focus-visible { background: var(--hover-surface); outline: none; }
 .route-item:disabled { opacity: .45; cursor: default; }
@@ -214,6 +216,9 @@ body.sidebar-hidden .topbar-settings { display: inline-flex; }
 .skill-form-actions #save-skill { color: var(--accent-ink); border-color: var(--green); background: var(--green); }
 .skill-form-actions span { color: var(--muted); font-size: 10px; }
 .composer-tools { display: flex; min-width: 0; align-items: center; gap: 6px; }
+.options-wrap { position: relative; display: flex; flex: none; align-items: center; }
+.options-button { display: none; }
+.thread-options { display: flex; align-items: center; gap: 6px; }
 .pill-select { max-width: 150px; border: 1px solid transparent; border-radius: 20px; padding: 5px 8px; color: var(--muted); background: transparent; font-size: 11px; cursor: pointer; }
 .pill-select:hover { border-color: var(--line); color: var(--ink); }
 #attachment-files { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; }
@@ -374,9 +379,6 @@ html[data-theme="dark"] .setup-missing { background: none; }
   .sidebar { padding: 15px 9px; }
   .brand { font-size: 12px; }
   .topbar { padding: 8px 10px; }
-  .project-path, #cli-status { display: none; }
-  .messages { padding: 20px 16px; }
-  .composer, .privacy-note { width: calc(100% - 28px); }
   .settings-body { grid-template-columns: 1fr; }
   .settings-tabs { flex-direction: row; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--line); padding: 0 0 8px; }
 }
@@ -390,6 +392,29 @@ html[data-theme="dark"] .setup-missing { background: none; }
   .project-button, .session-button { width: auto; min-width: max-content; }
   .active-run { max-width: 220px; min-width: 0; }
   .main-panel { min-height: 0; }
+}
+
+/* Thin main panel: thread pickers move into the ⋯ menu so they stop crowding Queue / Steer / Stop. */
+@container main (max-width: 620px) {
+  .options-button { display: inline-grid; place-items: center; }
+  .thread-options { position: absolute; bottom: calc(100% + 8px); left: -6px; z-index: 20; display: none; width: 210px; flex-direction: column; align-items: stretch; gap: 4px; border: 1px solid var(--line); border-radius: 10px; padding: 6px; background: var(--paper); box-shadow: var(--shadow); }
+  .options-wrap.open .thread-options { display: flex; }
+  .options-wrap.open .options-button { border-color: var(--accent-border); color: var(--green); }
+  .thread-options .pill-select { max-width: none; width: 100%; border-color: var(--line); border-radius: 7px; padding: 7px 8px; color: var(--ink); font-size: 12px; }
+  .composer, .privacy-note { width: calc(100% - 24px); }
+  .composer-bottom { gap: 8px; }
+  .messages { padding: 20px 14px; }
+  /* Top bar keeps every control; status becomes dots (hover for details) and the path goes. */
+  .project-path { display: none; }
+  .status-row { gap: 8px; }
+  .status-item { gap: 0; font-size: 0; }
+}
+
+@container main (max-width: 520px) {
+  .topbar { gap: 4px; padding: 8px; }
+  .route-button { padding: 6px 8px; font-size: 14px; }
+  .route-picker { max-width: 50%; }
+  .project-name { flex: 0 1 auto; max-width: none; }
 }
 
 /* Provider approval cards (a CLI asked before using a tool) */

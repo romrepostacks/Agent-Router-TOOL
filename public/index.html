@@ -119,18 +119,24 @@
                   <p class="plus-note">PDF text is extracted on this computer. Images go only to the Quick questions provider. Text context may be sent to cloud providers, so keep secrets out of it. Saved attachments stay on this computer.</p>
                 </div>
               </div>
-              <select id="thread-access" class="pill-select" aria-label="Thread access" title="Thread access: limits what any route may do in this thread. It can only narrow a route's own access.">
-                <option value="">Full access</option>
-                <option value="staged">Review edits first</option>
-                <option value="read">Read-only</option>
-                <option value="none">No project access</option>
-              </select>
-              <select id="permission-mode" class="pill-select" aria-label="Claude Code permission mode" title="Claude Code permission mode for this thread, the same choices as Claude desktop. Codex and Copilot follow their own settings.">
-                <option value="default">Ask permissions</option>
-                <option value="acceptEdits">Accept edits</option>
-                <option value="plan">Plan mode</option>
-                <option value="auto">Auto</option>
-              </select>
+              <div id="options-wrap" class="options-wrap">
+                <!-- Only shown in a thin window: the two pickers below fold into this menu instead of crowding the row. -->
+                <button id="options-button" type="button" class="plus-button options-button" aria-haspopup="true" aria-expanded="false" aria-controls="thread-options" title="Thread access and permissions" aria-label="Thread access and permissions">⋯</button>
+                <div id="thread-options" class="thread-options">
+                  <select id="thread-access" class="pill-select" aria-label="Thread access" title="Thread access: limits what any route may do in this thread. It can only narrow a route's own access.">
+                    <option value="">Full access</option>
+                    <option value="staged">Review edits first</option>
+                    <option value="read">Read-only</option>
+                    <option value="none">No project access</option>
+                  </select>
+                  <select id="permission-mode" class="pill-select" aria-label="Claude Code permission mode" title="Claude Code permission mode for this thread, the same choices as Claude desktop. Codex and Copilot follow their own settings.">
+                    <option value="default">Ask permissions</option>
+                    <option value="acceptEdits">Accept edits</option>
+                    <option value="plan">Plan mode</option>
+                    <option value="auto">Auto</option>
+                  </select>
+                </div>
+              </div>
               <span id="context-count" class="context-count"></span>
             </div>
             <div class="run-actions">

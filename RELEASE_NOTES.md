@@ -2,6 +2,8 @@
 
 ## 0.23.0
 
+- **Smaller prompts with many skills:** selected and pre-approved skills are now sent as a one-line-each list with each skill's file path instead of their full text. CLI providers read a skill only when it applies; local and API-key models still get the text, shortened in task chains. With 37 pre-approved skills this cuts well over 100,000 characters from every prompt and every chain step.
+- **rules.md:** short rules in `%LOCALAPPDATA%LocalAgentRouterDataules.md` are sent with every request, whatever the route or provider.
 - **Merged projects are hidden from the Projects list.** A folder merged into another project no longer shows under it. To split folders back out, right-click the project and choose **Unmerge projects…**, then split out one folder or all of them.
 
 ## 0.22.2

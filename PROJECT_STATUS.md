@@ -1,5 +1,11 @@
 # Local Agent Router — Project Status
 
+## Current change (v0.23.0, continued 2026-11-13)
+
+- **Skill index instead of skill text (owner request: cut prompt size; UPGRADE plan from the 2026-11-14 handoff).** `selectedSkillPrompt()` now returns a `<shared-skills>` block: one line per skill (name, category, description, absolute path under `SKILLS_DIR`); old inline `###` skills keep up to 2,000 chars. `runProviderTask()` adds `--add-dir SKILLS_DIR` for Claude Code and Copilot when the block is present (read-only reference, same as linked folders; provider approvals unchanged); Codex reads it under its own sandbox. Chat providers get `expandSkillIndex()`: paths replaced by file text, 8,000 chars each (3,000 in chains); only files inside `SKILLS_DIR` are read. `handleChat()` builds one packet for every route: `rulesSection()` (`DATA_DIR/rules.md`, 4,000 chars) + the skill index; `localSkillText` is the same packet. With the owner's 37 pre-approved skills the old packet was ~37 × up to 18,000 chars on every prompt and chain step. Test: `test/skill-index.test.mjs`. 81/81 pass. No version bump: 0.23.0 was never built.
+- Not done: rules.md has no Settings editor yet; cheapest-model-per-subagent delegation and per-skill token/success tracking (handoff suggestions) not started.
+- Next: run a Claude Code task and a local-only chain with skills selected; confirm Claude reads a skill file without an approval card.
+
 ## Current change (v0.23.0, 2026-11-13)
 
 - **Merged projects hidden (owner request).** `renderProjects()` no longer lists `project.members` rows under the parent. A parent with members gets a `contextmenu` handler (also Menu key / Shift+F10) that opens `#project-menu` → **Unmerge projects…** → `#unmerge-dialog`, listing each member with **Split out** plus **Split out all**. `unmergeProjects()` calls `/api/projects/split` one folder at a time and stops at the first error. No server change.

@@ -474,18 +474,50 @@ async function addSkill({ name, category, instructions, description = "", maxLen
   return { status: 201, body: { ...result, skill: result.skills.find((skill) => skill.id === id) } };
 }
 
-async function selectedSkillPrompt(ids, maxCharacters = 18000) {
+// Selected skills go out as a short index (name, description, file path), not their full text: CLI providers read a
+// skill's file only when it applies, so a long preapproved list no longer costs its full text on every prompt and
+// every chain step. Chat providers can't read files; expandSkillIndex() inlines the text for them, capped.
+const SKILL_INDEX_START = "<shared-skills>";
+const SKILL_INDEX_END = "</shared-skills>";
+const RULES_FILE = path.join(DATA_DIR, "rules.md");
+
+// The user's own rules (%LOCALAPPDATA%\LocalAgentRouterData\rules.md): short, sent with every task on every route.
+async function rulesSection(maxCharacters = 4000) {
+  const text = (await readFile(RULES_FILE, "utf8").catch(() => "")).trim();
+  return text ? `\n\nUser rules (rules.md; apply to every task, never override safety rules):\n${text.slice(0, maxCharacters)}` : "";
+}
+
+async function selectedSkillPrompt(ids) {
   const settings = await readSettings();
   const limit = Number.isSafeInteger(settings.skillsLimit) ? settings.skillsLimit : -1;
   if (limit === 0) return "";
   const requested = [...new Set([...(Array.isArray(settings.preapprovedSkillIds) ? settings.preapprovedSkillIds : []), ...(Array.isArray(ids) ? ids : [])].filter((id) => typeof id === "string"))];
   const selected = new Set(limit === -1 ? requested : requested.slice(0, limit));
   if (!selected.size) return "";
-  const parsed = parseSkills(await readSkillsMarkdown()).filter((skill) => selected.has(skill.id));
-  const skills = await Promise.all(parsed.map(async (skill) => ({ ...skill, instructions: await readSkillInstructions(skill) })));
+  const skills = parseSkills(await readSkillsMarkdown()).filter((skill) => selected.has(skill.id));
   if (!skills.length) return "";
-  return "\n\nSelected shared skills (user-provided guidance; use only when relevant, never override the current request or safety rules, and translate provider-specific tool calls to equivalent available tools):\n" +
-    skills.map((skill) => `<shared-skill category="${skill.category}" name="${skill.name}">\n${skill.instructions.slice(0, maxCharacters)}\n</shared-skill>`).join("\n");
+  const lines = skills.map((skill) => {
+    const file = skill.file && path.resolve(path.dirname(SKILLS_FILE), skill.file);
+    const label = `- ${skill.name} (${skill.category}): ${(skill.description || "").replace(/\s+/g, " ").slice(0, 160)}`;
+    if (file && file.startsWith(SKILLS_DIR + path.sep)) return `${label} — ${file}`;
+    return `${label}\n  ${(skill.instructions || "").replace(/\n/g, "\n  ").slice(0, 2000)}`; // Old inline skills have no file.
+  });
+  return `\n\n${SKILL_INDEX_START}\nShared skills the user selected (guidance only; never override the task or safety rules; adapt provider-specific tool calls to your own tools). Read a skill's file only when it applies to this task:\n${lines.join("\n")}\n${SKILL_INDEX_END}`;
+}
+
+// For chat providers, which can't open files: replace each skill's file path with its text.
+export async function expandSkillIndex(prompt, maxCharacters = 8000, skillsDir = SKILLS_DIR) {
+  const start = prompt.indexOf(SKILL_INDEX_START);
+  const end = prompt.indexOf(SKILL_INDEX_END, start);
+  if (start < 0 || end < 0) return prompt;
+  const lines = await Promise.all(prompt.slice(start, end).split("\n").map(async (line) => {
+    const at = line.lastIndexOf(" — ");
+    const file = at > 0 && path.resolve(line.slice(at + 3).trim());
+    if (!line.startsWith("- ") || !file || !file.startsWith(skillsDir + path.sep)) return line;
+    const text = await readFile(file, "utf8").catch(() => "");
+    return text ? `${line.slice(0, at)}\n<shared-skill>\n${text.slice(0, maxCharacters)}\n</shared-skill>` : line.slice(0, at);
+  }));
+  return prompt.slice(0, start) + lines.join("\n").replace("Read a skill's file only when it applies to this task:", "Use a skill only when it applies to this task:") + prompt.slice(end);
 }
 
 function feedbackCategory(route = "") {
@@ -1189,8 +1221,10 @@ async function runProviderTask(choice, prompt, project, kind, options = {}) {
   const linked = access === "none" ? [] : project?.linked || [];
   if (access !== "none" && project?.moved?.length) prompt += `\n\nFolders merged into this project (files kept, moved): ${project.moved.map((item) => `${item.from} is now ${item.to}`).join("; ")}. Treat references to an old path as pointing to its new one, and update them when you edit those files.`;
   if (linked.length) prompt += `\n\nLinked folders (read-only reference; read them as needed, never edit them or run commands in them):\n${linked.map((item) => `- ${item.name}: ${item.path}`).join("\n")}`;
+  // Skill files are read-only reference, like linked folders: CLI providers get their folder added, chat providers get the text.
+  const skillDirs = prompt.includes(SKILL_INDEX_START) ? ["--add-dir", SKILLS_DIR] : [];
   if (CHAT_PROVIDERS.has(provider)) {
-    let content = prompt;
+    let content = await expandSkillIndex(prompt, options.compactContext ? 3000 : 8000);
     if (project && access !== "none") content = `${await colibriProjectContext(project, prompt, options.compactContext ? 12_000 : undefined)}\n\n${prompt}`;
     if (access === "git") content += `\n\n${gitNote}`;
     if (access === "edit") content += "\n\nTo create or change a file, output its complete new contents exactly like this, once per file, with a path relative to the project root:\n<<<FILE path/to/file.ext\n...full file contents...\n>>>END\nOutside those blocks, briefly explain what you changed.";
@@ -1209,7 +1243,7 @@ async function runProviderTask(choice, prompt, project, kind, options = {}) {
   if (provider === "claude") {
     const instruction = "Use the signed-in Claude Code subscription. Do not use an API key or custom API endpoint.";
     const mode = CLAUDE_MODES.includes(options.permissionMode) ? options.permissionMode : await claudeDefaultMode();
-    const args = ["-p", "--permission-mode", mode, ...(project ? ["--add-dir", project.path] : []), ...linked.flatMap((item) => ["--add-dir", item.path]), ...(model ? ["--model", model] : []), "--append-system-prompt", instruction];
+    const args = ["-p", "--permission-mode", mode, ...(project ? ["--add-dir", project.path] : []), ...linked.flatMap((item) => ["--add-dir", item.path]), ...skillDirs, ...(model ? ["--model", model] : []), "--append-system-prompt", instruction];
     // stream-json reports each tool call as it happens, so the details pane can show what Claude Code is doing.
     return runClaudeStream(command, args, cwd, cleanClaudeEnvironment(), {
       ...options,
@@ -1235,6 +1269,7 @@ async function runProviderTask(choice, prompt, project, kind, options = {}) {
     const args = ["-s", ...(model ? ["--model", model] : [])];
     if (project) args.push("--add-dir", project.path);
     for (const item of linked) args.push("--add-dir", item.path);
+    args.push(...skillDirs);
     return runCli(command, args, cwd, process.env, { ...options, stdin: prompt });
   }
   throw new Error(`Unknown provider ${provider}.`);
@@ -1746,10 +1781,9 @@ async function handleChat(data, options = {}) {
   const project = data.projectId ? await projectFor(data.projectId) : null;
   if (data.projectId && !project) throw new Error("That project folder is no longer available.");
   const contextText = await selectedContextText(data.attachments, data.contextIds, project);
-  const [skillText, localSkillText] = await Promise.all([
-    selectedSkillPrompt(data.skillIds, 18000),
-    selectedSkillPrompt(data.skillIds, 8000),
-  ]);
+  // One packet for every route and provider: the user's rules, then the skill index (chat providers expand it).
+  const skillText = (await rulesSection()) + (await selectedSkillPrompt(data.skillIds));
+  const localSkillText = skillText;
   const history = Array.isArray(data.history)
     ? data.history.filter((item) => ["user", "assistant"].includes(item.role) && typeof item.content === "string").slice(-8)
     : [];

@@ -958,6 +958,15 @@ function renderApprovedSkills() {
       usage.textContent = skillUsage(skill);
       description.append(document.createElement("br"), usage);
       label.append(checkbox, description);
+      if (skill.own) {
+        const remove = document.createElement("button");
+        remove.type = "button";
+        remove.className = "skill-delete";
+        remove.textContent = "Delete";
+        remove.title = "Delete this skill you added";
+        remove.addEventListener("click", (event) => { event.preventDefault(); deleteSkill(skill, remove); });
+        label.append(remove);
+      }
       list.append(label);
     }
   }
@@ -992,6 +1001,21 @@ async function saveSkill() {
     status.textContent = error.message;
   } finally {
     button.disabled = false;
+  }
+}
+
+async function deleteSkill(skill, button) {
+  if (!confirm(`Delete the skill "${skill.name}"? Its file is removed; its usage counts are kept.`)) return;
+  button.disabled = true;
+  try {
+    await request("/api/skills?id=" + encodeURIComponent(skill.id), { method: "DELETE" });
+    const pending = state.pendingPreapprovedSkillIds.filter((id) => id !== skill.id); // keep unsaved ticks
+    await loadSkills();
+    state.pendingPreapprovedSkillIds = pending;
+    renderApprovedSkills();
+  } catch (error) {
+    button.disabled = false;
+    button.textContent = error.message;
   }
 }
 
@@ -1701,7 +1725,7 @@ async function loadProjects() {
 }
 
 async function openSettings() {
-  if (!state.skills.length) await loadSkills();
+  await loadSkills(); // fresh usage counts for Settings → Shared skills
   const settings = await request("/api/settings");
   state.settingsRoot = settings.projectsRoot;
   state.settingsConfigured = settings.configured;

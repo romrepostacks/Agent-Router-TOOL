@@ -434,8 +434,9 @@ async function listSkills() {
   const stats = await skillStats();
   return {
     categories: [...new Set([...SKILL_CATEGORIES, ...skills.map((skill) => skill.category)])],
-    skills: skills.map(({ id, category, name, description, instructions }) => ({
+    skills: skills.map(({ id, category, name, description, instructions, file }) => ({
       id, category, name, size: instructions.length, ...(stats[id] ? { stats: stats[id] } : {}),
+      ...(file && path.resolve(path.dirname(SKILLS_FILE), file).startsWith(USER_SKILLS_DIR + path.sep) ? { own: true } : {}),
       description: description || instructions.split(/\r?\n/).find((line) => line.trim() && !line.startsWith("---") && !line.startsWith("name:"))?.replace(/^>\s*/, "").replace(/^#+\s*/, "").slice(0, 160) || "",
     })),
   };
@@ -473,6 +474,28 @@ async function addSkill({ name, category, instructions, description = "", maxLen
   await writeFile(SKILLS_FILE, lines.join("\n") + "\n", "utf8");
   const result = await listSkills();
   return { status: 201, body: { ...result, skill: result.skills.find((skill) => skill.id === id) } };
+}
+
+// Deletes a skill the user added in the app (its file is under skills/user-created/): the skills.md line, the file,
+// and its always-on approval. Imported and old inline skills aren't deletable here. Usage counts are kept.
+const USER_SKILLS_DIR = path.join(SKILLS_DIR, "user-created");
+async function removeSkill(id) {
+  const skill = parseSkills(await readSkillsMarkdown()).find((entry) => entry.id === id);
+  const file = skill?.file && path.resolve(path.dirname(SKILLS_FILE), skill.file);
+  if (!file || !file.startsWith(USER_SKILLS_DIR + path.sep)) return { status: 404, body: { error: "Only skills you added in the app can be deleted here." } };
+  let category = "";
+  const lines = (await readSkillsMarkdown()).replace(/\r\n/g, "\n").split("\n").filter((line) => {
+    if (/^##\s+/.test(line) && !/^###\s+/.test(line)) category = line.replace(/^##\s+/, "").trim();
+    const linked = line.match(/^\s*-\s+\[([^\]]+)\]\(/);
+    return !(linked && `${skillSlug(category)}/${skillSlug(linked[1])}` === id);
+  });
+  await replaceFile(SKILLS_FILE, lines.join("\n"));
+  await rm(file, { force: true });
+  const previous = await rawSettings();
+  if (Array.isArray(previous.preapprovedSkillIds) && previous.preapprovedSkillIds.includes(id)) {
+    await writeSettings({ preapprovedSkillIds: previous.preapprovedSkillIds.filter((entry) => entry !== id) });
+  }
+  return { status: 200, body: await listSkills() };
 }
 
 // Selected skills go out as a short index (name, description, file path), not their full text: CLI providers read a
@@ -2227,6 +2250,10 @@ async function handleRequest(req, res, fromRemote = false) {
       const data = await bodyJson(req);
       const added = await addSkill({ name: data.name, category: data.category, instructions: data.instructions });
       return json(res, added.status, added.body);
+    }
+    if (req.method === "DELETE" && url.pathname === "/api/skills") {
+      const removed = await removeSkill(url.searchParams.get("id") || "");
+      return json(res, removed.status, removed.body);
     }
     if (req.method === "POST" && url.pathname === "/api/skills/scan") {
       const data = await bodyJson(req);

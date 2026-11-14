@@ -1,5 +1,10 @@
 # Release notes
 
+## 0.24.0
+
+- **Delete skills you added:** under **Settings → Shared skills**, each skill you added in the app's **Shared skills** panel now has a **Delete** button. It removes the skill and its always-on approval; its usage counts are kept. Skills installed from GitHub or imported from other tools have no Delete button.
+- **Fresh skill counts:** opening Settings now reloads each skill's usage line, so counts from tasks you just ran show without restarting the app.
+
 ## 0.23.0
 
 - **Smaller prompts with many skills:** selected and pre-approved skills are now sent as a one-line-each list with each skill's file path instead of their full text. CLI providers read a skill only when it applies; local and API-key models still get the text, shortened in task chains. With 37 pre-approved skills this cuts well over 100,000 characters from every prompt and every chain step.

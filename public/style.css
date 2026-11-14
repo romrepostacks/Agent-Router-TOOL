@@ -260,6 +260,9 @@ body.sidebar-hidden .topbar-settings { display: inline-flex; }
 .approved-skill:hover { background: var(--hover-surface); }
 .skill-usage { color: var(--muted); font-size: 10px; }
 .approved-skill input { flex: 0 0 auto; margin: 2px 0 0; accent-color: var(--green); }
+.approved-skill > span { flex: 1 1 auto; }
+.skill-delete { flex: 0 0 auto; margin-left: auto; padding: 2px 8px; border: 1px solid var(--line, currentColor); border-radius: 6px; background: transparent; color: var(--muted); font-size: 10px; cursor: pointer; }
+.skill-delete:hover, .skill-delete:focus-visible { color: var(--ink); }
 .skill-url-row { display: flex; gap: 6px; }
 .skill-url-row input { flex: 1; min-width: 0; border: 1px solid var(--line); border-radius: 7px; padding: 7px 9px; color: var(--ink); background: var(--surface); font: inherit; font-size: 11px; }
 .skill-scan-result { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--line); border-radius: 9px; background: var(--soft-surface); }

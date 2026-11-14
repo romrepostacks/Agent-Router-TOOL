@@ -1,5 +1,9 @@
 # Release notes
 
+## 0.23.0
+
+- **Merged projects are hidden from the Projects list.** A folder merged into another project no longer shows under it. To split folders back out, right-click the project and choose **Unmerge projects…**, then split out one folder or all of them.
+
 ## 0.22.2
 
 - **Fix: merging sessions failed with "EPERM: operation not permitted, rename … sessions.json".** Saving now waits and retries when Windows briefly has the file open elsewhere (for example antivirus or another read), instead of failing at once. This applies to sessions, settings, change previews and project files.

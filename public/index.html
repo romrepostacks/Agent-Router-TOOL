@@ -183,6 +183,14 @@
         <div class="context-dialog-footer"><span id="new-project-status" aria-live="polite"></span><button type="submit" class="send-button">Create project</button></div>
       </form>
     </dialog>
+    <div id="project-menu" class="project-menu" role="menu" hidden><button type="button" role="menuitem" id="project-menu-unmerge">Unmerge projects…</button></div>
+    <dialog id="unmerge-dialog" class="context-dialog small-dialog" aria-labelledby="unmerge-title">
+      <div class="context-dialog-inner">
+        <div class="context-dialog-header"><div><h2 id="unmerge-title">Unmerge projects</h2><p id="unmerge-where"></p></div><button type="button" id="close-unmerge" class="icon-button" aria-label="Close">×</button></div>
+        <div id="unmerge-list" class="unmerge-list"></div>
+        <div class="context-dialog-footer"><span id="unmerge-status" aria-live="polite"></span><button id="unmerge-all" type="button" class="send-button">Split out all</button></div>
+      </div>
+    </dialog>
     <dialog id="settings-dialog" class="context-dialog settings-dialog">
       <div class="context-dialog-inner">
         <div class="context-dialog-header"><div><h2>Settings</h2><p>Personalize your workspace and provider choices.</p></div><button id="close-settings" type="button" class="icon-button" aria-label="Close">×</button></div>

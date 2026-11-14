@@ -422,6 +422,11 @@ function renderProjects() {
       button.append(badge);
     }
     button.addEventListener("click", () => selectProject(project.id));
+    // Merged folders stay out of the list; right-click (or the Menu key) offers to split them out again.
+    if (project.members?.length) {
+      button.title = `Includes ${project.members.join(", ")}. Right-click to unmerge.`;
+      button.addEventListener("contextmenu", (event) => { event.preventDefault(); openProjectMenu(project, event); });
+    }
     if (project.scope === "single") {
       button.addEventListener("dragover", (event) => {
         if (!event.dataTransfer.types.includes("application/x-agent-router-session")) return;
@@ -441,23 +446,54 @@ function renderProjects() {
       row.append(iconButton("merge-session", "⇲", `Merge ${project.name} into ${state.project.name}`, () => mergeProject(state.project.id, project.id)));
     }
     list.append(row);
-    for (const member of project.members || []) {
-      const memberRow = document.createElement("div");
-      memberRow.className = "session-row project-member";
-      const label = document.createElement("span");
-      label.className = "project-button";
-      label.textContent = `↳ ${member}`;
-      label.title = `Part of ${project.name}: its sessions are here and its files are in ${project.name}'s obsolete folder`;
-      memberRow.append(label, iconButton("delete-session", "⇱", `Split ${member} out of ${project.name}`, () => splitProject(member)));
-      list.append(memberRow);
-    }
   }
   renderInspector();
 }
 
-function blockedByRuns() {
+function openProjectMenu(project, event) {
+  const menu = $("project-menu");
+  const box = event.currentTarget.getBoundingClientRect();
+  // A Menu-key or Shift+F10 contextmenu has no pointer position; open it under the project instead.
+  menu.style.left = `${event.clientX || box.left + 12}px`;
+  menu.style.top = `${event.clientY || box.bottom}px`;
+  state.menuProject = project;
+  menu.hidden = false;
+  $("project-menu-unmerge").focus();
+}
+
+function closeProjectMenu() { $("project-menu").hidden = true; }
+
+function openUnmerge(project) {
+  state.unmergeProject = project;
+  $("unmerge-where").textContent = `Folders merged into ${project.name}. Splitting one out moves its folder back from ${project.name}\\obsolete. Sessions stay in ${project.name}.`;
+  $("unmerge-status").textContent = "";
+  renderUnmerge();
+  $("unmerge-dialog").showModal();
+}
+
+function renderUnmerge() {
+  const project = state.unmergeProject;
+  const rows = (project?.members || []).map((member) => {
+    const row = document.createElement("div");
+    row.className = "unmerge-row";
+    const name = document.createElement("span");
+    name.textContent = member;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "context-button";
+    button.textContent = "Split out";
+    button.setAttribute("aria-label", `Split ${member} out of ${project.name}`);
+    button.addEventListener("click", () => unmergeProjects([member]));
+    row.append(name, button);
+    return row;
+  });
+  $("unmerge-list").replaceChildren(...rows);
+  $("unmerge-all").disabled = rows.length < 2;
+}
+
+function blockedByRuns(statusId = "import-status") {
   if (!activeRuns().length) return false;
-  $("import-status").textContent = "Wait for running sessions to finish, or stop them, before merging or splitting projects.";
+  $(statusId).textContent = "Wait for running sessions to finish, or stop them, before merging or splitting projects.";
   return true;
 }
 
@@ -471,13 +507,24 @@ async function mergeProject(parentId, childId) {
   } catch (error) { $("import-status").textContent = error.message; }
 }
 
-async function splitProject(childId) {
-  if (blockedByRuns()) return;
-  try {
-    await request("/api/projects/split", { method: "POST", body: JSON.stringify({ childId }) });
-    $("import-status").textContent = `${childId} is its own project again and its folder is back in place. Its old sessions stay where they are.`;
-    await reloadProjects(state.project?.id);
-  } catch (error) { $("import-status").textContent = error.message; }
+// Splits one at a time and stops at the first failure, so a folder that can't move back doesn't hide later ones.
+async function unmergeProjects(members) {
+  if (blockedByRuns("unmerge-status")) return;
+  const status = $("unmerge-status");
+  const done = [];
+  for (const childId of members) {
+    status.textContent = `Splitting out ${childId}…`;
+    try { await request("/api/projects/split", { method: "POST", body: JSON.stringify({ childId }) }); done.push(childId); }
+    catch (error) { status.textContent = error.message; break; }
+  }
+  if (!done.length) return;
+  if (done.length === members.length) status.textContent = "";
+  $("import-status").textContent = `${done.join(", ")} ${done.length > 1 ? "are their own projects" : "is its own project"} again, back in ${done.length > 1 ? "their old folders" : "its old folder"}. Old sessions stay where they are.`;
+  const parentId = state.unmergeProject.id;
+  await reloadProjects(state.project?.id);
+  state.unmergeProject = state.projects.find((project) => project.id === parentId);
+  if (state.unmergeProject?.members?.length) renderUnmerge();
+  else $("unmerge-dialog").close();
 }
 
 async function reloadProjects(selectId) {
@@ -1972,6 +2019,13 @@ $("new-project").addEventListener("click", () => {
   $("new-project-dialog").showModal();
 });
 $("close-new-project").addEventListener("click", () => $("new-project-dialog").close());
+$("project-menu-unmerge").addEventListener("click", () => { closeProjectMenu(); if (state.menuProject) openUnmerge(state.menuProject); });
+document.addEventListener("click", (event) => { if (!$("project-menu").contains(event.target)) closeProjectMenu(); });
+document.addEventListener("keydown", (event) => { if (event.key === "Escape") closeProjectMenu(); });
+window.addEventListener("blur", closeProjectMenu);
+$("projects").addEventListener("scroll", closeProjectMenu);
+$("close-unmerge").addEventListener("click", () => $("unmerge-dialog").close());
+$("unmerge-all").addEventListener("click", () => unmergeProjects([...(state.unmergeProject?.members || [])]));
 $("new-project-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   $("new-project-status").textContent = "Creating…";

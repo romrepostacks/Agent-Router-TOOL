@@ -125,7 +125,9 @@ Saved imports are indexed even if their original CLI transcripts are no longer a
 
 ### Merge projects
 
-If several folders are one project at different stages, open the newest one, hover an older one in the Projects list and press **⇲**. The older folder then appears under the open project. Its sessions move there, new imports about it go there too, and providers can read its files but never edit them. The folders on disk stay as they are. Press **⇱** next to a folder to split it back out. Sessions that were already moved stay with the parent project.
+If several folders are one project at different stages, open the newest one, hover an older one in the Projects list and press **⇲**. The older folder then disappears from the Projects list. Its sessions move to the open project, new imports about it go there too, and its folder moves, with every file, into the open project's `obsolete` folder. Nothing is deleted.
+
+To split folders back out, right-click the project and choose **Unmerge projects…**. Press **Split out** next to one folder, or **Split out all**. Each folder moves back to where it was. Sessions that were already moved stay with the parent project.
 
 For example, select **talonforge**, then press **⇲** on **reasense** and **rea-predatorsense-tool**. Press **⟳** to index earlier imports and combine matching topic threads under talonforge.
 

@@ -1,5 +1,10 @@
 # Local Agent Router — Project Status
 
+## Current change (v0.23.0, 2026-11-13)
+
+- **Merged projects hidden (owner request).** `renderProjects()` no longer lists `project.members` rows under the parent. A parent with members gets a `contextmenu` handler (also Menu key / Shift+F10) that opens `#project-menu` → **Unmerge projects…** → `#unmerge-dialog`, listing each member with **Split out** plus **Split out all**. `unmergeProjects()` calls `/api/projects/split` one folder at a time and stops at the first error. No server change.
+- Next: right-click a merged project in the running desktop app and split one, then all.
+
 ## Current change (v0.22.2, 2026-11-12)
 
 - **Fix: "Merge listed sessions" failed with `EPERM: operation not permitted, rename '...sessions.json.<uuid>.tmp' -> '...sessions.json'` (owner report).** Cause: Windows refuses to rename over a file while anything has it open (another read of `sessions.json` in this app, antivirus, the search indexer), and every atomic save renamed once with no retry. Now all atomic saves (sessions, settings, proposals, project files, handoff) go through `replaceFile()` in `server.mjs`, which retries `EPERM`/`EACCES`/`EBUSY` up to 10 times with growing waits (~2.75 s total) and removes the temp file if it gives up. Test: `test/replace-file.test.mjs` (target held open for 150 ms). 80/80 pass.

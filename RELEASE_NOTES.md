@@ -1,5 +1,9 @@
 # Release notes
 
+## 0.28.1
+
+- **Dropdown lists follow dark mode.** The Thread access and permission pickers (and every other dropdown) opened a light list in dark mode. They now use the dark colors.
+
 ## 0.28.0
 
 - **Phone apps (APK and IPA) catch up with the desktop app as of 0.27.** The phone app's version is now the same as the desktop app's again.

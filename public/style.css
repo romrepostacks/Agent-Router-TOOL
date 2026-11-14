@@ -47,6 +47,8 @@ html[data-theme="dark"] {
 body { margin: 0; color: var(--ink); background: var(--canvas); }
 button, textarea, select { font: inherit; }
 input, textarea, select { color: var(--ink); background-color: var(--surface); }
+/* Dropdown lists take their colors from the options; a transparent select (.pill-select) would otherwise open a light list in dark mode. */
+option, optgroup { color: var(--ink); background-color: var(--surface); }
 button { cursor: pointer; }
 :focus-visible { outline: 2px solid var(--green); outline-offset: 1px; }
 .app-shell { position: relative; display: grid; grid-template-columns: var(--left-w, 250px) minmax(320px, 1fr) var(--right-w, 290px); height: 100vh; min-height: 560px; }

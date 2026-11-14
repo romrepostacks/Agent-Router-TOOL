@@ -1,5 +1,9 @@
 # Local Agent Router — Project Status
 
+## Current change (v0.28.1, 2026-11-14)
+
+- **Dark mode dropdown fix (owner report: menus opened light in dark mode).** `.pill-select` (`#thread-access`, `#permission-mode`) has `background: transparent`, so Chromium drew its option list with the default light colors. `style.css` now gives `option, optgroup` the theme's `--ink` / `--surface`, which covers every `<select>` in the app. Not yet checked in the running app.
+
 ## Current change (v0.28.0, 2026-11-14)
 
 - **Thin-window layout fix (owner request: 0.27 buttons overlapped on a thin screen).** `.main-panel` is now a CSS size container (`container: main / inline-size`), so the layout follows the main area's width, not the window's (side panels count).

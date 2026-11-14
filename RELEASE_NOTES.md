@@ -3,7 +3,8 @@
 ## 0.23.0
 
 - **Smaller prompts with many skills:** selected and pre-approved skills are now sent as a one-line-each list with each skill's file path instead of their full text. CLI providers read a skill only when it applies; local and API-key models still get the text, shortened in task chains. With 37 pre-approved skills this cuts well over 100,000 characters from every prompt and every chain step.
-- **rules.md:** short rules in `%LOCALAPPDATA%LocalAgentRouterDataules.md` are sent with every request, whatever the route or provider. Edit them in **Settings → General → Rules for every task**.
+- **rules.md:** short rules in `%LOCALAPPDATA%\LocalAgentRouterData\rules.md` are sent with every request, whatever the route or provider. Edit them in **Settings → General → Rules for every task**.
+- **Skill usage in Settings:** each skill under **Shared skills** now shows its size, how many tasks it went out with, how they ended (done, failed, stopped), the average prompt size of those tasks, and the thumbs up/down given to their answers. Use it to drop skills that cost a lot and don't help. Counts start with this version.
 - **Merged projects are hidden from the Projects list.** A folder merged into another project no longer shows under it. To split folders back out, right-click the project and choose **Unmerge projects…**, then split out one folder or all of them.
 
 ## 0.22.2

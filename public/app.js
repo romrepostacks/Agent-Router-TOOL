@@ -914,6 +914,17 @@ async function loadSkills() {
   renderApprovedSkills();
 }
 
+// "4.2k chars · 12 runs: 10 done, 1 failed, 1 stopped · avg prompt 18k · 👍 3 👎 1"
+function skillUsage(skill) {
+  const k = (n) => n >= 1000 ? `${(n / 1000).toFixed(n >= 10_000 ? 0 : 1)}k` : String(n);
+  const parts = [`${k(skill.size || 0)} chars`];
+  const s = skill.stats;
+  if (s?.runs) parts.push(`${s.runs} run${s.runs === 1 ? "" : "s"}: ${s.done} done, ${s.failed} failed, ${s.stopped} stopped`, `avg prompt ${k(Math.round(s.promptChars / s.runs))} chars`);
+  else parts.push("not used yet");
+  if (s?.good || s?.bad) parts.push(`👍 ${s.good || 0} 👎 ${s.bad || 0}`);
+  return parts.join(" · ");
+}
+
 function renderApprovedSkills() {
   const list = $("approved-skills");
   list.replaceChildren();
@@ -940,6 +951,10 @@ function renderApprovedSkills() {
       });
       const description = document.createElement("span");
       description.textContent = skill.name + (skill.description ? " — " + skill.description : "");
+      const usage = document.createElement("small");
+      usage.className = "skill-usage";
+      usage.textContent = skillUsage(skill);
+      description.append(document.createElement("br"), usage);
       label.append(checkbox, description);
       list.append(label);
     }

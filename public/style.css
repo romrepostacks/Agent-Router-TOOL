@@ -258,6 +258,7 @@ body.sidebar-hidden .topbar-settings { display: inline-flex; }
 .approved-skills h4 { margin: 8px 0 2px; color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .06em; }
 .approved-skill { display: flex; gap: 8px; align-items: flex-start; padding: 5px 7px; border-radius: 7px; color: var(--ink); font-size: 11px; line-height: 1.45; }
 .approved-skill:hover { background: var(--hover-surface); }
+.skill-usage { color: var(--muted); font-size: 10px; }
 .approved-skill input { flex: 0 0 auto; margin: 2px 0 0; accent-color: var(--green); }
 .skill-url-row { display: flex; gap: 6px; }
 .skill-url-row input { flex: 1; min-width: 0; border: 1px solid var(--line); border-radius: 7px; padding: 7px 9px; color: var(--ink); background: var(--surface); font: inherit; font-size: 11px; }

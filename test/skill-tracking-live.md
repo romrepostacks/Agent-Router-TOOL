@@ -57,7 +57,7 @@ Claude Code may show an approval card for reading the skills folder, depending o
   pane for that run into a new test case in `test/skill-stats.test.mjs`.
 - Answer wrong or the code word missing: the provider didn't read the skill. Tracking may still be correct; check
   that `runs` didn't change.
-- A skill counted that the details pane shows no read for: check whether the answer text quoted its path. That is the
-  known gap marked `todo` in `test/skill-stats.test.mjs`.
+- A skill counted that the details pane shows no read for: only tool calls are watched (Claude Code tool inputs,
+  Codex `exec` command lines, Copilot stderr), so find which of those mentioned its path and add it as a test case.
 
 Afterwards, delete both skills in Settings.

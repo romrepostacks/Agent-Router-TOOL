@@ -7,7 +7,7 @@ import test from "node:test";
 
 const root = await mkdtemp(path.join(os.tmpdir(), "router-skill-stats-"));
 Object.assign(process.env, { USERPROFILE: root, HOME: root, LOCALAPPDATA: path.join(root, "local") });
-const { recordSkillUse, skillUseWatcher } = await import("../server.mjs");
+const { recordSkillUse, skillUseWatcher, cliToolText } = await import("../server.mjs");
 
 test("counts sent per skill, and runs, outcomes and prompt size only for used skills", async () => {
   const file = path.join(root, "stats", "skill-use.json");
@@ -46,8 +46,8 @@ test("a skill counts as used only when its file is opened, not when the index is
 });
 
 // Shapes of real provider output for the live check in test/skill-tracking-live.md: a canary skill is opened,
-// a decoy is only listed. runProviderTask() feeds Claude Code tool calls as "▸ <tool> <path>" lines; Codex's
-// `codex exec` echoes the prompt on stderr, then prints each command it runs.
+// a decoy is only listed. runProviderTask() passes the watcher Claude Code tool calls as "<tool> <input JSON>";
+// Codex's `codex exec` echoes the prompt on stderr and prints its answer there too, so only `exec` commands count.
 const dir = "C:\\Users\\me\\AppData\\Local\\LocalAgentRouterData\\skills";
 const liveSkills = () => [
   { id: "general/router-canary", file: `${dir}\\user-created\\general\\router-canary.md` },
@@ -58,27 +58,31 @@ const index = `<shared-skills>\n- Router canary (General): canary check — ${di
 
 test("Claude Code run: Read of the canary counts; Glob/Grep over the skills folder does not", () => {
   const watcher = skillUseWatcher(liveSkills());
-  watcher.see(`\n── Claude Code · opus ──\n`);
-  watcher.see(`▸ Glob ${dir}\\**\\*.md\n`);
-  watcher.see(`▸ Grep canary\n`);
-  watcher.see(`▸ Read ${dir}\\user-created\\general\\router-canary.md\n`);
-  watcher.see("The code word is PINEAPPLE-42.\n");
+  const tool = (name, input) => watcher.see(`${name} ${JSON.stringify(input)}`);
+  tool("Glob", { pattern: "**/*.md", path: dir });
+  tool("Grep", { pattern: "canary", path: dir });
+  tool("Read", { file_path: `${dir}\\user-created\\general\\router-canary.md` });
   assert.deepEqual([...watcher.used], ["general/router-canary"]);
 });
 
-test("Codex run: prompt echo is ignored; the PowerShell read of the canary counts", () => {
+// Codex stderr, as runCli hands it over in chunks (one split mid-command).
+const codexStderr = (answer) => [
+  `OpenAI Codex v0.x (research preview)\n--------\nworkdir: C:\\Users\\me\\Projects\\agent-router\n--------\nuser\nTask:\ncanary check\n${index}`,
+  `thinking\nThe canary skill applies; reading it at ${dir}\\user-created\\general\\router-canary.md.\n`,
+  `exec\n"C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "Get-Content -Raw '${dir}\\user-created\\gen`,
+  `eral\\router-canary.md'" in C:\\Users\\me\\Projects\\agent-router\n succeeded in 210ms:\nsee also ${dir}\\user-created\\general\\router-decoy.md\n`,
+  `codex\n${answer}\n`,
+];
+
+test("Codex run: only exec commands count, not the prompt echo, reasoning, command output or answer", () => {
   const watcher = skillUseWatcher(liveSkills());
-  watcher.see(`OpenAI Codex v0.x (research preview)\n--------\nworkdir: C:\\Users\\me\\Projects\\agent-router\n--------\nuser\nTask:\ncanary check\n${index}`);
-  watcher.see(`thinking\nThe canary skill applies; reading it.\n`);
-  watcher.see(`exec\n"C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "Get-Content -Raw '${dir}\\user-created\\general\\router-canary.md'" in C:\\Users\\me\\Projects\\agent-router\n succeeded in 210ms:\n`);
-  watcher.see("codex\nThe code word is PINEAPPLE-42.\n");
+  const toolText = cliToolText("codex");
+  for (const chunk of codexStderr(`The code word is PINEAPPLE-42. The review skill is at ${dir}\\synced\\review\\SKILL.md.`)) watcher.see(toolText(chunk));
   assert.deepEqual([...watcher.used], ["general/router-canary"]);
 });
 
-// Known gap: answer text goes to the activity feed too (runProviderTask's onDelta/onText), so an answer that quotes
-// a skill's path from the index counts as use without the file being opened.
-test("an answer that only cites a skill's path is not use", { todo: "watch tool lines only, not answer text" }, () => {
+test("Codex: older one-line `[ts] exec <cmd>` format counts too", () => {
   const watcher = skillUseWatcher(liveSkills());
-  watcher.see(`I'd follow the review skill at ${dir}\\synced\\review\\SKILL.md.\n`);
-  assert.deepEqual([...watcher.used], []);
+  watcher.see(cliToolText("codex")(`[2025-01-01T00:00:00] exec bash -lc 'cat ${dir}/synced/review/SKILL.md' in /repo\n`));
+  assert.deepEqual([...watcher.used], ["eng/review"]);
 });

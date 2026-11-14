@@ -527,10 +527,11 @@ export async function recordSkillUse(sentIds, usedIds, outcome, promptChars = 0,
   });
 }
 
-// Watches a run's activity text (tool calls, CLI output) for a sent skill's file being opened. A folder skill
-// (…/SKILL.md) also counts when its references/ or scripts/ are read. The index line itself ("— <path>", which
-// Codex echoes back with the prompt) is ignored. Chat providers get skill text inlined, so they never register use.
-// ponytail: path match on printed activity; misses a CLI that reads a skill without printing its path.
+// Watches a run's tool calls (onActivity's second argument: Claude Code tool inputs, Codex `exec` command lines,
+// Copilot stderr; never answer text) for a sent skill's file being opened. A folder skill (…/SKILL.md) also counts
+// when its references/ or scripts/ are read. An index line ("— <path>") is ignored in case one turns up anyway.
+// Chat providers get skill text inlined, so they never register use.
+// ponytail: path match on printed tool calls; misses a CLI that reads a skill without printing its path.
 export function skillUseWatcher(skills) {
   const norm = (text) => String(text).toLowerCase().replace(/\\+/g, "/");
   const targets = skills.filter((skill) => skill.file).map((skill) => {
@@ -549,6 +550,27 @@ export function skillUseWatcher(skills) {
       tail = window.slice(-600); // a path split across two chunks still matches
       for (const target of targets) if (window.includes(target.match)) used.add(target.id);
     },
+  };
+}
+
+// The tool-call part of a CLI's stderr, for skillUseWatcher. Codex echoes the prompt and prints its reasoning and
+// answer there too, so only the command after an `exec` header counts ("exec\n<cmd> in <cwd>", or older
+// "[ts] exec <cmd> in <cwd>"), not the command's output. Copilot runs with -s, so its answer is on stdout.
+export function cliToolText(provider) {
+  if (provider === "copilot") return (text) => text;
+  if (provider !== "codex") return () => "";
+  let pending = "";
+  let next = false;
+  return (chunk) => {
+    const lines = (pending + chunk).split("\n");
+    pending = lines.pop();
+    const out = [];
+    for (const line of lines) {
+      const exec = /^(?:\[[^\]]*\]\s*)?exec(?:\s+(.*))?$/.exec(line.trim());
+      if (exec) { if (exec[1]) out.push(exec[1]); else next = true; }
+      else if (next && line.trim()) { out.push(line); next = false; }
+    }
+    return out.join("\n");
   };
 }
 
@@ -1318,6 +1340,8 @@ async function runProviderTask(choice, prompt, project, kind, options = {}) {
   // No project (Route Planning, Quick): run in the data folder. The app folder is inside app.asar once packaged,
   // which Windows can't use as a working directory, so every CLI spawn there failed.
   const cwd = project?.path || DATA_DIR;
+  const toolText = cliToolText(provider);
+  if (provider !== "claude") options.onActivity = (text) => activity(text, toolText(text) || undefined);
   if (provider === "claude") {
     const instruction = "Use the signed-in Claude Code subscription. Do not use an API key or custom API endpoint.";
     const mode = CLAUDE_MODES.includes(options.permissionMode) ? options.permissionMode : await claudeDefaultMode();
@@ -1327,7 +1351,7 @@ async function runProviderTask(choice, prompt, project, kind, options = {}) {
       ...options,
       prompt,
       onText: (text) => { onDelta?.(`${text}\n\n`); activity(`${text}\n`); },
-      onTool: (name, input) => activity(`▸ ${name} ${String(input.file_path || input.path || input.pattern || input.command || input.description || "").slice(0, 200)}\n`),
+      onTool: (name, input) => activity(`▸ ${name} ${String(input.file_path || input.path || input.pattern || input.command || input.description || "").slice(0, 200)}\n`, `${name} ${JSON.stringify(input)}`),
       onLine: activity,
       onApproval: async (card, extra) => {
         activity(`? ${card.tool} needs approval\n`);
@@ -2553,7 +2577,8 @@ async function handleRequest(req, res, fromRemote = false) {
           onPrompt: (chars) => { promptChars += chars; },
           onStatus: (status) => emitRun(run, "status", { status }),
           onDelta: (text) => emitRun(run, "delta", { text }),
-          onActivity: (text) => { watchSkills(text); emitRun(run, "activity", { text }); },
+          // Only tool calls (the second argument) count as skill use; answer text quoting a skill's path doesn't.
+          onActivity: (text, toolText) => { if (toolText) watchSkills(toolText); emitRun(run, "activity", { text }); },
           onReset: () => emitRun(run, "reset", {}),
           // A run without a session can't be found to answer a card, so its provider prompts are declined.
           ...(run.sessionId ? { onApproval: (request) => askApproval(run, request) } : {}),

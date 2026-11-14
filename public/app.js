@@ -1698,11 +1698,31 @@ async function openSettings() {
   $("local-only").checked = Boolean(settings.localOnly);
   $("local-models-status").textContent = "";
   loadLocalModels();
+  loadRules();
   applyTheme($("theme-choice").value);
   selectSettingsTab("general");
   renderApprovedSkills();
   if (!$("settings-dialog").open) $("settings-dialog").showModal();
   await loadModelChoices(settings);
+}
+
+// rules.md: sent with every request. Saved on its own button so a half-typed rule never goes out.
+let rulesSent = 4000;
+function refreshRulesCount() {
+  const length = $("rules-text").value.length;
+  $("rules-count").textContent = length > rulesSent
+    ? `${rulesSent.toLocaleString()} of ${length.toLocaleString()} characters are sent; the rest is ignored.`
+    : `${length.toLocaleString()} / ${rulesSent.toLocaleString()} characters`;
+}
+async function loadRules() {
+  $("rules-text").disabled = true;
+  try {
+    const data = await request("/api/rules");
+    rulesSent = data.sent || rulesSent;
+    $("rules-text").value = data.text || "";
+    refreshRulesCount();
+  } catch (error) { $("rules-count").textContent = error.message; }
+  $("rules-text").disabled = false;
 }
 
 // Colibri's installed models (folders next to the loaded one). Load switches the server now; routes switch on use.
@@ -2344,6 +2364,16 @@ async function loadFeedbackInfo() {
   return feedbackInfo;
 }
 $("feedback-details").addEventListener("toggle", () => { if ($("feedback-details").open) loadFeedbackInfo().catch((error) => { $("feedback-preview").textContent = error.message; }); });
+$("rules-text").addEventListener("input", refreshRulesCount);
+$("save-rules").addEventListener("click", async () => {
+  $("save-rules").disabled = true;
+  try {
+    await request("/api/rules", { method: "POST", body: JSON.stringify({ text: $("rules-text").value }) });
+    $("rules-count").textContent = "Saved. New requests use these rules.";
+  } catch (error) { $("rules-count").textContent = error.message; }
+  $("save-rules").disabled = false;
+});
+
 $("submit-feedback").addEventListener("click", async () => {
   const text = $("feedback-text").value.trim();
   if (!text) { $("feedback-status").textContent = "Write what happened first."; return; }

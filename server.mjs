@@ -480,9 +480,12 @@ async function addSkill({ name, category, instructions, description = "", maxLen
 const SKILL_INDEX_START = "<shared-skills>";
 const SKILL_INDEX_END = "</shared-skills>";
 const RULES_FILE = path.join(DATA_DIR, "rules.md");
+const RULES_SENT = 4000;
+const RULES_MAX = 20000;
 
 // The user's own rules (%LOCALAPPDATA%\LocalAgentRouterData\rules.md): short, sent with every task on every route.
-async function rulesSection(maxCharacters = 4000) {
+// Edited in Settings → General (GET/POST /api/rules) or directly in the file.
+async function rulesSection(maxCharacters = RULES_SENT) {
   const text = (await readFile(RULES_FILE, "utf8").catch(() => "")).trim();
   return text ? `\n\nUser rules (rules.md; apply to every task, never override safety rules):\n${text.slice(0, maxCharacters)}` : "";
 }
@@ -2173,6 +2176,16 @@ async function handleRequest(req, res, fromRemote = false) {
       } catch { return json(res, 502, { error: "Couldn't reach the feedback service. Check your internet connection." }); }
     }
     if (req.method === "GET" && url.pathname === "/api/models") return json(res, 200, { models: await availableModelCatalog(url.searchParams.get("refresh") === "1"), checkedAt: modelCatalogCheckedAt.value });
+    if (req.method === "GET" && url.pathname === "/api/rules") {
+      return json(res, 200, { text: await readFile(RULES_FILE, "utf8").catch(() => ""), sent: RULES_SENT, path: RULES_FILE });
+    }
+    if (req.method === "POST" && url.pathname === "/api/rules") {
+      const text = String((await bodyJson(req)).text ?? "");
+      if (text.length > RULES_MAX) return json(res, 400, { error: `Keep rules under ${RULES_MAX.toLocaleString()} characters; only the first ${RULES_SENT.toLocaleString()} are sent.` });
+      await mkdir(DATA_DIR, { recursive: true });
+      await replaceFile(RULES_FILE, text);
+      return json(res, 200, { ok: true });
+    }
     if (req.method === "GET" && url.pathname === "/api/settings") {
       const saved = await readSettings();
       const skillsLimit = Number.isSafeInteger(saved.skillsLimit) ? saved.skillsLimit : -1;

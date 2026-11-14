@@ -1882,6 +1882,7 @@ function selectSettingsTab(name) {
   });
   document.querySelectorAll("[data-settings-page]").forEach((page) => { page.hidden = page.dataset.settingsPage !== name; });
   if (name === "remote") loadRemote();
+  if (name === "tools") loadCliTools();
 }
 
 // Settings → Remote access: GET/POST /api/remote, POST /api/remote/devices (token shown once), DELETE …/devices/<id>.
@@ -2247,11 +2248,10 @@ $("apply-proposal").addEventListener("click", applyProposal);
 loadProjects().then(() => reattachRuns()).then(() => importSessions({ quiet: true })).catch((error) => { $("projects").textContent = error.message; });
 loadSkills().catch((error) => { $("skills-list").textContent = error.message; });
 // ---- First-run setup ----
-const setup = { step: 0, data: null, skipped: new Set(), firstRun: false };
+const setup = { step: 0, data: null, firstRun: false };
 const SETUP_STEPS = [
   { title: "Welcome to Local Agent Router", subtitle: "Let's get you set up. This takes a few minutes." },
   { title: "Where are your projects?", subtitle: "Each folder inside this one shows up as a project." },
-  { title: "Connect your AI tools", subtitle: "Install and sign in to the tools you have subscriptions for. Skip any you don't use." },
   { title: "Local model (optional)", subtitle: "Run a model on this PC for private quick questions. Skip if you don't have one." },
   { title: "API keys (optional)", subtitle: "Use an OpenAI or Anthropic API key instead of, or alongside, the tools above." },
   { title: "Review and finish", subtitle: "Here's which tool will handle each kind of work. You can change any of these later in Settings." },
@@ -2279,13 +2279,6 @@ async function openSetup(firstRun = false) {
   renderSetup();
 }
 
-async function refreshSetup(message = "Checking again…") {
-  $("setup-status").textContent = message;
-  try { setup.data = await request("/api/setup"); $("setup-status").textContent = ""; }
-  catch (error) { $("setup-status").textContent = error.message; }
-  renderSetup();
-}
-
 async function setupPost(url, body) {
   return request(url, { method: "POST", body: JSON.stringify(body) });
 }
@@ -2297,29 +2290,39 @@ function toolStatus(tool) {
   return ["Installed", "ready"];
 }
 
+// Settings → AI tools: install or sign in to the command-line tools. The installer offers the same installs.
 async function openSetupTerminal(tool, action) {
   try {
     const result = await setupPost("/api/setup/terminal", { tool, action });
-    $("setup-status").textContent = `A setup window opened. ${result.hint || "Follow it, then press Check again."}`;
-  } catch (error) { $("setup-status").textContent = error.message; }
+    $("cli-tools-status").textContent = `A setup window opened. ${result.hint || "Follow it, then press Check again."}`;
+  } catch (error) { $("cli-tools-status").textContent = error.message; }
 }
 
-function setupToolCard(tool, isNode = false) {
+function cliToolCard(tool, nodeInstalled, isNode = false) {
   const [label, tone] = isNode ? (tool.installed ? ["Installed", "ready"] : ["Not installed", "missing"]) : toolStatus(tool);
-  const skipped = setup.skipped.has(tool.id || "node");
   const id = tool.id || "node";
-  return el("div", { class: `setup-card${skipped ? " skipped" : ""}` },
-    el("div", { class: "setup-card-head" }, el("strong", {}, tool.name), el("span", { class: `setup-pill ${skipped ? "" : tone}` }, skipped ? "Skipped" : label)),
+  return el("div", { class: "setup-card" },
+    el("div", { class: "setup-card-head" }, el("strong", {}, tool.name), el("span", { class: `setup-pill ${tone}` }, label)),
     el("p", {}, tool.why),
-    skipped ? null : el("div", { class: "setup-card-actions" },
+    el("div", { class: "setup-card-actions" },
       !tool.installed ? el("button", { type: "button", class: "send-button", onclick: () => openSetupTerminal(id, "install") }, "Install") : null,
       !isNode && tool.installed && tool.signIn !== "signed in" ? el("button", { type: "button", class: "send-button", onclick: () => openSetupTerminal(id, "login") }, "Sign in") : null,
       el("a", { href: tool.guide, target: "_blank", rel: "noopener", class: "context-button" }, "Setup guide"),
-      !tool.installed && tool.needsNode && !setup.data.node.installed ? el("span", { class: "setup-note" }, "Install Node.js first.") : null),
-    el("button", { type: "button", class: "setup-skip", onclick: () => { skipped ? setup.skipped.delete(id) : setup.skipped.add(id); renderSetup(); } },
-      skipped ? "Undo skip" : tool.installed ? "Skip, I'll leave this as is" : "Skip, I don't use this"),
-    tool.install && !tool.installed && !skipped ? el("code", { class: "setup-command" }, tool.install) : null);
+      !tool.installed && tool.needsNode && !nodeInstalled ? el("span", { class: "setup-note" }, "Install Node.js first.") : null),
+    tool.install && !tool.installed ? el("code", { class: "setup-command" }, tool.install) : null);
 }
+
+async function loadCliTools(message = "Checking this PC…") {
+  const list = $("cli-tools");
+  $("cli-tools-status").textContent = message;
+  try {
+    const data = await request("/api/setup");
+    const needNode = !data.node.installed && data.tools.some((tool) => tool.needsNode && !tool.installed);
+    list.replaceChildren(...(needNode ? [cliToolCard(data.node, false, true)] : []), ...data.tools.map((tool) => cliToolCard(tool, data.node.installed)));
+    $("cli-tools-status").textContent = "";
+  } catch (error) { $("cli-tools-status").textContent = error.message; }
+}
+$("cli-tools-refresh").addEventListener("click", () => loadCliTools("Checking again…"));
 
 function renderSetup() {
   const step = SETUP_STEPS[setup.step];
@@ -2336,9 +2339,9 @@ function renderSetup() {
   if (setup.step === 0) {
     body.append(
       el("p", {}, "Local Agent Router sends each request to the AI tool that's best at it: planning, coding, reviews, security audits, design, GitHub and quick questions."),
-      el("p", {}, "You'll choose your projects folder, then connect whichever AI tools you already pay for. Every step can be skipped and changed later in Settings."),
+      el("p", {}, "You'll choose your projects folder, then optionally connect a local model or API keys. Every step can be skipped and changed later in Settings."),
       el("ul", { class: "setup-list" },
-        el("li", {}, "Command-line tools: Claude Code, Codex, GitHub Copilot"),
+        el("li", {}, "Command-line tools (Claude Code, Codex, GitHub Copilot): offered by the installer, and in Settings → AI tools"),
         el("li", {}, "A local model app such as Ollama or LM Studio (optional)"),
         el("li", {}, "OpenAI or Anthropic API keys (optional)")));
   } else if (setup.step === 1) {
@@ -2347,11 +2350,6 @@ function renderSetup() {
       el("label", { class: "setup-check" }, el("input", { id: "setup-create", type: "checkbox", checked: true }), " Create this folder if it doesn't exist"),
       el("p", { class: "settings-help" }, "AI tools only see the project you pick, and coding changes wait for your review before they touch your files."));
   } else if (setup.step === 2) {
-    const needNode = !data.node.installed && data.tools.some((tool) => tool.needsNode && !tool.installed);
-    body.append(el("div", { class: "setup-toolbar" }, el("button", { type: "button", class: "context-button", onclick: () => refreshSetup() }, "Check again"), el("span", { class: "settings-help" }, "Install opens a PowerShell window that runs the command shown. Sign in opens the tool so you can log in.")));
-    if (needNode) body.append(setupToolCard(data.node, true));
-    for (const tool of data.tools) body.append(setupToolCard(tool));
-  } else if (setup.step === 3) {
     const local = data.local;
     body.append(
       el("div", { class: "setup-toolbar" }, ...local.presets.map((preset) => el("button", { type: "button", class: "context-button", onclick: () => { $("setup-local-url").value = preset.url; } }, preset.name))),
@@ -2367,7 +2365,7 @@ function renderSetup() {
         try { setup.data = await setupPost("/api/setup/local", { baseUrl: local.baseUrl, model: event.target.value }); $("setup-status").textContent = "Saved."; } catch (error) { $("setup-status").textContent = error.message; }
       } }, el("option", { value: "" }, "First available model"), ...local.models.map((model) => el("option", { value: model, selected: model === local.model }, model)))) : null,
       el("p", { class: "settings-help" }, "Don't have one? Ollama is the easiest: ", el("a", { href: "https://ollama.com/download", target: "_blank", rel: "noopener" }, "download Ollama"), ", run ", el("code", {}, "ollama pull llama3.2"), ", then press Ollama and Connect."));
-  } else if (setup.step === 4) {
+  } else if (setup.step === 3) {
     if (!data.canStoreKeys) body.append(el("p", { class: "settings-help" }, "API keys can only be saved in the installed desktop app."));
     for (const [id, name, hint] of [["openai", "OpenAI API key", "https://platform.openai.com/api-keys"], ["anthropic", "Anthropic API key", "https://console.anthropic.com/settings/keys"]]) {
       body.append(el("label", { class: "settings-field" }, `${name} ${data.apiKeys[id] ? "(saved)" : ""}`, el("input", { id: `setup-key-${id}`, type: "password", autocomplete: "off", placeholder: data.apiKeys[id] ? "Saved. Paste a new key to replace it." : "Paste your key" })),
@@ -2383,7 +2381,7 @@ function renderSetup() {
     });
     const none = !Object.values(data.assignment).some(Boolean);
     body.append(
-      none ? el("p", { class: "setup-warning" }, "No AI tool is set up yet. Go back and install at least one, or finish now and run setup again later from Settings.") : null,
+      none ? el("p", { class: "setup-warning" }, "No AI tool is set up yet. Finish now, then install one in Settings → AI tools.") : null,
       el("table", { class: "setup-table" }, el("tbody", {}, rows)),
       el("p", { class: "settings-help" }, "If a tool stops working or isn't installed, the app automatically uses the next one that is."));
   }
@@ -2394,7 +2392,7 @@ async function setupNext() {
   button.disabled = true;
   try {
     if (setup.step === 1) setup.createFolder = $("setup-create").checked;
-    if (setup.step === 4) {
+    if (setup.step === 3) {
       const keys = Object.fromEntries(["openai", "anthropic"].map((id) => [id, $(`setup-key-${id}`).value.trim()]).filter(([, value]) => value));
       if (Object.keys(keys).length) setup.data = await setupPost("/api/setup/keys", keys);
       else setup.data = await request("/api/setup");
@@ -2467,7 +2465,7 @@ request("/api/version").then(({ version, role, client, remote }) => {
   const label = client || `${version}${role ? ` ${role}` : ""}`;
   $("app-version").textContent = `v${label}`;
   $("app-version").title = client ? `This Client is ${client}; the server is ${version} ${role || ""}`.trim() : "";
-  if (remote) document.querySelector('[data-settings-tab="remote"]')?.remove();
+  if (remote) for (const tab of ["remote", "tools"]) document.querySelector(`[data-settings-tab="${tab}"]`)?.remove(); // both run on the server PC only
 }).catch(() => {});
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { if (state.theme === "system") applyTheme("system"); });
 setInterval(refreshStatus, 30_000);

@@ -15,6 +15,8 @@ module.exports = {
     "!**/*.exe",
     "!*.cmd",
   ],
+  // Run by the installer's AI tools page (build/installer.nsh).
+  extraResources: [{ from: "build/install-clis.ps1", to: "install-clis.ps1" }],
   win: {
     target: [{ target: "nsis", arch: ["x64"] }],
     icon: "assets/icon.ico",

@@ -1,5 +1,12 @@
 # Local Agent Router — Project Status
 
+## Current change (v0.26.0, 2026-11-14)
+
+- **CLI installs moved out of first-run setup (owner request).** The setup guide's "Connect your AI tools" step is gone (now 5 steps: welcome, projects folder, local model, API keys, review). New **Settings → AI tools** tab (`data-settings-tab="tools"`, `loadCliTools()` / `cliToolCard()` in `public/app.js`) shows the same Install / Sign in / Setup guide cards from `GET /api/setup`, with **Check again**; hidden on remote Clients like Remote access, since `/api/setup/terminal` is local-only. Skip buttons removed.
+- **Installer AI tools page.** `build/installer.nsh` adds a page after Server/Client (skipped for Client) with Claude Code, Codex and Copilot checkboxes, all unticked. `customInstall` runs `resources\install-clis.ps1 -Tools <list>` with `ExecWait` (visible PowerShell window) for a Server; the script mirrors the `SETUP_TOOLS` commands, skips installed tools, installs Node.js via winget when Codex/Copilot need npm, refreshes PATH between steps, and on failure waits for Enter and points to Settings → AI tools. `/TOOLS=` preselects / drives silent installs; `RouterCleanTools` keeps only known names. Shipped via `extraResources` in `electron-builder.config.cjs`. Local model and API keys stay in the setup guide.
+- Not verified: installer not built; the NSIS page, `WordFind` use and the script haven't run. Settings tab not opened in the running app.
+- Next: build 0.26.0, install as Server with Codex ticked on a PC without Node.js, then check Settings → AI tools.
+
 ## Current change (v0.25.0, 2026-11-14)
 
 - **Skill use tracking: resolved (owner confirmed).** Both `test/skill-tracking-live.md` checks returned PINEAPPLE-42; tracking counts tool-call reads only (0.23.0–0.24.0 entries below).

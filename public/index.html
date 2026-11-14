@@ -197,6 +197,7 @@
         <div class="settings-body">
         <nav class="settings-tabs" role="tablist" aria-orientation="vertical" aria-label="Settings sections">
           <button type="button" role="tab" class="settings-tab active" data-settings-tab="general"><span aria-hidden="true">⌂</span>General</button>
+          <button type="button" role="tab" class="settings-tab" data-settings-tab="tools"><span aria-hidden="true">⌘</span>AI tools</button>
           <button type="button" role="tab" class="settings-tab" data-settings-tab="appearance"><span aria-hidden="true">◐</span>Appearance</button>
           <button type="button" role="tab" class="settings-tab" data-settings-tab="routing"><span aria-hidden="true">⇄</span>Routing &amp; models</button>
           <button type="button" role="tab" class="settings-tab" data-settings-tab="sessions"><span aria-hidden="true">☰</span>Sessions</button>
@@ -205,6 +206,12 @@
           <button type="button" role="tab" class="settings-tab" data-settings-tab="remote"><span aria-hidden="true">⇆</span>Remote access</button>
         </nav>
         <div class="settings-scroll">
+          <section class="settings-section settings-page" data-settings-page="tools" hidden>
+            <h3>Command-line AI tools</h3>
+            <p class="settings-help">Install and sign in to the tools you have subscriptions for. Install opens a PowerShell window that runs the command shown; Sign in opens the tool so you can log in. The installer can also install these for you.</p>
+            <div class="model-catalog-tools"><button id="cli-tools-refresh" type="button" class="context-button">Check again</button><span id="cli-tools-status" class="settings-help" aria-live="polite"></span></div>
+            <div id="cli-tools" class="cli-tools"></div>
+          </section>
           <section class="settings-section settings-page" data-settings-page="appearance" hidden>
             <h3>Theme</h3>
             <label class="settings-field">Theme<select id="theme-choice"><option value="system">Follow Windows</option><option value="light">Light</option><option value="dark">Dark</option></select></label>
@@ -222,7 +229,7 @@
           <section class="settings-section settings-page" data-settings-page="general">
             <h3>Workspace</h3>
             <label class="settings-field">Projects folder<input id="projects-root" type="text" placeholder="C:\\Users\\you\\Projects"></label>
-            <p class="settings-help">Install or sign in to AI tools, connect a local model, or add API keys.</p>
+            <p class="settings-help">Connect a local model or add API keys. Command-line tools are under AI tools.</p>
             <button id="run-setup" type="button" class="context-button">Run setup again</button>
           </section>
           <section class="settings-section settings-page" data-settings-page="general">

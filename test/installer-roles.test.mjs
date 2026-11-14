@@ -22,7 +22,7 @@ test("the installer keeps finding earlier installs and updates them in place", (
 
 test("Server or Client is asked first, before the folder page", () => {
   // electron-builder inserts customWelcomePage ahead of the install-mode and MUI_PAGE_DIRECTORY pages.
-  assert.match(nsh, /!macro customWelcomePage\s+Page custom RouterRolePage RouterRoleLeave\s+!macroend/);
+  assert.match(nsh, /!macro customWelcomePage\s+Page custom RouterRolePage RouterRoleLeave\s+Page custom RouterToolsPage RouterToolsLeave\s+!macroend/);
   assert.match(nsh, /NSD_CreateRadioButton[^\n]+&Server/);
   assert.match(nsh, /NSD_CreateRadioButton[^\n]+&Client/);
   assert.match(nsh, /\$\{GetOptions\} \$0 "\/ROLE=" \$1/);
@@ -42,6 +42,21 @@ test("the chosen role is saved for the app and shown in the version", () => {
   assert.match(desktop, /role === "client" \? "client" : "server"/, "anything but client starts as server");
   assert.match(desktop, /"X-Router-Client"\] = `\$\{app\.getVersion\(\)\} client`/);
   assert.match(version, /^\d+\.\d+\.\d+$/);
+});
+
+test("a Server install can install the AI tools, only known names reach PowerShell", async () => {
+  const page = nsh.slice(nsh.indexOf("Function RouterToolsPage"), nsh.indexOf("FunctionEnd", nsh.indexOf("Function RouterToolsPage")));
+  assert.match(page, /\$\{If\} \$RouterRole == "client"\s+Abort/, "Clients skip the page");
+  for (const name of ["Claude Code", "Codex", "GitHub Copilot"]) assert.match(page, new RegExp(`NSD_CreateCheckbox[^\\n]+${name}`));
+  assert.match(nsh, /\$\{GetOptions\} \$0 "\/TOOLS=" \$1[\s\S]*Call RouterCleanTools/);
+  assert.match(nsh, /\$\{If\} \$RouterRole == "server"\s+\$\{AndIf\} \$RouterTools != ""[\s\S]*install-clis\.ps1" -Tools "\$RouterTools"/);
+  assert.deepEqual(config.extraResources, [{ from: "build/install-clis.ps1", to: "install-clis.ps1" }]);
+  // The script's install commands match the Settings → AI tools ones (SETUP_TOOLS in server.mjs).
+  const script = await readFile(new URL("../build/install-clis.ps1", import.meta.url), "utf8");
+  const server = await readFile(new URL("../server.mjs", import.meta.url), "utf8");
+  for (const pkg of ["@openai/codex", "@github/copilot", "OpenJS.NodeJS.LTS", "https://claude.ai/install.ps1"]) {
+    assert.ok(script.includes(pkg) && server.includes(pkg), pkg);
+  }
 });
 
 test("the phone apps aren't packed into the Windows app", () => {

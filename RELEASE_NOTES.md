@@ -1,5 +1,10 @@
 # Release notes
 
+## 0.26.0
+
+- **AI tools in the installer:** a Server install now has an optional **AI tools** page. Tick Claude Code, Codex and/or GitHub Copilot and setup installs them after the app, in a PowerShell window. Node.js is installed first if Codex or Copilot need it, and tools already installed are skipped. Silent installs take `/TOOLS=claude,codex,copilot`.
+- **Settings → AI tools:** installing and signing in to Claude Code, Codex and Copilot moved out of the first-run setup guide into its own Settings tab. The setup guide keeps the projects folder, local model and API key steps.
+
 ## 0.25.0
 
 - **Real token counts:** every provider call in a task now records the tokens the provider itself reports: Claude Code and the Anthropic API (input, cached, output), OpenAI and local models that report usage, and Codex (total only). Copilot doesn't report tokens; its calls are counted without them.

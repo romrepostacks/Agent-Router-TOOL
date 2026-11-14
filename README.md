@@ -7,14 +7,14 @@ A Windows desktop app that sends each request to the AI tool best suited for it:
 
 ## Install (for anyone, starting from nothing)
 
-1. Run `LocalAgentRouter-Setup-<version>.exe` (in `release/` after a build). Windows may show a SmartScreen warning until the installer is code-signed: choose **More info → Run anyway**. The setup wizard first asks **Server or Client** (see [Server and Client](#server-and-client) below; pick **Server** if this is your only PC), then whether to install for you only or for everyone on the PC, then lets you pick the install folder. Updating keeps the earlier choice selected. Windows **Settings → Apps** shows the version with the choice, for example `0.18.0 server`. If Local Agent Router is already installed, setup says so and updates it in place; installs from 0.15.0 and earlier (the old one-click installer) are removed after the new version is in. Your settings, sessions and skills in `%LOCALAPPDATA%LocalAgentRouterData` are always kept. Setup adds Start-menu and desktop shortcuts and can open the app when it finishes. Uninstall from **Settings → Apps**.
+1. Run `LocalAgentRouter-Setup-<version>.exe` (in `release/` after a build). Windows may show a SmartScreen warning until the installer is code-signed: choose **More info → Run anyway**. The setup wizard first asks **Server or Client** (see [Server and Client](#server-and-client) below; pick **Server** if this is your only PC). A Server then gets an optional **AI tools** page: tick Claude Code, Codex and/or GitHub Copilot and setup installs them after the app, in a PowerShell window (Node.js is installed first if Codex or Copilot need it; tools already installed are skipped). Next it asks whether to install for you only or for everyone on the PC, then lets you pick the install folder. Updating keeps the earlier choice selected. Windows **Settings → Apps** shows the version with the choice, for example `0.18.0 server`. If Local Agent Router is already installed, setup says so and updates it in place; installs from 0.15.0 and earlier (the old one-click installer) are removed after the new version is in. Your settings, sessions and skills in `%LOCALAPPDATA%LocalAgentRouterData` are always kept. Setup adds Start-menu and desktop shortcuts and can open the app when it finishes. Uninstall from **Settings → Apps**.
 2. A setup guide walks through:
    - **Projects folder** – created for you if it doesn't exist.
-   - **AI tools** – for Claude Code, Codex and Copilot it shows whether each is installed and signed in. **Install** opens a PowerShell window running the official install command (Node.js is offered first if Codex or Copilot need it); **Sign in** opens the tool so you can log in; **Skip** if you already have it set up or don't use it. **Check again** re-detects without restarting.
    - **Local model (optional)** – one-click addresses for Ollama, LM Studio and Colibri, a Connect test, and a model picker.
    - **API keys (optional)** – OpenAI and Anthropic keys, encrypted by Windows and stored only on that PC.
    - **Review** – shows which tool will handle each route, picked from what is actually set up.
 3. Run setup again any time from **Settings → General → Run setup again**.
+4. **Settings → AI tools** shows whether Claude Code, Codex and Copilot are installed and signed in. **Install** opens a PowerShell window running the official install command (Node.js is offered first if Codex or Copilot need it); **Sign in** opens the tool so you can log in. **Check again** re-detects without restarting.
 
 If a route's tool is missing or not set up, the app automatically uses the next available tool for that route.
 
@@ -33,7 +33,7 @@ Each device has its own token. Remove a device on the server to cut it off at on
 
 A Client or phone with a token can run tasks on the server with the server's provider settings, so treat a token like a password and remove devices you no longer use.
 
-Silent installs: `LocalAgentRouter-Setup-<version>.exe /S /ROLE=client` (or `/ROLE=server`).
+Silent installs: `LocalAgentRouter-Setup-<version>.exe /S /ROLE=client` (or `/ROLE=server`). Add `/TOOLS=claude,codex,copilot` (any of them) to a Server install to install those AI tools too; without a silent install it preselects them on the AI tools page.
 
 ### Remote API (for the phone apps)
 

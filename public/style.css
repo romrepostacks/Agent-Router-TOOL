@@ -337,7 +337,8 @@ html[data-theme="dark"] .diff-line.removed { color: #ffaaa4; background: #482829
 .setup-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .setup-check { display: flex; align-items: center; gap: 6px; font-size: 12px; }
 .setup-card { display: grid; gap: 8px; border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; background: var(--surface); }
-.setup-card.skipped { opacity: .6; }
+.cli-tools { display: grid; gap: 10px; font-size: 13px; line-height: 1.55; }
+.cli-tools p { margin: 0; }
 .setup-card p { color: var(--muted); font-size: 12px; }
 .setup-card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .setup-card-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
@@ -346,7 +347,6 @@ html[data-theme="dark"] .diff-line.removed { color: #ffaaa4; background: #482829
 .setup-pill.ready { color: var(--green); background: var(--green-light); }
 .setup-pill.warn { color: #8a5a00; background: #fff1d6; }
 .setup-pill.missing { color: #a33b33; background: #fde8e6; }
-.setup-skip { justify-self: start; border: 0; padding: 0; color: var(--muted); background: none; font-size: 11px; text-decoration: underline; cursor: pointer; }
 .setup-command { display: block; overflow-x: auto; border-radius: 6px; padding: 6px 8px; color: var(--ink); background: var(--line); font: 11px/1.5 Consolas, monospace; white-space: nowrap; }
 .setup-note { color: #8a5a00; font-size: 11px; }
 .setup-table { width: 100%; border-collapse: collapse; font-size: 12px; }

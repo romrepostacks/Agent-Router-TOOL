@@ -501,17 +501,22 @@ async function selectedSkills(ids) {
   return selected.size ? parseSkills(await readSkillsMarkdown()).filter((skill) => selected.has(skill.id)) : [];
 }
 
-// Per-skill usage (%LOCALAPPDATA%\LocalAgentRouterData\skill-stats.json): runs, how they ended, and the prompt
-// characters sent while the skill was selected. Shown in Settings → Skills so overlapping, costly skills can be dropped.
-const SKILL_STATS_FILE = path.join(DATA_DIR, "skill-stats.json");
-export async function recordSkillUse(ids, outcome, promptChars = 0, file = SKILL_STATS_FILE) {
-  if (!ids?.length || !["done", "failed", "stopped"].includes(outcome)) return;
+// Per-skill usage (%LOCALAPPDATA%\LocalAgentRouterData\skill-use.json). A skill counts as used when the provider
+// opened its file during the run (skillUseWatcher), not merely because it was in the index: `sent` counts runs it
+// went out with, `runs`/outcomes/promptChars count only runs that used it. Shown in Settings → Skills.
+// (skill-stats.json from 0.23.0 counted every sent skill as a run; it's left alone and no longer read.)
+const SKILL_STATS_FILE = path.join(DATA_DIR, "skill-use.json");
+const newSkillEntry = () => ({ sent: 0, runs: 0, done: 0, failed: 0, stopped: 0, promptChars: 0 });
+export async function recordSkillUse(sentIds, usedIds, outcome, promptChars = 0, file = SKILL_STATS_FILE) {
+  if (!sentIds?.length || !["done", "failed", "stopped"].includes(outcome)) return;
   await withFileLock(file, async () => {
     let stats = {};
     try { stats = JSON.parse(await readFile(file, "utf8")); } catch { /* first run, or unreadable: start again */ }
     const at = new Date().toISOString();
-    for (const id of ids) {
-      const entry = stats[id] ||= { runs: 0, done: 0, failed: 0, stopped: 0, promptChars: 0 };
+    for (const id of sentIds) (stats[id] ||= newSkillEntry()).sent += 1;
+    for (const id of usedIds || []) {
+      if (!sentIds.includes(id)) continue;
+      const entry = stats[id];
       entry.runs += 1;
       entry[outcome] += 1;
       entry.promptChars += Math.max(0, Math.round(promptChars) || 0);
@@ -522,16 +527,41 @@ export async function recordSkillUse(ids, outcome, promptChars = 0, file = SKILL
   });
 }
 
+// Watches a run's activity text (tool calls, CLI output) for a sent skill's file being opened. A folder skill
+// (…/SKILL.md) also counts when its references/ or scripts/ are read. The index line itself ("— <path>", which
+// Codex echoes back with the prompt) is ignored. Chat providers get skill text inlined, so they never register use.
+// ponytail: path match on printed activity; misses a CLI that reads a skill without printing its path.
+export function skillUseWatcher(skills) {
+  const norm = (text) => String(text).toLowerCase().replace(/\\+/g, "/");
+  const targets = skills.filter((skill) => skill.file).map((skill) => {
+    const file = norm(skill.file);
+    const match = /\/skill\.md$/.test(file) ? file.slice(0, -"skill.md".length) : file;
+    return { id: skill.id, match, indexLine: new RegExp(`— ${match.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[^\\n]*`, "g") };
+  });
+  const used = new Set();
+  let tail = "";
+  return {
+    used,
+    see(text) {
+      if (used.size === targets.length) return;
+      let window = tail + norm(text);
+      for (const target of targets) window = window.replace(target.indexLine, "");
+      tail = window.slice(-600); // a path split across two chunks still matches
+      for (const target of targets) if (window.includes(target.match)) used.add(target.id);
+    },
+  };
+}
+
 async function skillStats() {
   let stats = {};
   try { stats = JSON.parse(await readFile(SKILL_STATS_FILE, "utf8")); } catch { /* none yet */ }
-  // Thumbs up/down on answers sent with a skill selected.
+  // Thumbs up/down on answers that used a skill.
   for (const session of await readSessions().catch(() => [])) {
     for (const message of session.messages || []) {
       const rating = message.feedback?.rating;
-      if (message.role !== "assistant" || !["good", "bad"].includes(rating) || !Array.isArray(message.skillIds)) continue;
-      for (const id of message.skillIds) {
-        const entry = stats[id] ||= { runs: 0, done: 0, failed: 0, stopped: 0, promptChars: 0 };
+      if (message.role !== "assistant" || !["good", "bad"].includes(rating) || !Array.isArray(message.usedSkillIds)) continue;
+      for (const id of message.usedSkillIds) {
+        const entry = stats[id] ||= newSkillEntry();
         entry[rating] = (entry[rating] || 0) + 1;
       }
     }
@@ -1813,7 +1843,7 @@ async function appendExchange(id, data) {
     const saveMaterials = existingMaterialBytes + materialBytes <= 2_000_000;
     const now = new Date().toISOString();
     session.messages.push({ role: "user", content: data.user, ...(Array.isArray(data.attachments) ? { attachments: data.attachments.filter((name) => typeof name === "string").slice(0, 15) } : {}), ...(saveMaterials && materials.length ? { attachmentContext: materials } : {}), ...(materials.length && !saveMaterials ? { attachmentsNotSaved: true } : {}), createdAt: now });
-    session.messages.push({ role: "assistant", content: data.assistant, route: String(data.route || "Colibri"), ...(typeof data.proposalId === "string" ? { proposalId: data.proposalId } : {}), ...(Array.isArray(data.skillIds) && data.skillIds.length ? { skillIds: data.skillIds.filter((id) => typeof id === "string").slice(0, 100) } : {}), createdAt: now });
+    session.messages.push({ role: "assistant", content: data.assistant, route: String(data.route || "Colibri"), ...(typeof data.proposalId === "string" ? { proposalId: data.proposalId } : {}), ...(Array.isArray(data.usedSkillIds) && data.usedSkillIds.length ? { usedSkillIds: data.usedSkillIds.filter((id) => typeof id === "string").slice(0, 100) } : {}), createdAt: now });
     if (session.title === "New session") session.title = data.user.replace(/\s+/g, " ").slice(0, 64) || "New session";
     session.updatedAt = now;
     session.messages = session.messages.slice(-MAX_MESSAGES);
@@ -1831,7 +1861,12 @@ async function handleChat(data, options = {}) {
   const contextText = await selectedContextText(data.attachments, data.contextIds, project);
   // One packet for every route and provider: the user's rules, then the skill index (chat providers expand it).
   const skillText = (await rulesSection()) + (await selectedSkillPrompt(data.skillIds));
-  data.sentSkillIds = (await selectedSkills(data.skillIds)).map((skill) => skill.id); // for per-skill stats
+  // For per-skill stats: which skills went out, and where their files are (skillUseWatcher spots them being read).
+  data.sentSkills = (await selectedSkills(data.skillIds)).map((skill) => {
+    const file = skill.file && path.resolve(path.dirname(SKILLS_FILE), skill.file);
+    return { id: skill.id, file: file && file.startsWith(SKILLS_DIR + path.sep) ? file : "" };
+  });
+  data.sentSkillIds = data.sentSkills.map((skill) => skill.id);
   const localSkillText = skillText;
   const history = Array.isArray(data.history)
     ? data.history.filter((item) => ["user", "assistant"].includes(item.role) && typeof item.content === "string").slice(-8)
@@ -2508,14 +2543,17 @@ async function handleRequest(req, res, fromRemote = false) {
       attachRun(run, res);
       const stopped = { error: "Stopped.", cancelled: true };
       let promptChars = 0;
-      const track = (outcome) => recordSkillUse(data.sentSkillIds, outcome, promptChars).catch(() => {}); // stats never fail a run
+      let watcher = null; // created once handleChat has picked the skills
+      const watchSkills = (text) => (watcher ||= data.sentSkills && skillUseWatcher(data.sentSkills))?.see(text);
+      const usedSkillIds = () => [...(watcher?.used || [])];
+      const track = (outcome) => recordSkillUse(data.sentSkillIds, usedSkillIds(), outcome, promptChars).catch(() => {}); // stats never fail a run
       try {
         const result = await handleChat(data, {
           signal: controller.signal,
           onPrompt: (chars) => { promptChars += chars; },
           onStatus: (status) => emitRun(run, "status", { status }),
           onDelta: (text) => emitRun(run, "delta", { text }),
-          onActivity: (text) => emitRun(run, "activity", { text }),
+          onActivity: (text) => { watchSkills(text); emitRun(run, "activity", { text }); },
           onReset: () => emitRun(run, "reset", {}),
           // A run without a session can't be found to answer a card, so its provider prompts are declined.
           ...(run.sessionId ? { onApproval: (request) => askApproval(run, request) } : {}),
@@ -2523,7 +2561,7 @@ async function handleRequest(req, res, fromRemote = false) {
         if (controller.signal.aborted) { track("stopped"); return finishRun(run, "error", stopped); }
         // Saved here rather than by the page, so the answer is kept even if no page is open when it finishes.
         if (run.sessionId) {
-          const saved = await appendExchange(run.sessionId, { user: String(data.message).trim(), attachments: data.attachmentNames, materials: data.attachments, assistant: result.content, route: result.route, proposalId: result.proposal?.id, skillIds: data.sentSkillIds });
+          const saved = await appendExchange(run.sessionId, { user: String(data.message).trim(), attachments: data.attachmentNames, materials: data.attachments, assistant: result.content, route: result.route, proposalId: result.proposal?.id, usedSkillIds: usedSkillIds() });
           if (saved.status !== 200) throw new Error(saved.body.error);
           result.saved = true;
         }

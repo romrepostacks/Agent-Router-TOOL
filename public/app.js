@@ -914,12 +914,14 @@ async function loadSkills() {
   renderApprovedSkills();
 }
 
-// "4.2k chars · 12 runs: 10 done, 1 failed, 1 stopped · avg prompt 18k · 👍 3 👎 1"
+// "4.2k chars · used in 12 of 40 runs: 10 done, 1 failed, 1 stopped · avg prompt 18k · 👍 3 👎 1"
+// Used = the provider opened the skill's file; sent = it was only in the skill list.
 function skillUsage(skill) {
   const k = (n) => n >= 1000 ? `${(n / 1000).toFixed(n >= 10_000 ? 0 : 1)}k` : String(n);
   const parts = [`${k(skill.size || 0)} chars`];
   const s = skill.stats;
-  if (s?.runs) parts.push(`${s.runs} run${s.runs === 1 ? "" : "s"}: ${s.done} done, ${s.failed} failed, ${s.stopped} stopped`, `avg prompt ${k(Math.round(s.promptChars / s.runs))} chars`);
+  if (s?.runs) parts.push(`used in ${s.runs} of ${s.sent || s.runs} run${(s.sent || s.runs) === 1 ? "" : "s"}: ${s.done} done, ${s.failed} failed, ${s.stopped} stopped`, `avg prompt ${k(Math.round(s.promptChars / s.runs))} chars`);
+  else if (s?.sent) parts.push(`sent ${s.sent} time${s.sent === 1 ? "" : "s"}, never used`);
   else parts.push("not used yet");
   if (s?.good || s?.bad) parts.push(`👍 ${s.good || 0} 👎 ${s.bad || 0}`);
   return parts.join(" · ");

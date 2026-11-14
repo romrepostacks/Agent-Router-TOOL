@@ -1,5 +1,8 @@
 # Live check: skill use tracking (Claude Code + Codex)
 
+**Status: resolved 2026-11-14.** The owner ran both checks in 0.24.0; both returned PINEAPPLE-42. Keep this doc for
+re-checking after changes to `skillUseWatcher()` or `cliToolText()`.
+
 Checks that a skill counts as **used** only when the provider opens its file. The automated half is
 `test/skill-stats.test.mjs` (same output shapes, fake data). This half needs real providers. Every step is done in the
 app (0.24.0 or later); no files need opening.

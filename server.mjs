@@ -529,8 +529,9 @@ async function selectedSkills(ids) {
 // went out with, `runs`/outcomes/promptChars count only runs that used it. Shown in Settings → Skills.
 // (skill-stats.json from 0.23.0 counted every sent skill as a run; it's left alone and no longer read.)
 const SKILL_STATS_FILE = path.join(DATA_DIR, "skill-use.json");
-const newSkillEntry = () => ({ sent: 0, runs: 0, done: 0, failed: 0, stopped: 0, promptChars: 0 });
-export async function recordSkillUse(sentIds, usedIds, outcome, promptChars = 0, file = SKILL_STATS_FILE) {
+const newSkillEntry = () => ({ sent: 0, runs: 0, done: 0, failed: 0, stopped: 0, promptChars: 0, tokens: 0, tokenRuns: 0 });
+// size: { promptChars, tokens } for the whole run; tokens is null when no provider call reported counts.
+export async function recordSkillUse(sentIds, usedIds, outcome, { promptChars = 0, tokens = null } = {}, file = SKILL_STATS_FILE) {
   if (!sentIds?.length || !["done", "failed", "stopped"].includes(outcome)) return;
   await withFileLock(file, async () => {
     let stats = {};
@@ -543,11 +544,47 @@ export async function recordSkillUse(sentIds, usedIds, outcome, promptChars = 0,
       entry.runs += 1;
       entry[outcome] += 1;
       entry.promptChars += Math.max(0, Math.round(promptChars) || 0);
+      if (Number.isFinite(tokens)) { entry.tokens = (entry.tokens || 0) + Math.max(0, Math.round(tokens)); entry.tokenRuns = (entry.tokenRuns || 0) + 1; }
       entry.lastUsed = at;
     }
     await mkdir(path.dirname(file), { recursive: true });
     await replaceFile(file, JSON.stringify(stats, null, 2));
   });
+}
+
+// Token use per provider and model (%LOCALAPPDATA%\LocalAgentRouterData\token-use.json), from each call's own
+// usage report: Claude Code's result event, Codex's "tokens used" line, the API and OpenAI-compatible `usage`.
+// `calls` counts every call; `measured` only those that reported counts (Copilot -s never does). Codex reports
+// only a total, so its input/output stay 0 and `total` carries it.
+const TOKEN_USE_FILE = path.join(DATA_DIR, "token-use.json");
+export const usageTotal = (u) => u.total ?? ((u.input || 0) + (u.output || 0));
+const isMeasured = (u) => u.total !== undefined || u.input !== undefined;
+export async function recordTokenUse(calls, file = TOKEN_USE_FILE) {
+  if (!calls?.length) return;
+  await withFileLock(file, async () => {
+    let stats = {};
+    try { stats = JSON.parse(await readFile(file, "utf8")); } catch { /* first run, or unreadable: start again */ }
+    const at = new Date().toISOString();
+    for (const call of calls) {
+      const key = call.model ? `${call.provider}::${call.model}` : call.provider;
+      const entry = stats[key] ||= { calls: 0, measured: 0, input: 0, cached: 0, output: 0, total: 0 };
+      entry.calls += 1;
+      entry.lastAt = at;
+      if (!isMeasured(call)) continue;
+      entry.measured += 1;
+      entry.input += call.input || 0;
+      entry.cached += call.cached || 0;
+      entry.output += call.output || 0;
+      entry.total += usageTotal(call);
+    }
+    await mkdir(path.dirname(file), { recursive: true });
+    await replaceFile(file, JSON.stringify(stats, null, 2));
+  });
+}
+export const runTokens = (calls) => calls.some(isMeasured) ? calls.reduce((sum, call) => sum + (isMeasured(call) ? usageTotal(call) : 0), 0) : null;
+
+async function tokenUse() {
+  try { return JSON.parse(await readFile(TOKEN_USE_FILE, "utf8")); } catch { return {}; }
 }
 
 // Watches a run's tool calls (onActivity's second argument: Claude Code tool inputs, Codex `exec` command lines,
@@ -1029,7 +1066,13 @@ async function queryColibri(messages, tools = [], options = {}) {
   try { return await queryColibriNow(messages, tools, options); } finally { release(); }
 }
 
-async function queryColibriNow(messages, tools = [], { signal, onDelta, model: requestedModel, maxTokens = 1600 } = {}) {
+// OpenAI-style `usage` (OpenAI API, Colibri and other OpenAI-compatible servers) → { input, cached, output }.
+export function openAiUsage(usage) {
+  if (!usage || typeof usage.prompt_tokens !== "number") return null;
+  return { input: usage.prompt_tokens, cached: usage.prompt_tokens_details?.cached_tokens || 0, output: usage.completion_tokens || 0 };
+}
+
+async function queryColibriNow(messages, tools = [], { signal, onDelta, onUsage, model: requestedModel, maxTokens = 1600 } = {}) {
   // Node's fetch only says "fetch failed" when nothing answers; say which address.
   const modelList = await fetch(`${COLIBRI_BASE_URL}/models`, { signal: signal || AbortSignal.timeout(3500) })
     .catch((error) => { throw signal?.aborted ? error : new Error(`Can't reach the local model at ${COLIBRI_BASE_URL} (${error.cause?.code || error.message}). Start it, or change its address in Settings.`); });
@@ -1059,6 +1102,7 @@ async function queryColibriNow(messages, tools = [], { signal, onDelta, model: r
       // Always stream plain chats: a long prompt can take minutes before the first token, and Node's fetch
       // gives up after 300 s without response headers ("fetch failed", UND_ERR_HEADERS_TIMEOUT).
       stream: !tools.length,
+      ...(tools.length ? {} : { stream_options: { include_usage: true } }), // last chunk carries token counts
     }),
     signal: signal || AbortSignal.timeout(180_000),
   }).catch((error) => { throw signal?.aborted ? error : new Error(`The local model at ${COLIBRI_BASE_URL} dropped the request (${error.cause?.code || error.message}).`); });
@@ -1071,6 +1115,7 @@ async function queryColibriNow(messages, tools = [], { signal, onDelta, model: r
     const decoder = new TextDecoder();
     let buffer = "";
     let content = "";
+    let usage = null;
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
@@ -1083,11 +1128,15 @@ async function queryColibriNow(messages, tools = [], { signal, onDelta, model: r
         try { chunk = JSON.parse(line.slice(6)); } catch { continue; }
         const text = chunk.choices?.[0]?.delta?.content;
         if (typeof text === "string") { content += text; onDelta?.(text); }
+        if (chunk.usage) usage = openAiUsage(chunk.usage) || usage;
       }
     }
+    if (usage) onUsage?.(usage);
     return { model: chosen, content, toolCalls: [] };
   }
   const data = await response.json();
+  const counted = openAiUsage(data.usage);
+  if (counted) onUsage?.(counted);
   const answer = data.choices?.[0]?.message;
   if (!answer) throw new Error("The local model returned no message.");
   return {
@@ -1127,7 +1176,7 @@ async function apiModels(provider) {
   return (data.data || []).map((model) => model.id).filter((id) => /^(gpt-|o\d|chatgpt)/.test(id) && !/audio|realtime|transcribe|tts|image|search/.test(id)).sort().reverse().map((id) => ({ id, name: id }));
 }
 
-async function queryApiProvider(provider, messages, { signal, onDelta, model, maxTokens = 1600 } = {}) {
+async function queryApiProvider(provider, messages, { signal, onDelta, onUsage, model, maxTokens = 1600 } = {}) {
   const key = await apiKey(provider);
   if (!key) throw new Error(`${API_PROVIDERS[provider].name} has no API key. Add one in Settings → Setup.`);
   if (provider === "anthropic") {
@@ -1145,6 +1194,8 @@ async function queryApiProvider(provider, messages, { signal, onDelta, model, ma
     const stream = client.beta.messages.stream({ model: chosen, max_tokens: Math.max(maxTokens, 16_000), ...(system ? { system } : {}), messages: turns, ...fallback }, { signal });
     if (onDelta) stream.on("text", (text) => onDelta(text));
     const message = await stream.finalMessage();
+    const u = message.usage || {};
+    onUsage?.({ input: (u.input_tokens || 0) + (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0), cached: u.cache_read_input_tokens || 0, output: u.output_tokens || 0 });
     if (message.stop_reason === "refusal") throw new Error("Anthropic declined this request.");
     return message.content.filter((block) => block.type === "text").map((block) => block.text).join("");
   }
@@ -1163,7 +1214,10 @@ async function queryApiProvider(provider, messages, { signal, onDelta, model, ma
     signal: signal || AbortSignal.timeout(600_000),
   });
   if (!response.ok) throw new Error(`OpenAI request failed (${response.status}): ${(await response.text()).slice(0, 700)}`);
-  const content = (await response.json()).choices?.[0]?.message?.content || "";
+  const data = await response.json();
+  const counted = openAiUsage(data.usage);
+  if (counted) onUsage?.(counted);
+  const content = data.choices?.[0]?.message?.content || "";
   onDelta?.(content);
   return content;
 }
@@ -1331,7 +1385,29 @@ async function applyColibriFiles(project, reply) {
   return written.length ? `${summary}\n\nFiles written: ${written.join(", ")}` : summary;
 }
 
+// Codex prints its token total at the end of stderr: "tokens used\n12,345" (or older "[ts] tokens used: 12345").
+export function codexTokens(text) {
+  const last = [...String(text).matchAll(/tokens used:?\s*([\d,]+)/gi)].pop();
+  return last ? { total: Number(last[1].replace(/,/g, "")) } : null;
+}
+
+export const tokenSummary = (u) => u.total !== undefined && u.input === undefined
+  ? `${u.total.toLocaleString("en-US")} tokens`
+  : `${u.input.toLocaleString("en-US")} tokens in${u.cached ? ` (${u.cached.toLocaleString("en-US")} cached)` : ""}, ${u.output.toLocaleString("en-US")} out`;
+
+// One provider call. options.onUsage gets { provider, model, input?, cached?, output?, total? } exactly once per call,
+// with no counts when the provider doesn't report them (Copilot in -s mode, a local server without usage).
 async function runProviderTask(choice, prompt, project, kind, options = {}) {
+  const { provider, model } = choiceParts(choice);
+  let usage = null;
+  try { return await runProviderCall(choice, prompt, project, kind, { ...options, onUsage: (counted) => { usage = counted; } }); }
+  finally {
+    options.onUsage?.({ provider, model, ...(usage || {}) });
+    if (usage) options.onActivity?.(`· ${tokenSummary(usage)}\n`);
+  }
+}
+
+async function runProviderCall(choice, prompt, project, kind, options = {}) {
   const { provider, model } = choiceParts(choice);
   const access = ACCESS[kind] || "read";
   // The details pane mirrors everything the provider prints while it works (onActivity); the chat only gets the answer (onDelta).
@@ -1387,7 +1463,14 @@ async function runProviderTask(choice, prompt, project, kind, options = {}) {
   if (provider === "codex") {
     // `codex exec` can't ask mid-run, so its sandbox and approval policy come from the user's ~/.codex/config.toml.
     const input = access === "git" ? `${prompt}\n\n${gitNote}` : prompt;
-    return runCli(command, ["exec", "--cd", cwd, ...(model ? ["--model", model] : []), "--skip-git-repo-check"], cwd, process.env, { ...options, stdin: input });
+    let tail = "";
+    const onActivity = options.onActivity;
+    try {
+      return await runCli(command, ["exec", "--cd", cwd, ...(model ? ["--model", model] : []), "--skip-git-repo-check"], cwd, process.env, { ...options, stdin: input, onActivity: (text) => { tail = (tail + text).slice(-2000); onActivity(text); } });
+    } finally {
+      const counted = codexTokens(tail);
+      if (counted) options.onUsage?.(counted);
+    }
   }
   if (provider === "copilot") {
     // Tool approvals come from the user's Copilot CLI configuration; non-interactive runs refuse what it doesn't allow.
@@ -1663,7 +1746,7 @@ async function runRoute(route, messages, project, skillText = "", localSkillText
   if (route === "chain") return runChain(task, project, skillText, options);
   if (route === "project") {
     options.onStatus?.("Reading the selected project files…");
-    const content = await answerProjectQuestion(messages, project, skillText, { signal: options.signal, onDelta: options.onDelta, onActivity: options.onActivity, onApproval: options.onApproval });
+    const content = await answerProjectQuestion(messages, project, skillText, { signal: options.signal, onDelta: options.onDelta, onActivity: options.onActivity, onApproval: options.onApproval, onPrompt: options.onPrompt, onUsage: options.onUsage });
     await saveHandoff(project, { route: "Project analysis", status: "Completed", task, summary: content });
     return { content, route: label("Project analysis"), delegated: delegated("Project analysis") };
   }
@@ -1931,7 +2014,7 @@ async function handleChat(data, options = {}) {
 
   if (mode === "auto" || mode === "route") {
     options.onStatus?.("Choosing a route…");
-    const decision = await gptPlanRoute(messages, skillText, { signal: options.signal, onStatus: options.onStatus, onActivity: options.onActivity, onApproval: options.onApproval, onPrompt: options.onPrompt });
+    const decision = await gptPlanRoute(messages, skillText, { signal: options.signal, onStatus: options.onStatus, onActivity: options.onActivity, onApproval: options.onApproval, onPrompt: options.onPrompt, onUsage: options.onUsage });
     if (mode === "route") return { content: `Route Planning chose: ${decision.route.toUpperCase()}. Pick that route from the menu (or use Auto) to run it.`, route: "Route Planning", delegated: ["Route Planning"] };
     return runRoute(decision.route, messages, project, skillText, localSkillText, options, "Route Planning");
   }
@@ -2246,6 +2329,7 @@ async function handleRequest(req, res, fromRemote = false) {
     }
     if (req.method === "POST" && approveMatch) return json(res, 200, await approveProposal(approveMatch[1]));
     if (req.method === "GET" && url.pathname === "/api/skills") return json(res, 200, await listSkills());
+    if (req.method === "GET" && url.pathname === "/api/token-use") return json(res, 200, await tokenUse());
     if (req.method === "POST" && url.pathname === "/api/skills") {
       const data = await bodyJson(req);
       const added = await addSkill({ name: data.name, category: data.category, instructions: data.instructions });
@@ -2597,11 +2681,16 @@ async function handleRequest(req, res, fromRemote = false) {
       let watcher = null; // created once handleChat has picked the skills
       const watchSkills = (text) => (watcher ||= data.sentSkills && skillUseWatcher(data.sentSkills))?.see(text);
       const usedSkillIds = () => [...(watcher?.used || [])];
-      const track = (outcome) => recordSkillUse(data.sentSkillIds, usedSkillIds(), outcome, promptChars).catch(() => {}); // stats never fail a run
+      const calls = []; // one entry per provider call: { provider, model, input?, cached?, output?, total? }
+      const track = (outcome) => { // stats never fail a run
+        recordSkillUse(data.sentSkillIds, usedSkillIds(), outcome, { promptChars, tokens: runTokens(calls) }).catch(() => {});
+        recordTokenUse(calls).catch(() => {});
+      };
       try {
         const result = await handleChat(data, {
           signal: controller.signal,
           onPrompt: (chars) => { promptChars += chars; },
+          onUsage: (call) => { calls.push(call); },
           onStatus: (status) => emitRun(run, "status", { status }),
           onDelta: (text) => emitRun(run, "delta", { text }),
           // Only tool calls (the second argument) count as skill use; answer text quoting a skill's path doesn't.

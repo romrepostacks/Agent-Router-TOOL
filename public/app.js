@@ -914,13 +914,35 @@ async function loadSkills() {
   renderApprovedSkills();
 }
 
-// "4.2k chars · used in 12 of 40 runs: 10 done, 1 failed, 1 stopped · avg prompt 18k · 👍 3 👎 1"
+const k = (n) => n >= 1000 ? `${(n / 1000).toFixed(n >= 10_000 ? 0 : 1)}k` : String(n);
+
+// Settings → Shared skills → Token use by provider (GET /api/token-use, token-use.json).
+// "claude::opus — 12 calls · 340k tokens (avg 28k): 300k in (250k cached), 40k out"
+async function loadTokenUse() {
+  const list = $("token-use");
+  try {
+    const stats = Object.entries(await request("/api/token-use")).sort((a, b) => b[1].total - a[1].total);
+    list.replaceChildren(...stats.map(([key, s]) => {
+      const item = document.createElement("li");
+      const parts = [`${s.calls} call${s.calls === 1 ? "" : "s"}`];
+      if (s.measured) {
+        parts.push(`${k(s.total)} tokens (avg ${k(Math.round(s.total / s.measured))})${s.input || s.output ? `: ${k(s.input)} in${s.cached ? ` (${k(s.cached)} cached)` : ""}, ${k(s.output)} out` : ""}`);
+        if (s.measured < s.calls) parts.push(`${s.calls - s.measured} not reported`);
+      } else parts.push("tokens not reported");
+      item.textContent = `${key} — ${parts.join(" · ")}`;
+      return item;
+    }));
+    if (!stats.length) list.textContent = "No streamed tasks recorded yet.";
+  } catch (error) { list.textContent = error.message; }
+}
+
+// "4.2k chars · used in 12 of 40 runs: 10 done, 1 failed, 1 stopped · avg 18k tokens · 👍 3 👎 1"
 // Used = the provider opened the skill's file; sent = it was only in the skill list.
 function skillUsage(skill) {
-  const k = (n) => n >= 1000 ? `${(n / 1000).toFixed(n >= 10_000 ? 0 : 1)}k` : String(n);
   const parts = [`${k(skill.size || 0)} chars`];
   const s = skill.stats;
-  if (s?.runs) parts.push(`used in ${s.runs} of ${s.sent || s.runs} run${(s.sent || s.runs) === 1 ? "" : "s"}: ${s.done} done, ${s.failed} failed, ${s.stopped} stopped`, `avg prompt ${k(Math.round(s.promptChars / s.runs))} chars`);
+  if (s?.runs) parts.push(`used in ${s.runs} of ${s.sent || s.runs} run${(s.sent || s.runs) === 1 ? "" : "s"}: ${s.done} done, ${s.failed} failed, ${s.stopped} stopped`,
+    s.tokenRuns ? `avg ${k(Math.round(s.tokens / s.tokenRuns))} tokens per run` : `avg prompt ${k(Math.round(s.promptChars / s.runs))} chars`);
   else if (s?.sent) parts.push(`sent ${s.sent} time${s.sent === 1 ? "" : "s"}, never used`);
   else parts.push("not used yet");
   if (s?.good || s?.bad) parts.push(`👍 ${s.good || 0} 👎 ${s.bad || 0}`);
@@ -1726,6 +1748,7 @@ async function loadProjects() {
 
 async function openSettings() {
   await loadSkills(); // fresh usage counts for Settings → Shared skills
+  loadTokenUse();
   const settings = await request("/api/settings");
   state.settingsRoot = settings.projectsRoot;
   state.settingsConfigured = settings.configured;

@@ -1,5 +1,10 @@
 # Release notes
 
+## 0.25.0
+
+- **Real token counts:** every provider call in a task now records the tokens the provider itself reports: Claude Code and the Anthropic API (input, cached, output), OpenAI and local models that report usage, and Codex (total only). Copilot doesn't report tokens; its calls are counted without them.
+- **Where you see them:** each call's tokens appear in the task's details pane. **Settings → Shared skills → Token use by provider** shows calls and tokens per provider and model. Each skill's usage line now shows average tokens per run instead of prompt characters, once a run that used it reported tokens.
+
 ## 0.24.0
 
 - **Delete skills you added:** under **Settings → Shared skills**, each skill you added in the app's **Shared skills** panel now has a **Delete** button. It removes the skill and its always-on approval; its usage counts are kept. Skills installed from GitHub or imported from other tools have no Delete button.

@@ -688,7 +688,10 @@ function renderMessages() {
     empty.className = "empty-state";
     const icon = document.createElement("div");
     icon.className = "empty-icon";
-    icon.textContent = "✳";
+    const iconImage = document.createElement("img");
+    iconImage.src = "/brand.svg";
+    iconImage.alt = "";
+    icon.append(iconImage);
     const heading = document.createElement("h1");
     heading.textContent = "What are we working on?";
     const description = document.createElement("p");
@@ -1141,7 +1144,7 @@ async function installScannedSkill() {
 
 function renderContextControls() {
   const count = state.attachments.length + state.contextIds.length;
-  $("context-count").textContent = count ? `${count} context item${count === 1 ? "" : "s"} selected` : "No extra context";
+  $("context-count").textContent = count ? `${count} context item${count === 1 ? "" : "s"}` : "";
   const list = $("attachment-list");
   list.replaceChildren();
   for (const [index, file] of state.attachments.entries()) {
@@ -1294,6 +1297,7 @@ async function selectProject(id) {
   localStorage.setItem("agent-router-project", id);
   $("project-name").textContent = state.project?.name || "Choose a project";
   $("project-path").textContent = state.project?.path || "";
+  $("project-name").title = state.project?.path || "";
   const allProjects = state.project?.scope === "all";
   $("workspace-note").textContent = allProjects
     ? "Read-only review across visible project folders. Choose one folder to code or push."
@@ -1394,11 +1398,15 @@ async function refreshStatus() {
     const dot = document.createElement("i");
     dot.className = `status-dot ${result.colibri.online ? "online" : "offline"}`;
     const selectedAvailable = result.colibri.models.some((model) => model === result.colibri.selectedModel) || result.colibri.models.some((model) => /qwen3\.6|qwen36/i.test(model) && /35b.*a3b/i.test(model));
-    colibri.replaceChildren(dot, document.createTextNode(result.colibri.online ? `Local model · ${result.colibri.selectedModel || "ready"}` : "Local model offline"));
+    colibri.replaceChildren(dot, document.createTextNode(result.colibri.online ? "Local model" : "Local offline"));
+    colibri.title = result.colibri.online ? `Local model · ${result.colibri.selectedModel || "ready"}` : "Local model offline";
     const labels = { claude: "Claude Code", codex: "Codex", copilot: "Copilot" };
     const apis = Object.entries({ openai: "OpenAI API", anthropic: "Anthropic API" }).filter(([id]) => result.apis?.[id]).map(([, name]) => `${name}: key saved`);
-    cli.textContent = [...Object.keys(labels).map((id) => `${labels[id]}: ${result.commands[id]?.signIn || (result.commands[id]?.available ? "installed · sign-in unknown" : "not installed")}`), ...apis].join("  ·  ");
-    cli.title = "Sign-in check only reports readiness; credentials are never shown.";
+    const installed = Object.keys(labels).filter((id) => result.commands[id]?.available).map((id) => labels[id]);
+    const cliDot = document.createElement("i");
+    cliDot.className = `status-dot ${installed.length || apis.length ? "online" : "offline"}`;
+    cli.replaceChildren(cliDot, document.createTextNode(installed.length ? installed.join(" · ") : apis.length ? "API keys" : "No AI tools"));
+    cli.title = [...Object.keys(labels).map((id) => `${labels[id]}: ${result.commands[id]?.signIn || (result.commands[id]?.available ? "installed · sign-in unknown" : "not installed")}`), ...apis, "Sign-in check only reports readiness; credentials are never shown."].join("\n");
     const settings = await request("/api/settings");
     state.modelPrefs = settings;
     renderInspector();
@@ -2150,7 +2158,9 @@ function applyLayout() {
     else document.documentElement.style.removeProperty(`--${side}-w`);
     const hidden = Boolean(layout[`${side}Hidden`]);
     document.body.classList.toggle(panel.bodyClass, hidden);
-    $(panel.button).textContent = `${hidden ? "Show" : "Hide"} ${panel.label}`;
+    const label = `${hidden ? "Show" : "Hide"} ${panel.label}`;
+    $(panel.button).setAttribute("aria-label", label);
+    $(panel.button).title = label;
     $(panel.button).setAttribute("aria-expanded", String(!hidden));
   }
 }
@@ -2219,6 +2229,7 @@ for (const button of document.querySelectorAll(".suggestions button")) {
 $("plus-button").addEventListener("click", () => setPlusMenu($("plus-menu").hidden));
 document.addEventListener("click", (event) => {
   if (!event.target.closest(".plus-wrap")) setPlusMenu(false);
+  for (const menu of document.querySelectorAll(".heading-menu[open]")) if (!menu.contains(event.target) || event.target.closest(".heading-menu-list button")) menu.open = false;
   if (!event.target.closest(".route-picker") && !$("route-menu").hidden) setRouteMenu(false);
 });
 $("plus-menu").addEventListener("keydown", (event) => { if (event.key === "Escape") { setPlusMenu(false); $("plus-button").focus(); } });

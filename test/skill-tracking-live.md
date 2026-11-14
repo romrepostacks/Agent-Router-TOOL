@@ -10,9 +10,9 @@ app (0.24.0 or later); no files need opening.
 Each test skill holds a code word that appears nowhere else. The model can only answer with it by opening the
 file, so the answer proves the read, and the counts in Settings must agree with it.
 
-## 1. Add two skills (composer → Shared skills panel)
+## 1. Add two skills (task box → + menu → Shared skills)
 
-Open the **Shared skills** panel just above the task box and press **Add a shared skill**. Category: `General`.
+Press **+** at the bottom left of the task box, scroll to **Shared skills**, and press **Add a shared skill**. Category: `General`.
 Keep the first line of each as written: it becomes the skill's description in the list sent to the model, so it must
 not contain the code word. Press **Save skill** after each.
 

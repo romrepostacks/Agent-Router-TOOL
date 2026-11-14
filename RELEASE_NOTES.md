@@ -1,5 +1,11 @@
 # Release notes
 
+## 0.27.0
+
+- **Cleaner main screen.** The top bar is one slim row: panel buttons, the route menu, the project name, and small ready dots for the local model and AI tools. Hover a dot for the details. The separate status bar is gone.
+- **Everything for the task is in the task box.** The **+** button is at the bottom left and now holds files, linked folders, **Shared skills** and the privacy note. **Thread access** and the Claude Code permission mode are small pickers beside it.
+- **Session tools in one menu.** Import, pull from the cloud, re-file, merge and **Pending reviews only** are in the **⋯** menu above the session list.
+
 ## 0.26.0
 
 - **AI tools in the installer:** a Server install now has an optional **AI tools** page. Tick Claude Code, Codex and/or GitHub Copilot and setup installs them after the app, in a PowerShell window. Node.js is installed first if Codex or Copilot need it, and tools already installed are skipped. Silent installs take `/TOOLS=claude,codex,copilot`.

@@ -1,5 +1,17 @@
 # Local Agent Router — Project Status
 
+## Current change (v0.27.0, 2026-11-14)
+
+- **Main screen decluttered (owner request).** Only the markup and styles changed, and all element IDs are the same, so existing handlers still work.
+  - **Top bar:** one row. `toggle-sidebar` and `toggle-inspector` are now SVG icon buttons (`.panel-toggle`); `applyLayout()` sets their `aria-label` and `title` instead of their text. The eyebrow labels are gone, and the project path sits next to the name (also its `title`).
+  - **Status:** `#status-row` moved into the top bar. `refreshStatus()` shows a dot with "Local model" and the names of installed CLIs, and puts the full sign-in detail in `title`.
+  - **Composer:** `.skills-panel` (formerly a `<details>`) and the privacy note moved into `#plus-menu`. `#plus-button`, `#thread-access` and `#permission-mode` (`.pill-select`) are in `.composer-bottom`. `#context-count` is empty when no context is selected. `#workspace-note` replaces the privacy note under the composer.
+  - **Sidebar:** the session buttons ⤓ ☁ ⟳ ⇊ and `#pending-only` are in a `<details class="heading-menu">`. The document click handler closes it after an action or an outside click.
+  - **Empty state:** shorter copy, and the brand mark in both the HTML and `renderMessages()`.
+- **Docs:** `README.md` and `test/skill-tracking-live.md` are updated for the new locations. 92/92 tests pass.
+- Not verified: the running app was not opened. Headless Edge hung in this session, so no screenshot was taken.
+- Next: run `npm start` and check the + menu (skills list scrolls, Add skill form), the ⋯ menu, both panel toggles, and dark mode.
+
 ## Current change (v0.26.0, 2026-11-14)
 
 - **CLI installs moved out of first-run setup (owner request).** The setup guide's "Connect your AI tools" step is gone (now 5 steps: welcome, projects folder, local model, API keys, review). New **Settings → AI tools** tab (`data-settings-tab="tools"`, `loadCliTools()` / `cliToolCard()` in `public/app.js`) shows the same Install / Sign in / Setup guide cards from `GET /api/setup`, with **Check again**; hidden on remote Clients like Remote access, since `/api/setup/terminal` is local-only. Skip buttons removed.

@@ -7,7 +7,7 @@
   - **≤ 520px main:** smaller route button capped at 50% with an ellipsis on `#route-label`; project name shrinks with ellipsis.
   - `#route-menu` and `#plus-menu` widths are capped to the container (`100cqw`). The viewport ≤ 760px rule no longer hides `#cli-status` (the container rule shows it as a dot).
   - Version stays 0.28.0: no 0.28.0 installer was built yet.
-- Not verified: the app wasn't opened at narrow widths in this session.
+- **Resolved (owner confirmed, 2026-11-14):** narrow widths checked in the running app; the ⋯ menu and Queue/Steer/Stop no longer overlap.
 - **Phone app brought up to desktop 0.27 (owner request).** `mobile/package.json` 0.21.0 → 0.28.0 (same as the root again; `build.mjs` writes it into the APK `versionName` and iOS `MARKETING_VERSION`). Only `mobile/www/` changed; no server change, every endpoint used was already open to paired devices (`LOCAL_ONLY_PATHS` unchanged).
   - **Sessions (0.21):** the row's × is now ⋯ → `openSessionActions()` sheet: rename (`POST /api/sessions/:id/rename`), move to any other single, unmerged project (`POST /api/sessions/:id/project`), delete.
   - **Composer (0.22.1):** `#run-actions` with `#queue`, `#steer` (accent) and `#stop` replaces the send-button-as-stop. `#send` hides while running; Enter (no submitter) steers, only Queue queues, an empty submit does nothing; `refreshFollowupButtons()` disables Queue/Steer while the prompt is empty. `test/mobile-composer.test.mjs` updated to the desktop's behaviour.

@@ -1,0 +1,22 @@
+<Configuration>
+  <!-- Windows Sandbox: AI tools install + first-run setup test. Double-click after building the installer.
+       Runs test/cli-install-sandbox.ps1, which starts the newest installer with all three AI tools ticked,
+       then checks what got installed. Everything is thrown away when the sandbox closes. -->
+  <Networking>Enable</Networking>
+  <MemoryInMB>8192</MemoryInMB>
+  <MappedFolders>
+    <MappedFolder>
+      <HostFolder>C:\Users\ADMIN\Projects\agent-router\release</HostFolder>
+      <SandboxFolder>C:\Users\WDAGUtilityAccount\Desktop\installer</SandboxFolder>
+      <ReadOnly>true</ReadOnly>
+    </MappedFolder>
+    <MappedFolder>
+      <HostFolder>C:\Users\ADMIN\Projects\agent-router\test</HostFolder>
+      <SandboxFolder>C:\Users\WDAGUtilityAccount\Desktop\test</SandboxFolder>
+      <ReadOnly>true</ReadOnly>
+    </MappedFolder>
+  </MappedFolders>
+  <LogonCommand>
+    <Command>powershell -NoProfile -Command "Start-Process powershell -ArgumentList '-NoExit','-NoProfile','-ExecutionPolicy','Bypass','-File','C:\Users\WDAGUtilityAccount\Desktop\test\cli-install-sandbox.ps1'"</Command>
+  </LogonCommand>
+</Configuration>

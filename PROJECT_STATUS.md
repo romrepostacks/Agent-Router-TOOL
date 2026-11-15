@@ -1,5 +1,9 @@
 # Local Agent Router — Project Status
 
+## Test tooling (2026-11-15, no app change, version stays 0.28.2)
+
+- **AI tools sandbox test:** `test/cli-install.wsb` opens Windows Sandbox with `release\` and `test\` mapped read-only and runs `test/cli-install-sandbox.ps1`: it starts the newest `LocalAgentRouter-Setup-<version>.exe` with `/TOOLS=claude,codex,copilot`, then checks `node`, `npm`, `claude`, `codex`, `copilot` on PATH and the app's `DisplayVersion` ("<version> server"), and lists the manual steps (Settings → AI tools Check again / Install / Sign in, setup wizard, Client run). Results go to `cli-install-results.txt` on the sandbox desktop. Sandbox has no winget, so the Node.js step fails there by design and exercises the retry from Settings. Not yet run.
+
 ## Current change (v0.28.2, 2026-11-15)
 
 - **Review + release of 0.22–0.28.1.** The 18 commits that were only on the PC's `main` (0.22.0 → 0.28.1) were reviewed, pushed and merged to GitHub `main`. `npm test` 93/93; desktop page smoke-loaded in headless Chromium at 1400px and 600px (no page errors; ⋯ options button shows only when thin).

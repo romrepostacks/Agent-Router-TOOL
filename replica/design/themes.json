@@ -1,0 +1,27 @@
+{
+  "_about": "Theme candidates for the Agent Router phone app. Roles come from the Claude and ChatGPT iOS recon (replica/recon.md); every value is our own. build-tokens.py writes one tokens-<theme>-<mode>.json per entry and runs the WCAG check on each.",
+  "harbor": {
+    "label": "Harbor",
+    "pitch": "Cool slate with an indigo accent. Matches the 0.29 desktop app, so phone and PC feel like one product.",
+    "font": { "sans": "-apple-system, 'SF Pro Text', system-ui, sans-serif", "display": "-apple-system, 'SF Pro Display', system-ui, sans-serif" },
+    "radius": { "sm": 10, "md": 16, "lg": 24, "pill": 999 },
+    "light": { "bg": "#f6f7f9", "surface": "#ffffff", "bubble": "#e8ecf2", "border": "#e1e5eb", "border-input": "#7b8493", "text": "#141821", "text-muted": "#5a6271", "accent": "#4f46e5", "on-accent": "#ffffff", "danger": "#c62f2f", "success": "#1f7a4d" },
+    "dark":  { "bg": "#0f1217", "surface": "#171b22", "bubble": "#222833", "border": "#262c36", "border-input": "#6b7483", "text": "#eef1f6", "text-muted": "#9aa3b2", "accent": "#8b84ff", "on-accent": "#0f1217", "danger": "#ff6b6b", "success": "#4cc38a" }
+  },
+  "moss": {
+    "label": "Moss",
+    "pitch": "Calm sage greens and rounded type. Softer and friendlier; reads well outdoors.",
+    "font": { "sans": "ui-rounded, 'SF Pro Rounded', -apple-system, system-ui, sans-serif", "display": "ui-rounded, 'SF Pro Rounded', -apple-system, system-ui, sans-serif" },
+    "radius": { "sm": 12, "md": 18, "lg": 28, "pill": 999 },
+    "light": { "bg": "#f3f5f0", "surface": "#ffffff", "bubble": "#e4eadf", "border": "#dde3d6", "border-input": "#849080", "text": "#1a211c", "text-muted": "#586357", "accent": "#2f6b4f", "on-accent": "#ffffff", "danger": "#b3372f", "success": "#2f7a3d" },
+    "dark":  { "bg": "#111613", "surface": "#18201b", "bubble": "#223027", "border": "#27322b", "border-input": "#6c7a70", "text": "#e9efe9", "text-muted": "#9cab9f", "accent": "#7fc8a0", "on-accent": "#0f1712", "danger": "#f07a6e", "success": "#7fd28f" }
+  },
+  "ember": {
+    "label": "Ember",
+    "pitch": "Ink-dark first with an amber accent and monospace labels. A tool for watching agents work at night.",
+    "font": { "sans": "-apple-system, 'SF Pro Text', system-ui, sans-serif", "display": "ui-monospace, 'SF Mono', Menlo, monospace" },
+    "radius": { "sm": 6, "md": 12, "lg": 18, "pill": 999 },
+    "light": { "bg": "#fbf8f3", "surface": "#ffffff", "bubble": "#f1ebe0", "border": "#e8e0d2", "border-input": "#8f8572", "text": "#1d1a14", "text-muted": "#635c4f", "accent": "#a8560a", "on-accent": "#ffffff", "danger": "#b42318", "success": "#2b7a3f" },
+    "dark":  { "bg": "#0e1018", "surface": "#161a26", "bubble": "#232838", "border": "#272d3d", "border-input": "#6b7390", "text": "#f1f2f7", "text-muted": "#a0a6bb", "accent": "#f2a541", "on-accent": "#1a1205", "danger": "#ff7a70", "success": "#5fd39a" }
+  }
+}

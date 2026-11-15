@@ -1,0 +1,9 @@
+screens/
+.bin/
+*.log
+theme-preview/node_modules/
+theme-preview/dist/
+theme-preview/.parcel-cache/
+theme-preview/bundle.html
+design/tokens-*.json
+theme-preview/

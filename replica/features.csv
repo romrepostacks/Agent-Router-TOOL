@@ -1,0 +1,13 @@
+feature,area,priority,original,clone,notes
+Floating top bar (menu / new / more),chat,must,both,no,pill buttons over content
+Plain-text answers without avatar,chat,must,both,partial,desktop 0.29 already does this
+Right-aligned soft user bubble,chat,must,both,no,
+Answer action row (copy / rate / retry),chat,should,both,partial,rating exists
+Floating capsule composer with + and round send,chat,must,both,no,
+Model / route pill in composer,chat,should,Claude,no,our route chip
+Light and dark theme,app,must,both,yes,theme set picks palette
+Theme picker in Settings,settings,should,neither,no,ours
+Approval card inline in chat,chat,must,neither,yes,ours
+Queue / Steer / Stop while running,chat,must,neither,yes,ours
+Voice mode,chat,skip,both,no,provider feature
+Image generation,chat,skip,ChatGPT,no,provider feature

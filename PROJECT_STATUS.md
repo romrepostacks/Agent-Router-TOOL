@@ -1,5 +1,12 @@
 # Local Agent Router — Project Status
 
+## Design exploration (2026-11-14, no app change, version unchanged): iOS theme candidates
+
+- Recon of the Claude and ChatGPT iOS App Store listings: `replica/recon.md`, `replica/features.csv`. Screenshots in `replica/screens/` are reference only and gitignored.
+- Three theme candidates for the phone app, Harbor / Moss / Ember, light and dark: `replica/design/themes.json`. `python replica/design/build-tokens.py <replica-design>/contrast.py` writes per-mode tokens and checks WCAG AA (all 6 pass). Component notes: `replica/design/components.md`.
+- Preview: `replica/theme-options.html` (single file, built from `replica/theme-preview/` with the web-artifacts-builder skill).
+- Next: owner picks a theme; then apply its tokens to `mobile/www/style.css` and restyle the chat view to the floating top bar + capsule composer.
+
 ## Current change (v0.29.0, 2026-11-14): automatic session names + chat-app layout
 
 - **Session naming:** `sessionTitle()` in `server.mjs` names a "New session" from its first message (first line and sentence, greetings and "can you"/"let's"/"we should" lead-ins dropped, cut at a word near 48 characters). It's a wording rule, not a model call, so it's instant and stays on the PC. Test: `test/session-title.test.mjs`. Imported and renamed sessions keep their titles.

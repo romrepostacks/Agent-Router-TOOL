@@ -1613,8 +1613,9 @@ async function implementWithRole(role, task, project, skillText, options, { plan
     if (!staged) {
       const after = baseline && await workspaceFiles(project.path).catch(() => null);
       const changed = after ? [...new Set([...baseline.keys(), ...after.keys()])].filter((file) => baseline.get(file) !== after.get(file)).map((file) => file.replaceAll("\\", "/")).sort() : [];
+      await logChangedFiles(project, role, task, changed);
       await saveHandoff(project, { route: role, status: "Completed", task, summary: content });
-      return { content: changed.length ? `${content}\n\nFiles changed: ${changed.join(", ")}` : content, route: role, proposal: null };
+      return { content, route: role, proposal: null };
     }
     const proposal = await makeChangeProposal(project, baseline, stageDir, { route: role, provider: "Configured provider", content });
     await saveHandoff(project, { route: role, status: proposal.files.length ? "Changes waiting for review" : "Completed", task, summary: content });
@@ -1626,6 +1627,14 @@ async function implementWithRole(role, task, project, skillText, options, { plan
 }
 
 
+
+// Files an edit run changed go to the action log, not the chat reply. A failed write never fails the run.
+const ACTION_LOG = path.join(DATA_DIR, "action-log.md");
+async function logChangedFiles(project, route, task, changed) {
+  if (!changed.length) return;
+  const title = String(task).trim().split("\n")[0].slice(0, 120);
+  await appendFile(ACTION_LOG, `- ${new Date().toISOString()} · ${project.name} · ${route} · ${title}\n  Files changed: ${changed.join(", ")}\n`).catch(() => {});
+}
 
 async function runChain(task, project, skillText, options) {
   // compactContext: every chain prompt (plan and steps) gets smaller project-file and memory budgets for local model context limits.
@@ -1669,8 +1678,8 @@ async function runChain(task, project, skillText, options) {
     const proposal = staged ? await makeChangeProposal(project, baseline, stageDir, { route: "chain", provider: "Configured providers", content }) : null;
     if (!staged) {
       const after = await workspaceFiles(project.path, { signal: options.signal });
-      const changed = [...new Set([...baseline.keys(), ...after.keys()])].filter((file) => baseline.get(file) !== after.get(file));
-      if (changed.length) content += "\n\nFiles changed: " + changed.join(", ");
+      const changed = [...new Set([...baseline.keys(), ...after.keys()])].filter((file) => baseline.get(file) !== after.get(file)).map((file) => file.replaceAll("\\", "/")).sort();
+      await logChangedFiles(project, "Task chain", task, changed);
     }
     await saveHandoff(project, { route: "Task chain", status: failed ? "Incomplete" : proposal?.files.length ? "Changes waiting for review" : "Completed", task, summary: content });
     return { content, route: "Task chain", delegated: ["Planning", ...results.map((result) => result.route)], proposal: proposal?.files.length ? proposal : null };

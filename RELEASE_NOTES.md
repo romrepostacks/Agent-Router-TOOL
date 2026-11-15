@@ -1,5 +1,9 @@
 # Release notes
 
+## 0.31.1
+
+- **Changed files go to an action log, not the chat.** Replies no longer end with a `Files changed:` line. Each edit run that changed files adds an entry to `action-log.md` in `%LOCALAPPDATA%\LocalAgentRouterData\`.
+
 ## 0.31.0
 
 - **Pick your theme: Harbor, Moss or Ember**, on both the desktop and the phone apps. Harbor is cool slate with your Windows accent color (the desktop's default), Moss is sage green with rounded headings, and Ember is amber with monospace headings (the phone's default).

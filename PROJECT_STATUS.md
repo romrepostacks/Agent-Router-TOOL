@@ -1,5 +1,11 @@
 # Local Agent Router — Project Status
 
+## Current change (v0.31.1, 2026-11-14): changed-file list moves from the chat to an action log
+
+- Direct edit runs and task chains no longer end their chat reply with `Files changed: …`. `logChangedFiles()` in `server.mjs` appends one entry (time, project, route, first line of the task, files) to `%LOCALAPPDATA%\LocalAgentRouterData\action-log.md`. Staged runs are unchanged: their files show in the review card.
+- Build PC: the JDK's `bin` (`%LOCALAPPDATA%\Programs\jdk\jdk-21.0.13.0.2+1\bin`) is now on the user PATH, so APK builds no longer need it pointed at by hand. Open a new terminal to pick it up.
+- Checked: syntax, `npm test`. Not checked: a live edit run writing the log.
+
 ## Current change (v0.31.0, 2026-11-14): user-picked theme (Harbor / Moss / Ember) + light/dark/system, desktop and phone
 
 - Phone (`mobile/www`): `data-palette` on `<html>` (`ember` default, `harbor`, `moss`) next to `data-theme`. `applyAppearance()` in `app.js` resolves System to light/dark (and re-runs on `prefers-color-scheme` change), so `style.css` has no system media block any more. Saved per phone in `localStorage` (`ar-palette`, `ar-appearance`). Settings → Appearance card: Theme + Mode selects.

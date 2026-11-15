@@ -1,6 +1,11 @@
 # Local Agent Router — Project Status
 
-## Current change (v0.28.3, 2026-11-15): AI tools install fixes from the sandbox run
+## Current change (v0.28.4, 2026-11-15): Node.js download 404 without winget
+
+- Sandbox run of 0.28.3: Claude Code installed, but the Node.js download returned 404, so Codex and Copilot failed. Cause: Windows PowerShell 5.1 sends `Invoke-RestMethod`'s JSON array down the pipeline as one object, so `Where-Object lts` picked nothing and `$v` was empty (`/dist//node--x64.msi`). `build/install-clis.ps1` and `NODE_INSTALL` in `server.mjs` now store the list in `$releases` first, pick the newest LTS that ships `win-<arch>-msi`, and stop with a clear error if none is found. `test/installer-roles.test.mjs` guards against the piped form.
+- Next: build 0.28.4 and rerun `test/cli-install.wsb`; all of `node`, `npm`, `claude`, `codex`, `copilot` should PASS.
+
+## Earlier change (v0.28.3, 2026-11-15): AI tools install fixes from the sandbox run
 
 - **Claude Code refused to install from Setup** ("doesn't support 32-bit Windows"). Setup (NSIS) is a 32-bit program, so the `powershell.exe` it started was the 32-bit one. `customInstall` in `build/installer.nsh` now runs `$WINDIR\sysnative\WindowsPowerShell\v1.0\powershell.exe` (64-bit), falling back to `powershell.exe`. Settings → AI tools was already 64-bit (started from Electron).
 - **No winget meant no Node.js, so no Codex or Copilot** (both install through npm). Without winget, `build/install-clis.ps1` and Settings → AI tools (`NODE_INSTALL` in `server.mjs`) now download the current LTS `.msi` from nodejs.org (x64 or arm64) and run it with `msiexec /passive`. winget is still used when present.

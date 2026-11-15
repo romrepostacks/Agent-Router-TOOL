@@ -2046,8 +2046,10 @@ async function refreshWindowsPath() {
 // Node.js through winget, or, where there is none (Windows Sandbox, LTSC, older Windows), the current LTS
 // installer straight from nodejs.org. Same steps as build/install-clis.ps1.
 const NODE_INSTALL = "if (Get-Command winget -ErrorAction SilentlyContinue) { winget install -e --id OpenJS.NodeJS.LTS --accept-source-agreements --accept-package-agreements } else { "
-  + "$ProgressPreference = 'SilentlyContinue'; $v = (Invoke-RestMethod https://nodejs.org/dist/index.json | Where-Object lts | Select-Object -First 1).version; "
-  + "$a = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'arm64' } else { 'x64' }; $msi = Join-Path $env:TEMP \"node-$v-$a.msi\"; "
+  + "$ProgressPreference = 'SilentlyContinue'; $a = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'arm64' } else { 'x64' }; "
+  // Stored first: Windows PowerShell 5.1 pipes a JSON array as one object, which left $v empty (404).
+  + "$releases = Invoke-RestMethod https://nodejs.org/dist/index.json; $v = ($releases | Where-Object { $_.lts -and $_.files -contains \"win-$a-msi\" } | Select-Object -First 1).version; "
+  + "if (-not $v) { throw 'Could not find a Node.js LTS installer on nodejs.org.' }; $msi = Join-Path $env:TEMP \"node-$v-$a.msi\"; "
   + "Write-Host \"winget is not available. Downloading Node.js $v from nodejs.org...\"; Invoke-WebRequest \"https://nodejs.org/dist/$v/node-$v-$a.msi\" -OutFile $msi -UseBasicParsing; "
   + "$p = Start-Process msiexec.exe -ArgumentList '/i', \"`\"$msi`\"\", '/passive' -Wait -PassThru; if ($p.ExitCode -notin 0, 3010) { Write-Host \"Node.js setup failed with exit code $($p.ExitCode).\" -ForegroundColor Red } }";
 

@@ -34,8 +34,11 @@ if ($npmTools -and -not (Has "npm")) {
     if (Has "winget") { winget install -e --id OpenJS.NodeJS.LTS --accept-source-agreements --accept-package-agreements; return }
     # No winget (Windows Sandbox, LTSC, older Windows): the current LTS installer straight from nodejs.org.
     $ProgressPreference = "SilentlyContinue"
-    $v = (Invoke-RestMethod https://nodejs.org/dist/index.json | Where-Object lts | Select-Object -First 1).version
     $a = if ($env:PROCESSOR_ARCHITECTURE -eq "ARM64") { "arm64" } else { "x64" }
+    # Windows PowerShell 5.1 pipes a JSON array as one object, so store it first; piping the variable enumerates it.
+    $releases = Invoke-RestMethod https://nodejs.org/dist/index.json
+    $v = ($releases | Where-Object { $_.lts -and $_.files -contains "win-$a-msi" } | Select-Object -First 1).version
+    if (-not $v) { throw "Could not find a Node.js LTS installer on nodejs.org." }
     $msi = Join-Path $env:TEMP "node-$v-$a.msi"
     Write-Host "winget is not available. Downloading Node.js $v from nodejs.org..."
     Invoke-WebRequest "https://nodejs.org/dist/$v/node-$v-$a.msi" -OutFile $msi -UseBasicParsing

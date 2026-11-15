@@ -57,6 +57,8 @@ test("a Server install can install the AI tools, only known names reach PowerShe
   for (const pkg of ["@openai/codex", "@github/copilot", "OpenJS.NodeJS.LTS", "https://nodejs.org/dist/index.json", "'/passive'", "https://claude.ai/install.ps1"]) {
     assert.ok(script.replaceAll('"', "'").includes(pkg) && server.includes(pkg), pkg);
   }
+  // Windows PowerShell 5.1 pipes Invoke-RestMethod's JSON array as one object; piping it directly left the version empty (404).
+  for (const src of [script, server]) assert.doesNotMatch(src, /Invoke-RestMethod https:\/\/nodejs\.org\/dist\/index\.json \|/);
   // Setup is 32-bit; the tools script must run in 64-bit PowerShell or Claude Code's installer refuses it.
   assert.match(nsh, /sysnative\\WindowsPowerShell\\v1\.0\\powershell\.exe[\s\S]*ExecWait '"\$1" [^']*install-clis\.ps1/);
 });

@@ -1,5 +1,9 @@
 # Release notes
 
+## 0.28.4
+
+- **Node.js download no longer fails with 404 on PCs without winget.** Windows PowerShell 5.1 read the nodejs.org release list wrongly, so the download address had no version in it. Codex and Copilot failed after it. Fixed in Setup and in **Settings → AI tools**.
+
 ## 0.28.3
 
 - **Claude Code installs from Setup again.** Setup started the 32-bit PowerShell, and Claude Code's installer refused it as "32-bit Windows". Setup now uses the 64-bit PowerShell.

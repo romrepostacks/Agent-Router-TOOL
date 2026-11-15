@@ -251,6 +251,12 @@ function setPlusMenu(open) {
   $("plus-button").setAttribute("aria-expanded", String(open));
 }
 
+// Thin windows fold the thread pickers into a ⋯ menu (CSS decides when the button shows).
+function setOptionsMenu(open) {
+  $("options-wrap").classList.toggle("open", open);
+  $("options-button").setAttribute("aria-expanded", String(open));
+}
+
 function loadContextIds(projectId) {
   try {
     const value = JSON.parse(localStorage.getItem(`agent-router-context-${projectId}`) || "[]");
@@ -360,13 +366,19 @@ function renderApprovals() {
   }));
 }
 
+function refreshFollowupButtons() {
+  const empty = !$("prompt").value.trim();
+  $("queue").disabled = empty;
+  $("steer").disabled = empty;
+}
+
 function refreshRunControls() {
   const busy = Boolean(viewedRun()?.active);
   state.busy = busy;
-  $("steer").hidden = !busy;
-  $("send").disabled = busy ? false : !state.project;
-  $("send").querySelector("span").textContent = busy ? "Queue / Stop" : "Send";
-  $("send").title = busy ? "Stop this session's response" : "Send message";
+  for (const id of ["queue", "steer", "stop"]) $(id).hidden = !busy;
+  $("send").hidden = busy;
+  $("send").disabled = !state.project;
+  refreshFollowupButtons();
   $("new-session").disabled = !state.project;
   $("choose-context").disabled = !state.project;
   $("inspector-live").hidden = !busy;
@@ -416,6 +428,11 @@ function renderProjects() {
       button.append(badge);
     }
     button.addEventListener("click", () => selectProject(project.id));
+    // Merged folders stay out of the list; right-click (or the Menu key) offers to split them out again.
+    if (project.members?.length) {
+      button.title = `Includes ${project.members.join(", ")}. Right-click to unmerge.`;
+      button.addEventListener("contextmenu", (event) => { event.preventDefault(); openProjectMenu(project, event); });
+    }
     if (project.scope === "single") {
       button.addEventListener("dragover", (event) => {
         if (!event.dataTransfer.types.includes("application/x-agent-router-session")) return;
@@ -435,23 +452,54 @@ function renderProjects() {
       row.append(iconButton("merge-session", "⇲", `Merge ${project.name} into ${state.project.name}`, () => mergeProject(state.project.id, project.id)));
     }
     list.append(row);
-    for (const member of project.members || []) {
-      const memberRow = document.createElement("div");
-      memberRow.className = "session-row project-member";
-      const label = document.createElement("span");
-      label.className = "project-button";
-      label.textContent = `↳ ${member}`;
-      label.title = `Part of ${project.name}: its sessions are here and its files are in ${project.name}'s obsolete folder`;
-      memberRow.append(label, iconButton("delete-session", "⇱", `Split ${member} out of ${project.name}`, () => splitProject(member)));
-      list.append(memberRow);
-    }
   }
   renderInspector();
 }
 
-function blockedByRuns() {
+function openProjectMenu(project, event) {
+  const menu = $("project-menu");
+  const box = event.currentTarget.getBoundingClientRect();
+  // A Menu-key or Shift+F10 contextmenu has no pointer position; open it under the project instead.
+  menu.style.left = `${event.clientX || box.left + 12}px`;
+  menu.style.top = `${event.clientY || box.bottom}px`;
+  state.menuProject = project;
+  menu.hidden = false;
+  $("project-menu-unmerge").focus();
+}
+
+function closeProjectMenu() { $("project-menu").hidden = true; }
+
+function openUnmerge(project) {
+  state.unmergeProject = project;
+  $("unmerge-where").textContent = `Folders merged into ${project.name}. Splitting one out moves its folder back from ${project.name}\\obsolete. Sessions stay in ${project.name}.`;
+  $("unmerge-status").textContent = "";
+  renderUnmerge();
+  $("unmerge-dialog").showModal();
+}
+
+function renderUnmerge() {
+  const project = state.unmergeProject;
+  const rows = (project?.members || []).map((member) => {
+    const row = document.createElement("div");
+    row.className = "unmerge-row";
+    const name = document.createElement("span");
+    name.textContent = member;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "context-button";
+    button.textContent = "Split out";
+    button.setAttribute("aria-label", `Split ${member} out of ${project.name}`);
+    button.addEventListener("click", () => unmergeProjects([member]));
+    row.append(name, button);
+    return row;
+  });
+  $("unmerge-list").replaceChildren(...rows);
+  $("unmerge-all").disabled = rows.length < 2;
+}
+
+function blockedByRuns(statusId = "import-status") {
   if (!activeRuns().length) return false;
-  $("import-status").textContent = "Wait for running sessions to finish, or stop them, before merging or splitting projects.";
+  $(statusId).textContent = "Wait for running sessions to finish, or stop them, before merging or splitting projects.";
   return true;
 }
 
@@ -465,13 +513,24 @@ async function mergeProject(parentId, childId) {
   } catch (error) { $("import-status").textContent = error.message; }
 }
 
-async function splitProject(childId) {
-  if (blockedByRuns()) return;
-  try {
-    await request("/api/projects/split", { method: "POST", body: JSON.stringify({ childId }) });
-    $("import-status").textContent = `${childId} is its own project again and its folder is back in place. Its old sessions stay where they are.`;
-    await reloadProjects(state.project?.id);
-  } catch (error) { $("import-status").textContent = error.message; }
+// Splits one at a time and stops at the first failure, so a folder that can't move back doesn't hide later ones.
+async function unmergeProjects(members) {
+  if (blockedByRuns("unmerge-status")) return;
+  const status = $("unmerge-status");
+  const done = [];
+  for (const childId of members) {
+    status.textContent = `Splitting out ${childId}…`;
+    try { await request("/api/projects/split", { method: "POST", body: JSON.stringify({ childId }) }); done.push(childId); }
+    catch (error) { status.textContent = error.message; break; }
+  }
+  if (!done.length) return;
+  if (done.length === members.length) status.textContent = "";
+  $("import-status").textContent = `${done.join(", ")} ${done.length > 1 ? "are their own projects" : "is its own project"} again, back in ${done.length > 1 ? "their old folders" : "its old folder"}. Old sessions stay where they are.`;
+  const parentId = state.unmergeProject.id;
+  await reloadProjects(state.project?.id);
+  state.unmergeProject = state.projects.find((project) => project.id === parentId);
+  if (state.unmergeProject?.members?.length) renderUnmerge();
+  else $("unmerge-dialog").close();
 }
 
 async function reloadProjects(selectId) {
@@ -635,7 +694,10 @@ function renderMessages() {
     empty.className = "empty-state";
     const icon = document.createElement("div");
     icon.className = "empty-icon";
-    icon.textContent = "✳";
+    const iconImage = document.createElement("img");
+    iconImage.src = "/brand.svg";
+    iconImage.alt = "";
+    icon.append(iconImage);
     const heading = document.createElement("h1");
     heading.textContent = "What are we working on?";
     const description = document.createElement("p");
@@ -861,6 +923,41 @@ async function loadSkills() {
   renderApprovedSkills();
 }
 
+const k = (n) => n >= 1000 ? `${(n / 1000).toFixed(n >= 10_000 ? 0 : 1)}k` : String(n);
+
+// Settings → Shared skills → Token use by provider (GET /api/token-use, token-use.json).
+// "claude::opus — 12 calls · 340k tokens (avg 28k): 300k in (250k cached), 40k out"
+async function loadTokenUse() {
+  const list = $("token-use");
+  try {
+    const stats = Object.entries(await request("/api/token-use")).sort((a, b) => b[1].total - a[1].total);
+    list.replaceChildren(...stats.map(([key, s]) => {
+      const item = document.createElement("li");
+      const parts = [`${s.calls} call${s.calls === 1 ? "" : "s"}`];
+      if (s.measured) {
+        parts.push(`${k(s.total)} tokens (avg ${k(Math.round(s.total / s.measured))})${s.input || s.output ? `: ${k(s.input)} in${s.cached ? ` (${k(s.cached)} cached)` : ""}, ${k(s.output)} out` : ""}`);
+        if (s.measured < s.calls) parts.push(`${s.calls - s.measured} not reported`);
+      } else parts.push("tokens not reported");
+      item.textContent = `${key} — ${parts.join(" · ")}`;
+      return item;
+    }));
+    if (!stats.length) list.textContent = "No streamed tasks recorded yet.";
+  } catch (error) { list.textContent = error.message; }
+}
+
+// "4.2k chars · used in 12 of 40 runs: 10 done, 1 failed, 1 stopped · avg 18k tokens · 👍 3 👎 1"
+// Used = the provider opened the skill's file; sent = it was only in the skill list.
+function skillUsage(skill) {
+  const parts = [`${k(skill.size || 0)} chars`];
+  const s = skill.stats;
+  if (s?.runs) parts.push(`used in ${s.runs} of ${s.sent || s.runs} run${(s.sent || s.runs) === 1 ? "" : "s"}: ${s.done} done, ${s.failed} failed, ${s.stopped} stopped`,
+    s.tokenRuns ? `avg ${k(Math.round(s.tokens / s.tokenRuns))} tokens per run` : `avg prompt ${k(Math.round(s.promptChars / s.runs))} chars`);
+  else if (s?.sent) parts.push(`sent ${s.sent} time${s.sent === 1 ? "" : "s"}, never used`);
+  else parts.push("not used yet");
+  if (s?.good || s?.bad) parts.push(`👍 ${s.good || 0} 👎 ${s.bad || 0}`);
+  return parts.join(" · ");
+}
+
 function renderApprovedSkills() {
   const list = $("approved-skills");
   list.replaceChildren();
@@ -887,7 +984,20 @@ function renderApprovedSkills() {
       });
       const description = document.createElement("span");
       description.textContent = skill.name + (skill.description ? " — " + skill.description : "");
+      const usage = document.createElement("small");
+      usage.className = "skill-usage";
+      usage.textContent = skillUsage(skill);
+      description.append(document.createElement("br"), usage);
       label.append(checkbox, description);
+      if (skill.own) {
+        const remove = document.createElement("button");
+        remove.type = "button";
+        remove.className = "skill-delete";
+        remove.textContent = "Delete";
+        remove.title = "Delete this skill you added";
+        remove.addEventListener("click", (event) => { event.preventDefault(); deleteSkill(skill, remove); });
+        label.append(remove);
+      }
       list.append(label);
     }
   }
@@ -922,6 +1032,21 @@ async function saveSkill() {
     status.textContent = error.message;
   } finally {
     button.disabled = false;
+  }
+}
+
+async function deleteSkill(skill, button) {
+  if (!confirm(`Delete the skill "${skill.name}"? Its file is removed; its usage counts are kept.`)) return;
+  button.disabled = true;
+  try {
+    await request("/api/skills?id=" + encodeURIComponent(skill.id), { method: "DELETE" });
+    const pending = state.pendingPreapprovedSkillIds.filter((id) => id !== skill.id); // keep unsaved ticks
+    await loadSkills();
+    state.pendingPreapprovedSkillIds = pending;
+    renderApprovedSkills();
+  } catch (error) {
+    button.disabled = false;
+    button.textContent = error.message;
   }
 }
 
@@ -1025,7 +1150,7 @@ async function installScannedSkill() {
 
 function renderContextControls() {
   const count = state.attachments.length + state.contextIds.length;
-  $("context-count").textContent = count ? `${count} context item${count === 1 ? "" : "s"} selected` : "No extra context";
+  $("context-count").textContent = count ? `${count} context item${count === 1 ? "" : "s"}` : "";
   const list = $("attachment-list");
   list.replaceChildren();
   for (const [index, file] of state.attachments.entries()) {
@@ -1178,6 +1303,7 @@ async function selectProject(id) {
   localStorage.setItem("agent-router-project", id);
   $("project-name").textContent = state.project?.name || "Choose a project";
   $("project-path").textContent = state.project?.path || "";
+  $("project-name").title = state.project?.path || "";
   const allProjects = state.project?.scope === "all";
   $("workspace-note").textContent = allProjects
     ? "Read-only review across visible project folders. Choose one folder to code or push."
@@ -1278,11 +1404,15 @@ async function refreshStatus() {
     const dot = document.createElement("i");
     dot.className = `status-dot ${result.colibri.online ? "online" : "offline"}`;
     const selectedAvailable = result.colibri.models.some((model) => model === result.colibri.selectedModel) || result.colibri.models.some((model) => /qwen3\.6|qwen36/i.test(model) && /35b.*a3b/i.test(model));
-    colibri.replaceChildren(dot, document.createTextNode(result.colibri.online ? `Local model · ${result.colibri.selectedModel || "ready"}` : "Local model offline"));
+    colibri.replaceChildren(dot, document.createTextNode(result.colibri.online ? "Local model" : "Local offline"));
+    colibri.title = result.colibri.online ? `Local model · ${result.colibri.selectedModel || "ready"}` : "Local model offline";
     const labels = { claude: "Claude Code", codex: "Codex", copilot: "Copilot" };
     const apis = Object.entries({ openai: "OpenAI API", anthropic: "Anthropic API" }).filter(([id]) => result.apis?.[id]).map(([, name]) => `${name}: key saved`);
-    cli.textContent = [...Object.keys(labels).map((id) => `${labels[id]}: ${result.commands[id]?.signIn || (result.commands[id]?.available ? "installed · sign-in unknown" : "not installed")}`), ...apis].join("  ·  ");
-    cli.title = "Sign-in check only reports readiness; credentials are never shown.";
+    const installed = Object.keys(labels).filter((id) => result.commands[id]?.available).map((id) => labels[id]);
+    const cliDot = document.createElement("i");
+    cliDot.className = `status-dot ${installed.length || apis.length ? "online" : "offline"}`;
+    cli.replaceChildren(cliDot, document.createTextNode(installed.length ? installed.join(" · ") : apis.length ? "API keys" : "No AI tools"));
+    cli.title = [...Object.keys(labels).map((id) => `${labels[id]}: ${result.commands[id]?.signIn || (result.commands[id]?.available ? "installed · sign-in unknown" : "not installed")}`), ...apis, "Sign-in check only reports readiness; credentials are never shown."].join("\n");
     const settings = await request("/api/settings");
     state.modelPrefs = settings;
     renderInspector();
@@ -1490,14 +1620,10 @@ async function followRun({ sessionId, projectName, title, requestData, attachmen
 async function sendMessage(event) {
   event.preventDefault();
   const running = viewedRun();
-  // Stop goes through the server: closing a stream only detaches this page from the run.
-  if (running?.active && !$("prompt").value.trim()) {
-    await request(`/api/runs/${encodeURIComponent(running.sessionId)}/cancel`, { method: "POST" }).catch(() => {});
-    return;
-  }
   const message = $("prompt").value.trim();
   if (!message || !state.project) return;
-  if (running?.active) return sendFollowup(event.submitter?.id === "steer" ? "steer" : "queue");
+  // While a run is active, Enter (no submitter) steers; only the Queue button queues.
+  if (running?.active) return sendFollowup(event.submitter?.id === "queue" ? "queue" : "steer");
   await submitRequest({
     message,
     projectId: state.project.id,
@@ -1635,7 +1761,8 @@ async function loadProjects() {
 }
 
 async function openSettings() {
-  if (!state.skills.length) await loadSkills();
+  await loadSkills(); // fresh usage counts for Settings → Shared skills
+  loadTokenUse();
   const settings = await request("/api/settings");
   state.settingsRoot = settings.projectsRoot;
   state.settingsConfigured = settings.configured;
@@ -1649,11 +1776,31 @@ async function openSettings() {
   $("local-only").checked = Boolean(settings.localOnly);
   $("local-models-status").textContent = "";
   loadLocalModels();
+  loadRules();
   applyTheme($("theme-choice").value);
   selectSettingsTab("general");
   renderApprovedSkills();
   if (!$("settings-dialog").open) $("settings-dialog").showModal();
   await loadModelChoices(settings);
+}
+
+// rules.md: sent with every request. Saved on its own button so a half-typed rule never goes out.
+let rulesSent = 4000;
+function refreshRulesCount() {
+  const length = $("rules-text").value.length;
+  $("rules-count").textContent = length > rulesSent
+    ? `${rulesSent.toLocaleString()} of ${length.toLocaleString()} characters are sent; the rest is ignored.`
+    : `${length.toLocaleString()} / ${rulesSent.toLocaleString()} characters`;
+}
+async function loadRules() {
+  $("rules-text").disabled = true;
+  try {
+    const data = await request("/api/rules");
+    rulesSent = data.sent || rulesSent;
+    $("rules-text").value = data.text || "";
+    refreshRulesCount();
+  } catch (error) { $("rules-count").textContent = error.message; }
+  $("rules-text").disabled = false;
 }
 
 // Colibri's installed models (folders next to the loaded one). Load switches the server now; routes switch on use.
@@ -1749,6 +1896,7 @@ function selectSettingsTab(name) {
   });
   document.querySelectorAll("[data-settings-page]").forEach((page) => { page.hidden = page.dataset.settingsPage !== name; });
   if (name === "remote") loadRemote();
+  if (name === "tools") loadCliTools();
 }
 
 // Settings → Remote access: GET/POST /api/remote, POST /api/remote/devices (token shown once), DELETE …/devices/<id>.
@@ -1889,6 +2037,12 @@ async function saveSettings() {
 }
 
 $("prompt-form").addEventListener("submit", sendMessage);
+$("prompt").addEventListener("input", refreshFollowupButtons);
+// Stop goes through the server: closing a stream only detaches this page from the run.
+$("stop").addEventListener("click", async () => {
+  const running = viewedRun();
+  if (running?.active) await request(`/api/runs/${encodeURIComponent(running.sessionId)}/cancel`, { method: "POST" }).catch(() => {});
+});
 $("prompt").addEventListener("keydown", (event) => {
   if (event.key === "Enter" && !event.shiftKey) {
     event.preventDefault();
@@ -1964,6 +2118,13 @@ $("new-project").addEventListener("click", () => {
   $("new-project-dialog").showModal();
 });
 $("close-new-project").addEventListener("click", () => $("new-project-dialog").close());
+$("project-menu-unmerge").addEventListener("click", () => { closeProjectMenu(); if (state.menuProject) openUnmerge(state.menuProject); });
+document.addEventListener("click", (event) => { if (!$("project-menu").contains(event.target)) closeProjectMenu(); });
+document.addEventListener("keydown", (event) => { if (event.key === "Escape") closeProjectMenu(); });
+window.addEventListener("blur", closeProjectMenu);
+$("projects").addEventListener("scroll", closeProjectMenu);
+$("close-unmerge").addEventListener("click", () => $("unmerge-dialog").close());
+$("unmerge-all").addEventListener("click", () => unmergeProjects([...(state.unmergeProject?.members || [])]));
 $("new-project-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   $("new-project-status").textContent = "Creating…";
@@ -2003,7 +2164,9 @@ function applyLayout() {
     else document.documentElement.style.removeProperty(`--${side}-w`);
     const hidden = Boolean(layout[`${side}Hidden`]);
     document.body.classList.toggle(panel.bodyClass, hidden);
-    $(panel.button).textContent = `${hidden ? "Show" : "Hide"} ${panel.label}`;
+    const label = `${hidden ? "Show" : "Hide"} ${panel.label}`;
+    $(panel.button).setAttribute("aria-label", label);
+    $(panel.button).title = label;
     $(panel.button).setAttribute("aria-expanded", String(!hidden));
   }
 }
@@ -2070,8 +2233,12 @@ for (const button of document.querySelectorAll(".suggestions button")) {
 }
 
 $("plus-button").addEventListener("click", () => setPlusMenu($("plus-menu").hidden));
+$("options-button").addEventListener("click", () => setOptionsMenu(!$("options-wrap").classList.contains("open")));
+$("options-wrap").addEventListener("keydown", (event) => { if (event.key === "Escape" && $("options-wrap").classList.contains("open")) { setOptionsMenu(false); $("options-button").focus(); } });
 document.addEventListener("click", (event) => {
   if (!event.target.closest(".plus-wrap")) setPlusMenu(false);
+  if (!event.target.closest(".options-wrap")) setOptionsMenu(false);
+  for (const menu of document.querySelectorAll(".heading-menu[open]")) if (!menu.contains(event.target) || event.target.closest(".heading-menu-list button")) menu.open = false;
   if (!event.target.closest(".route-picker") && !$("route-menu").hidden) setRouteMenu(false);
 });
 $("plus-menu").addEventListener("keydown", (event) => { if (event.key === "Escape") { setPlusMenu(false); $("plus-button").focus(); } });
@@ -2101,11 +2268,10 @@ $("apply-proposal").addEventListener("click", applyProposal);
 loadProjects().then(() => reattachRuns()).then(() => importSessions({ quiet: true })).catch((error) => { $("projects").textContent = error.message; });
 loadSkills().catch((error) => { $("skills-list").textContent = error.message; });
 // ---- First-run setup ----
-const setup = { step: 0, data: null, skipped: new Set(), firstRun: false };
+const setup = { step: 0, data: null, firstRun: false };
 const SETUP_STEPS = [
   { title: "Welcome to Local Agent Router", subtitle: "Let's get you set up. This takes a few minutes." },
   { title: "Where are your projects?", subtitle: "Each folder inside this one shows up as a project." },
-  { title: "Connect your AI tools", subtitle: "Install and sign in to the tools you have subscriptions for. Skip any you don't use." },
   { title: "Local model (optional)", subtitle: "Run a model on this PC for private quick questions. Skip if you don't have one." },
   { title: "API keys (optional)", subtitle: "Use an OpenAI or Anthropic API key instead of, or alongside, the tools above." },
   { title: "Review and finish", subtitle: "Here's which tool will handle each kind of work. You can change any of these later in Settings." },
@@ -2133,13 +2299,6 @@ async function openSetup(firstRun = false) {
   renderSetup();
 }
 
-async function refreshSetup(message = "Checking again…") {
-  $("setup-status").textContent = message;
-  try { setup.data = await request("/api/setup"); $("setup-status").textContent = ""; }
-  catch (error) { $("setup-status").textContent = error.message; }
-  renderSetup();
-}
-
 async function setupPost(url, body) {
   return request(url, { method: "POST", body: JSON.stringify(body) });
 }
@@ -2151,29 +2310,39 @@ function toolStatus(tool) {
   return ["Installed", "ready"];
 }
 
+// Settings → AI tools: install or sign in to the command-line tools. The installer offers the same installs.
 async function openSetupTerminal(tool, action) {
   try {
     const result = await setupPost("/api/setup/terminal", { tool, action });
-    $("setup-status").textContent = `A setup window opened. ${result.hint || "Follow it, then press Check again."}`;
-  } catch (error) { $("setup-status").textContent = error.message; }
+    $("cli-tools-status").textContent = `A setup window opened. ${result.hint || "Follow it, then press Check again."}`;
+  } catch (error) { $("cli-tools-status").textContent = error.message; }
 }
 
-function setupToolCard(tool, isNode = false) {
+function cliToolCard(tool, nodeInstalled, isNode = false) {
   const [label, tone] = isNode ? (tool.installed ? ["Installed", "ready"] : ["Not installed", "missing"]) : toolStatus(tool);
-  const skipped = setup.skipped.has(tool.id || "node");
   const id = tool.id || "node";
-  return el("div", { class: `setup-card${skipped ? " skipped" : ""}` },
-    el("div", { class: "setup-card-head" }, el("strong", {}, tool.name), el("span", { class: `setup-pill ${skipped ? "" : tone}` }, skipped ? "Skipped" : label)),
+  return el("div", { class: "setup-card" },
+    el("div", { class: "setup-card-head" }, el("strong", {}, tool.name), el("span", { class: `setup-pill ${tone}` }, label)),
     el("p", {}, tool.why),
-    skipped ? null : el("div", { class: "setup-card-actions" },
+    el("div", { class: "setup-card-actions" },
       !tool.installed ? el("button", { type: "button", class: "send-button", onclick: () => openSetupTerminal(id, "install") }, "Install") : null,
       !isNode && tool.installed && tool.signIn !== "signed in" ? el("button", { type: "button", class: "send-button", onclick: () => openSetupTerminal(id, "login") }, "Sign in") : null,
       el("a", { href: tool.guide, target: "_blank", rel: "noopener", class: "context-button" }, "Setup guide"),
-      !tool.installed && tool.needsNode && !setup.data.node.installed ? el("span", { class: "setup-note" }, "Install Node.js first.") : null),
-    el("button", { type: "button", class: "setup-skip", onclick: () => { skipped ? setup.skipped.delete(id) : setup.skipped.add(id); renderSetup(); } },
-      skipped ? "Undo skip" : tool.installed ? "Skip, I'll leave this as is" : "Skip, I don't use this"),
-    tool.install && !tool.installed && !skipped ? el("code", { class: "setup-command" }, tool.install) : null);
+      !tool.installed && tool.needsNode && !nodeInstalled ? el("span", { class: "setup-note" }, "Install Node.js first.") : null),
+    tool.install && !tool.installed ? el("code", { class: "setup-command" }, tool.install) : null);
 }
+
+async function loadCliTools(message = "Checking this PC…") {
+  const list = $("cli-tools");
+  $("cli-tools-status").textContent = message;
+  try {
+    const data = await request("/api/setup");
+    const needNode = !data.node.installed && data.tools.some((tool) => tool.needsNode && !tool.installed);
+    list.replaceChildren(...(needNode ? [cliToolCard(data.node, false, true)] : []), ...data.tools.map((tool) => cliToolCard(tool, data.node.installed)));
+    $("cli-tools-status").textContent = "";
+  } catch (error) { $("cli-tools-status").textContent = error.message; }
+}
+$("cli-tools-refresh").addEventListener("click", () => loadCliTools("Checking again…"));
 
 function renderSetup() {
   const step = SETUP_STEPS[setup.step];
@@ -2190,9 +2359,9 @@ function renderSetup() {
   if (setup.step === 0) {
     body.append(
       el("p", {}, "Local Agent Router sends each request to the AI tool that's best at it: planning, coding, reviews, security audits, design, GitHub and quick questions."),
-      el("p", {}, "You'll choose your projects folder, then connect whichever AI tools you already pay for. Every step can be skipped and changed later in Settings."),
+      el("p", {}, "You'll choose your projects folder, then optionally connect a local model or API keys. Every step can be skipped and changed later in Settings."),
       el("ul", { class: "setup-list" },
-        el("li", {}, "Command-line tools: Claude Code, Codex, GitHub Copilot"),
+        el("li", {}, "Command-line tools (Claude Code, Codex, GitHub Copilot): offered by the installer, and in Settings → AI tools"),
         el("li", {}, "A local model app such as Ollama or LM Studio (optional)"),
         el("li", {}, "OpenAI or Anthropic API keys (optional)")));
   } else if (setup.step === 1) {
@@ -2201,11 +2370,6 @@ function renderSetup() {
       el("label", { class: "setup-check" }, el("input", { id: "setup-create", type: "checkbox", checked: true }), " Create this folder if it doesn't exist"),
       el("p", { class: "settings-help" }, "AI tools only see the project you pick, and coding changes wait for your review before they touch your files."));
   } else if (setup.step === 2) {
-    const needNode = !data.node.installed && data.tools.some((tool) => tool.needsNode && !tool.installed);
-    body.append(el("div", { class: "setup-toolbar" }, el("button", { type: "button", class: "context-button", onclick: () => refreshSetup() }, "Check again"), el("span", { class: "settings-help" }, "Install opens a PowerShell window that runs the command shown. Sign in opens the tool so you can log in.")));
-    if (needNode) body.append(setupToolCard(data.node, true));
-    for (const tool of data.tools) body.append(setupToolCard(tool));
-  } else if (setup.step === 3) {
     const local = data.local;
     body.append(
       el("div", { class: "setup-toolbar" }, ...local.presets.map((preset) => el("button", { type: "button", class: "context-button", onclick: () => { $("setup-local-url").value = preset.url; } }, preset.name))),
@@ -2221,7 +2385,7 @@ function renderSetup() {
         try { setup.data = await setupPost("/api/setup/local", { baseUrl: local.baseUrl, model: event.target.value }); $("setup-status").textContent = "Saved."; } catch (error) { $("setup-status").textContent = error.message; }
       } }, el("option", { value: "" }, "First available model"), ...local.models.map((model) => el("option", { value: model, selected: model === local.model }, model)))) : null,
       el("p", { class: "settings-help" }, "Don't have one? Ollama is the easiest: ", el("a", { href: "https://ollama.com/download", target: "_blank", rel: "noopener" }, "download Ollama"), ", run ", el("code", {}, "ollama pull llama3.2"), ", then press Ollama and Connect."));
-  } else if (setup.step === 4) {
+  } else if (setup.step === 3) {
     if (!data.canStoreKeys) body.append(el("p", { class: "settings-help" }, "API keys can only be saved in the installed desktop app."));
     for (const [id, name, hint] of [["openai", "OpenAI API key", "https://platform.openai.com/api-keys"], ["anthropic", "Anthropic API key", "https://console.anthropic.com/settings/keys"]]) {
       body.append(el("label", { class: "settings-field" }, `${name} ${data.apiKeys[id] ? "(saved)" : ""}`, el("input", { id: `setup-key-${id}`, type: "password", autocomplete: "off", placeholder: data.apiKeys[id] ? "Saved. Paste a new key to replace it." : "Paste your key" })),
@@ -2237,7 +2401,7 @@ function renderSetup() {
     });
     const none = !Object.values(data.assignment).some(Boolean);
     body.append(
-      none ? el("p", { class: "setup-warning" }, "No AI tool is set up yet. Go back and install at least one, or finish now and run setup again later from Settings.") : null,
+      none ? el("p", { class: "setup-warning" }, "No AI tool is set up yet. Finish now, then install one in Settings → AI tools.") : null,
       el("table", { class: "setup-table" }, el("tbody", {}, rows)),
       el("p", { class: "settings-help" }, "If a tool stops working or isn't installed, the app automatically uses the next one that is."));
   }
@@ -2248,7 +2412,7 @@ async function setupNext() {
   button.disabled = true;
   try {
     if (setup.step === 1) setup.createFolder = $("setup-create").checked;
-    if (setup.step === 4) {
+    if (setup.step === 3) {
       const keys = Object.fromEntries(["openai", "anthropic"].map((id) => [id, $(`setup-key-${id}`).value.trim()]).filter(([, value]) => value));
       if (Object.keys(keys).length) setup.data = await setupPost("/api/setup/keys", keys);
       else setup.data = await request("/api/setup");
@@ -2282,6 +2446,16 @@ async function loadFeedbackInfo() {
   return feedbackInfo;
 }
 $("feedback-details").addEventListener("toggle", () => { if ($("feedback-details").open) loadFeedbackInfo().catch((error) => { $("feedback-preview").textContent = error.message; }); });
+$("rules-text").addEventListener("input", refreshRulesCount);
+$("save-rules").addEventListener("click", async () => {
+  $("save-rules").disabled = true;
+  try {
+    await request("/api/rules", { method: "POST", body: JSON.stringify({ text: $("rules-text").value }) });
+    $("rules-count").textContent = "Saved. New requests use these rules.";
+  } catch (error) { $("rules-count").textContent = error.message; }
+  $("save-rules").disabled = false;
+});
+
 $("submit-feedback").addEventListener("click", async () => {
   const text = $("feedback-text").value.trim();
   if (!text) { $("feedback-status").textContent = "Write what happened first."; return; }
@@ -2311,7 +2485,7 @@ request("/api/version").then(({ version, role, client, remote }) => {
   const label = client || `${version}${role ? ` ${role}` : ""}`;
   $("app-version").textContent = `v${label}`;
   $("app-version").title = client ? `This Client is ${client}; the server is ${version} ${role || ""}`.trim() : "";
-  if (remote) document.querySelector('[data-settings-tab="remote"]')?.remove();
+  if (remote) for (const tab of ["remote", "tools"]) document.querySelector(`[data-settings-tab="${tab}"]`)?.remove(); // both run on the server PC only
 }).catch(() => {});
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { if (state.theme === "system") applyTheme("system"); });
 setInterval(refreshStatus, 30_000);
@@ -2322,7 +2496,7 @@ async function sendFollowup(delivery) {
   const originalRun = viewedRun();
   pendingFollowups.set(sessionId, (pendingFollowups.get(sessionId) || 0) + 1);
   const requestData = { message: $("prompt").value.trim(), projectId: state.project.id, mode: $("mode").value, skillIds: [...state.selectedSkills], contextIds: [...state.contextIds], attachments: state.attachments.map((f) => ({ ...f })) };
-  $("prompt").value = ""; state.attachments = []; renderContextControls();
+  $("prompt").value = ""; state.attachments = []; renderContextControls(); refreshFollowupButtons();
   $("context-count").textContent = delivery === "steer" ? "Restarting with your correction?" : "Message queued after this response.";
   try {
     const response = await fetch("/api/chat/stream", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...requestData, sessionId, delivery, attachmentNames: requestData.attachments.map((f) => f.name) }) });

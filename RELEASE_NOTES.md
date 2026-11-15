@@ -1,5 +1,65 @@
 # Release notes
 
+## 0.28.2
+
+- **Skills reach the local model again on project routes.** Since 0.23.0 skills go out as a short index with file paths, and chat providers (local model, OpenAI and Anthropic API) get the skill text inlined because they can't open files. On routes that read the project (Review, Project, Code and the rest) that inlined text was thrown away, so those providers saw only file paths they couldn't open. Fixed, with a test (`test/chat-provider-skills.test.mjs`).
+- Phone apps rebuilt as 0.28.2 so the desktop and phone versions match.
+
+## 0.28.1
+
+- **Dropdown lists follow dark mode.** The Thread access and permission pickers (and every other dropdown) opened a light list in dark mode. They now use the dark colors.
+
+## 0.28.0
+
+- **Phone apps (APK and IPA) catch up with the desktop app as of 0.27.** The phone app's version is now the same as the desktop app's again.
+  - **Rename and move sessions:** **⋯** on a session row opens a sheet to rename it, move it to another project, or delete it.
+  - **Queue, Steer and Stop buttons** while a response runs, the same as the desktop. Enter steers. An empty message no longer stops the run; use **Stop**.
+  - **Skills sheet:** each skill shows its usage line (used in X of Y runs, average tokens per run, 👍/👎). Skills you added in the app can be deleted with **×**.
+  - **Settings:** **Local models only**, **Rules for every task** (saved only when you tap **Save rules**) and **Token use by provider**.
+- README → Phone apps now lists what the phone app does and builds with `npm run build:android` / `npm run build:ios`.
+- **Thin windows no longer overlap.** When the main area is narrow (small window, or both side panels open), **Thread access** and the Claude Code permission picker fold into a **⋯** menu next to **+**, so Queue, Steer and Stop have room. The top bar shows the status as dots (hover for details), hides the project path, and shortens a long route name instead of pushing buttons off. The **+** and route menus no longer stick out past the window.
+
+## 0.27.0
+
+- **Cleaner main screen.** The top bar is one slim row: panel buttons, the route menu, the project name, and small ready dots for the local model and AI tools. Hover a dot for the details. The separate status bar is gone.
+- **Everything for the task is in the task box.** The **+** button is at the bottom left and now holds files, linked folders, **Shared skills** and the privacy note. **Thread access** and the Claude Code permission mode are small pickers beside it.
+- **Session tools in one menu.** Import, pull from the cloud, re-file, merge and **Pending reviews only** are in the **⋯** menu above the session list.
+
+## 0.26.0
+
+- **AI tools in the installer:** a Server install now has an optional **AI tools** page. Tick Claude Code, Codex and/or GitHub Copilot and setup installs them after the app, in a PowerShell window. Node.js is installed first if Codex or Copilot need it, and tools already installed are skipped. Silent installs take `/TOOLS=claude,codex,copilot`.
+- **Settings → AI tools:** installing and signing in to Claude Code, Codex and Copilot moved out of the first-run setup guide into its own Settings tab. The setup guide keeps the projects folder, local model and API key steps.
+
+## 0.25.0
+
+- **Real token counts:** every provider call in a task now records the tokens the provider itself reports: Claude Code and the Anthropic API (input, cached, output), OpenAI and local models that report usage, and Codex (total only). Copilot doesn't report tokens; its calls are counted without them.
+- **Where you see them:** each call's tokens appear in the task's details pane. **Settings → Shared skills → Token use by provider** shows calls and tokens per provider and model. Each skill's usage line now shows average tokens per run instead of prompt characters, once a run that used it reported tokens.
+
+## 0.24.0
+
+- **Delete skills you added:** under **Settings → Shared skills**, each skill you added in the app's **Shared skills** panel now has a **Delete** button. It removes the skill and its always-on approval; its usage counts are kept. Skills installed from GitHub or imported from other tools have no Delete button.
+- **Fresh skill counts:** opening Settings now reloads each skill's usage line, so counts from tasks you just ran show without restarting the app.
+
+## 0.23.0
+
+- **Smaller prompts with many skills:** selected and pre-approved skills are now sent as a one-line-each list with each skill's file path instead of their full text. CLI providers read a skill only when it applies; local and API-key models still get the text, shortened in task chains. With 37 pre-approved skills this cuts well over 100,000 characters from every prompt and every chain step.
+- **rules.md:** short rules in `%LOCALAPPDATA%\LocalAgentRouterData\rules.md` are sent with every request, whatever the route or provider. Edit them in **Settings → General → Rules for every task**.
+- **Skill usage in Settings:** each skill under **Shared skills** now shows its size, how many tasks it went out with, and how many of those actually used it (Claude Code, Codex or Copilot opened its file; an answer that only mentions a skill's path doesn't count). For the tasks that used it: how they ended (done, failed, stopped), their average prompt size, and the thumbs up/down given to their answers. Skills that went out but were never used say so. Local and API-key models get skill text inlined, so their use isn't counted. Counts start with this version.
+- **Merged projects are hidden from the Projects list.** A folder merged into another project no longer shows under it. To split folders back out, right-click the project and choose **Unmerge projects…**, then split out one folder or all of them.
+
+## 0.22.2
+
+- **Fix: merging sessions failed with "EPERM: operation not permitted, rename … sessions.json".** Saving now waits and retries when Windows briefly has the file open elsewhere (for example antivirus or another read), instead of failing at once. This applies to sessions, settings, change previews and project files.
+
+## 0.22.1
+
+- **Separate Queue, Steer and Stop buttons:** while a response runs, the composer shows three buttons instead of one combined "Queue / Stop" button. Steer is blue and is what Enter does; Queue sends after the response; Stop ends it. Queue and Steer stay disabled until you type something.
+
+## 0.22.0
+
+- **Task chains fit local models:** chain steps no longer resend the full plan and every earlier result. Each step gets its own task, a one-line list of the other steps and a short handoff from each earlier step (the start and end of its report, including changed files). Reviews are told to check the current files. Full results still appear in the final chain report.
+- **Smaller chain context:** planner and step prompts carry only the latest 4 project-memory reports, shortened and without their old task text, and chat providers (Colibri) get at most ~12,000 characters of project files instead of 40,000. Chain steps no longer repeat the shared handoff note.
+
 ## 0.21.0
 
 - **Rename sessions** with ✎ on a session row, and **move sessions** out of All Projects by dragging them onto a project (or ⇥ → Move to…).

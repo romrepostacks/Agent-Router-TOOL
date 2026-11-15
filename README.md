@@ -7,14 +7,14 @@ A Windows desktop app that sends each request to the AI tool best suited for it:
 
 ## Install (for anyone, starting from nothing)
 
-1. Run `LocalAgentRouter-Setup-<version>.exe` (in `release/` after a build). Windows may show a SmartScreen warning until the installer is code-signed: choose **More info → Run anyway**. The setup wizard first asks **Server or Client** (see [Server and Client](#server-and-client) below; pick **Server** if this is your only PC), then whether to install for you only or for everyone on the PC, then lets you pick the install folder. Updating keeps the earlier choice selected. Windows **Settings → Apps** shows the version with the choice, for example `0.18.0 server`. If Local Agent Router is already installed, setup says so and updates it in place; installs from 0.15.0 and earlier (the old one-click installer) are removed after the new version is in. Your settings, sessions and skills in `%LOCALAPPDATA%LocalAgentRouterData` are always kept. Setup adds Start-menu and desktop shortcuts and can open the app when it finishes. Uninstall from **Settings → Apps**.
+1. Run `LocalAgentRouter-Setup-<version>.exe` (in `release/` after a build). Windows may show a SmartScreen warning until the installer is code-signed: choose **More info → Run anyway**. The setup wizard first asks **Server or Client** (see [Server and Client](#server-and-client) below; pick **Server** if this is your only PC). A Server then gets an optional **AI tools** page: tick Claude Code, Codex and/or GitHub Copilot and setup installs them after the app, in a PowerShell window (Node.js is installed first if Codex or Copilot need it; tools already installed are skipped). Next it asks whether to install for you only or for everyone on the PC, then lets you pick the install folder. Updating keeps the earlier choice selected. Windows **Settings → Apps** shows the version with the choice, for example `0.18.0 server`. If Local Agent Router is already installed, setup says so and updates it in place; installs from 0.15.0 and earlier (the old one-click installer) are removed after the new version is in. Your settings, sessions and skills in `%LOCALAPPDATA%LocalAgentRouterData` are always kept. Setup adds Start-menu and desktop shortcuts and can open the app when it finishes. Uninstall from **Settings → Apps**.
 2. A setup guide walks through:
    - **Projects folder** – created for you if it doesn't exist.
-   - **AI tools** – for Claude Code, Codex and Copilot it shows whether each is installed and signed in. **Install** opens a PowerShell window running the official install command (Node.js is offered first if Codex or Copilot need it); **Sign in** opens the tool so you can log in; **Skip** if you already have it set up or don't use it. **Check again** re-detects without restarting.
    - **Local model (optional)** – one-click addresses for Ollama, LM Studio and Colibri, a Connect test, and a model picker.
    - **API keys (optional)** – OpenAI and Anthropic keys, encrypted by Windows and stored only on that PC.
    - **Review** – shows which tool will handle each route, picked from what is actually set up.
 3. Run setup again any time from **Settings → General → Run setup again**.
+4. **Settings → AI tools** shows whether Claude Code, Codex and Copilot are installed and signed in. **Install** opens a PowerShell window running the official install command (Node.js is offered first if Codex or Copilot need it); **Sign in** opens the tool so you can log in. **Check again** re-detects without restarting.
 
 If a route's tool is missing or not set up, the app automatically uses the next available tool for that route.
 
@@ -33,7 +33,7 @@ Each device has its own token. Remove a device on the server to cut it off at on
 
 A Client or phone with a token can run tasks on the server with the server's provider settings, so treat a token like a password and remove devices you no longer use.
 
-Silent installs: `LocalAgentRouter-Setup-<version>.exe /S /ROLE=client` (or `/ROLE=server`).
+Silent installs: `LocalAgentRouter-Setup-<version>.exe /S /ROLE=client` (or `/ROLE=server`). Add `/TOOLS=claude,codex,copilot` (any of them) to a Server install to install those AI tools too; without a silent install it preselects them on the AI tools page.
 
 ### Remote API (for the phone apps)
 
@@ -61,9 +61,19 @@ Server PC only (the desktop page, `127.0.0.1`): `GET /api/remote` → `{ enabled
 
 ## Phone apps (iPhone and Android)
 
-The phone apps live in `mobile/` (Capacitor 7). **No APK or IPA has been built yet**; build them with the steps below. Both connect to a Server the same way a Client PC does: Tailscale on the phone, then the server address and a device token from **Settings → Remote access → Add device** on the server PC.
+The phone apps live in `mobile/` (Capacitor 7). Both connect to a Server the same way a Client PC does: Tailscale on the phone, then the server address and a device token from **Settings → Remote access → Add device** on the server PC (or paste the connection code copied there).
 
-Known gap before the apps work against a real server: the server answers plain `http://` on its Tailscale address. Android blocks plain HTTP from apps by default and iOS App Transport Security does too, so the app needs an exception for the Tailscale address (or HTTPS) before it can connect.
+What the phone app does (matches the desktop app as of 0.27):
+
+- **Projects and sessions:** open a project, search its sessions, filter to pending reviews, import CLI sessions, start a new session. **⋯** on a session renames it, moves it to another project, or deletes it.
+- **Tasks:** pick the route, shared skills, thread access and the Claude Code permission mode from the chips under the task box. **+** attaches phone files, server project files, or links another server project folder.
+- **While a response runs:** **Steer** (or Enter) restarts it with your correction, **Queue** sends after it, **Stop** ends it. **Output** shows the live agent output, including tokens per call.
+- **Approvals:** Always allow, Allow or Deny on approval cards, in the chat or the Inbox. Review and apply staged changes.
+- **Skills:** each skill in the **Skills** sheet shows its usage line (used in X of Y runs, average tokens). Skills you added in the app have a **×** to delete them.
+- **Settings:** server status, projects folder, skill limit, **Local models only**, routing and models per route, **Rules for every task**, and **Token use by provider**.
+- **Running** and **Inbox** tabs: every running task across projects, finished runs and approval requests. Alerts while the app is open or recently used; push for a fully closed app isn't built.
+
+Build with the scripts below rather than plain `npx cap` commands: `npm run build:android` / `npm run build:ios` (`mobile/scripts/build.mjs`) add the Capacitor runtime, allow plain `http://` to the server's Tailscale address, and set the app version from `mobile/package.json`.
 
 ### Android (APK)
 
@@ -73,12 +83,9 @@ You need a Windows, macOS or Linux PC with **Android Studio** (it includes the J
    ```
    cd mobile
    npm install
-   npx cap add android
-   npx cap sync android
-   cd android
-   gradlew assembleDebug
+   npm run build:android
    ```
-   The APK is `mobile/android/app/build/outputs/apk/debug/app-debug.apk`. A debug APK is signed with Android's debug key and is fine for your own phones.
+   The APK is `mobile/dist/AgentRouter-<version>-debug.apk`. A debug APK is signed with Android's debug key and is fine for your own phones.
 2. Install it on the phone, either:
    - copy the APK to the phone, open it in **Files**, and allow **Install unknown apps** for Files when Android asks; or
    - turn on **Developer options → USB debugging**, connect the phone, and run `adb install -r app-debug.apk`.
@@ -86,16 +93,15 @@ You need a Windows, macOS or Linux PC with **Android Studio** (it includes the J
 
 ### iPhone (IPA)
 
-An IPA can only be built on a **Mac with Xcode 16 or later**. It can't be built on Windows.
+An IPA can only be built on a **Mac with Xcode 16 or later** (and CocoaPods). It can't be built on Windows. Without a Mac, run the **ios-unsigned** GitHub Actions workflow (`.github/workflows/ios-unsigned.yml`): it builds `AgentRouter-<version>-unsigned.ipa`, which AltStore or Sideloadly signs with your Apple ID when it installs it.
 
 1. On the Mac:
    ```
    cd mobile
    npm install
-   npx cap add ios
-   npx cap sync ios
-   npx cap open ios
+   AR_IOS_TEAM=<your Team ID> npm run build:ios
    ```
+   The IPA lands in `mobile/dist/ios/`. `AR_IOS_UNSIGNED=1 npm run build:ios` builds the unsigned IPA instead. To install from Xcode rather than an IPA, run `npm run open:ios` after the build.
 2. In Xcode, select the **App** target → **Signing & Capabilities**, pick your **Team** (sign in with your Apple ID under Xcode → Settings → Accounts), and keep or change the bundle id `com.localagentrouter.mobile`.
 3. Pick how to install:
    - **Your own iPhone, no IPA file:** connect it, choose it as the run destination, and press **Run**. With a free Apple ID the app stops opening after 7 days; run it again from Xcode to renew. On the iPhone, turn on **Settings → Privacy & Security → Developer Mode** and trust your certificate under **Settings → General → VPN & Device Management** the first time.
@@ -109,25 +115,27 @@ The left side lists an **All Projects** scope plus visible folders directly insi
 
 ### Bring in CLI and cloud sessions
 
-Chats you had in Claude Code or Codex before (or outside) this app show up too. On start, and whenever you press **⤓** above the session list, the app reads the history those tools keep on this computer (`%USERPROFILE%\.claude\projects`, `%USERPROFILE%\.codex\sessions`) and, if Codex is signed in with ChatGPT, your Codex Cloud tasks. Each one lands in the project it was run in (Codex Cloud tasks are matched by repository name). One that ran somewhere else goes to the project its chat refers to most: paths into the project folder, its repository name, or its folder name. If no project clearly wins, it stays under **All Projects**. Only the text of the conversation is imported; tool output is left out. Deleting an imported session keeps it out of later imports.
+Chats you had in Claude Code or Codex before (or outside) this app show up too. On start, and whenever you choose **⤓ Import CLI sessions** from the **⋯** menu above the session list, the app reads the history those tools keep on this computer (`%USERPROFILE%\.claude\projects`, `%USERPROFILE%\.codex\sessions`) and, if Codex is signed in with ChatGPT, your Codex Cloud tasks. Each one lands in the project it was run in (Codex Cloud tasks are matched by repository name). One that ran somewhere else goes to the project its chat refers to most: paths into the project folder, its repository name, or its folder name. If no project clearly wins, it stays under **All Projects**. Only the text of the conversation is imported; tool output is left out. Deleting an imported session keeps it out of later imports.
 
-Claude Code web sessions (claude.ai/code) live in the cloud until Claude Code pulls them down. Choose a project, press **☁**, pick the session in the window that opens, then press **⤓**.
+Claude Code web sessions (claude.ai/code) live in the cloud until Claude Code pulls them down. Choose a project, choose **☁ Pull a cloud session…** from the **⋯** menu above the session list, pick the session in the window that opens, then choose **⤓ Import CLI sessions**.
 
 ### Merge sessions
 
-To combine work on the same project, open one session, hover another and press **⇲** to fold it in, or press **⇊** to merge every listed session (narrow the list with search first). Messages are combined in time order and the other sessions are removed. Only sessions in the same project can be merged.
+To combine work on the same project, open one session, hover another and press **⇲** to fold it in, or choose **⇊ Merge listed sessions** from the **⋯** menu to merge every listed session (narrow the list with search first). Messages are combined in time order and the other sessions are removed. Only sessions in the same project can be merged.
 
 To do this automatically, turn on **Settings → Sessions → Group imported sessions into threads**. Each new import then joins the thread in its project on the same topic (shared files and terms), so one project can have several threads. An import on a new topic stays on its own until a related one arrives. Merged sessions stop refreshing when you keep working in the CLI.
 
-To tidy sessions you imported earlier, press **⟳** above the session list. Each imported session you haven't continued or merged yourself moves to the project it fits best, and sessions on the same topic within a project are merged into threads. This happens even when the setting above is off.
+To tidy sessions you imported earlier, choose **⟳ Re-file imported sessions** from the **⋯** menu above the session list. Each imported session you haven't continued or merged yourself moves to the project it fits best, and sessions on the same topic within a project are merged into threads. This happens even when the setting above is off.
 
 Saved imports are indexed even if their original CLI transcripts are no longer available. Automatic topic merges leave sessions separate when combining them would exceed the message limit, preserving their history.
 
 ### Merge projects
 
-If several folders are one project at different stages, open the newest one, hover an older one in the Projects list and press **⇲**. The older folder then appears under the open project. Its sessions move there, new imports about it go there too, and providers can read its files but never edit them. The folders on disk stay as they are. Press **⇱** next to a folder to split it back out. Sessions that were already moved stay with the parent project.
+If several folders are one project at different stages, open the newest one, hover an older one in the Projects list and press **⇲**. The older folder then disappears from the Projects list. Its sessions move to the open project, new imports about it go there too, and its folder moves, with every file, into the open project's `obsolete` folder. Nothing is deleted.
 
-For example, select **talonforge**, then press **⇲** on **reasense** and **rea-predatorsense-tool**. Press **⟳** to index earlier imports and combine matching topic threads under talonforge.
+To split folders back out, right-click the project and choose **Unmerge projects…**. Press **Split out** next to one folder, or **Split out all**. Each folder moves back to where it was. Sessions that were already moved stay with the parent project.
+
+For example, select **talonforge**, then press **⇲** on **reasense** and **rea-predatorsense-tool**. Choose **⟳ Re-file imported sessions** to index earlier imports and combine matching topic threads under talonforge.
 
 ### New project
 
@@ -146,9 +154,9 @@ Every installed provider (Colibri, Codex, Claude Code, Copilot) can be assigned 
 | Coding, UI Designer, Art Asset generation | Editing files in the project (in a private copy with a review step if you ask for one) |
 | GitHub requests | git and GitHub work |
 
-Each thread (session) can narrow this further with **Thread access** in the top bar: *Full* uses the table above, *Review edits first* sends every edit through a private copy you Apply and blocks git/GitHub, *Read-only* blocks editing and GitHub routes, and *No project access* allows only Quick questions. A thread can never get more access than its route.
+Each thread (session) can narrow this further with the **Thread access** picker next to the **+** button under the task box (it shows *Full access* by default; in a thin window it and the Claude Code permission picker are in the **⋯** menu beside **+**): *Full* uses the table above, *Review edits first* sends every edit through a private copy you Apply and blocks git/GitHub, *Read-only* blocks editing and GitHub routes, and *No project access* allows only Quick questions. A thread can never get more access than its route.
 
-**Permissions.** The **Permissions** picker in the top bar (the chip of the same name on the phone) sets Claude Code's mode for the thread, with the same four choices as Claude desktop: *Ask permissions* (asks before edits and commands its settings don't allow), *Accept edits* (file edits run without asking), *Plan mode* (Claude plans first; the plan comes up as an approval card before anything changes) and *Auto* (Claude decides, with its own checks on risky actions). A new thread starts on your Claude Code default mode (`permissions.defaultMode` in `~/.claude/settings.json`), or Ask permissions. Bypass permissions isn't offered. Codex and Copilot ignore this picker and follow their own settings.
+**Permissions.** The permission picker under the task box (the chip of the same name on the phone) sets Claude Code's mode for the thread, with the same four choices as Claude desktop: *Ask permissions* (asks before edits and commands its settings don't allow), *Accept edits* (file edits run without asking), *Plan mode* (Claude plans first; the plan comes up as an approval card before anything changes) and *Auto* (Claude decides, with its own checks on risky actions). A new thread starts on your Claude Code default mode (`permissions.defaultMode` in `~/.claude/settings.json`), or Ask permissions. Bypass permissions isn't offered. Codex and Copilot ignore this picker and follow their own settings.
 
 **Approvals.** Claude Code uses your own settings (`~/.claude/settings.json` and the project's `.claude/settings*.json`): anything they allow runs, anything they deny is refused, and anything they would ask about shows up in the router as an approval card above the message box: the plan, the command, or the file and its new content (other tools show their exact input). The run waits until you choose one of three answers:
 
@@ -170,13 +178,15 @@ Coding, UI and art tasks edit the project folder directly, and the reply lists t
 
 ## Shared skills
 
-Skills are your own: they live in `%LOCALAPPDATA%\LocalAgentRouterData\skills.md` (the index) and `skills\` (one Markdown file per skill), so they survive updates and are never shipped with the app. Add more from the app's **Shared skills** panel, or from GitHub in **Settings → Add new skills**: paste a link to the skill (its SKILL.md, its folder, or the repo), press **Scan**, read its purpose and warnings, then choose **Install** or **Do not install**. Installed skills are pre-approved for every provider; untick them under **Shared skills** if you don't want that. Only the SKILL.md text is installed, never bundled scripts, and the scan is a pattern check, not a guarantee. In Settings, approve skills to include them automatically and set the per-request limit: `-1` means unlimited, `0` sends no skills, and a positive number sets the maximum. Approved skills are considered before task-selected skills. Imported skills retain source attribution, and providers are told to adapt tool-specific steps to their available tools. Rate answer quality and whether Auto chose the right route; both stay local and aggregate counts inform future GPT routing prompts. Provider status checks show installed and sign-in readiness without displaying credentials.
+Skills are your own: they live in `%LOCALAPPDATA%\LocalAgentRouterData\skills.md` (the index) and `skills\` (one Markdown file per skill), so they survive updates and are never shipped with the app. Add more from **Shared skills** in the task box's **+** menu, or from GitHub in **Settings → Add new skills**: paste a link to the skill (its SKILL.md, its folder, or the repo), press **Scan**, read its purpose and warnings, then choose **Install** or **Do not install**. Installed skills are pre-approved for every provider; untick them under **Shared skills** if you don't want that. Only the SKILL.md text is installed, never bundled scripts, and the scan is a pattern check, not a guarantee. In Settings, approve skills to include them automatically and set the per-request limit: `-1` means unlimited, `0` sends no skills, and a positive number sets the maximum. Approved skills are considered before task-selected skills. Imported skills retain source attribution, and providers are told to adapt tool-specific steps to their available tools. Selected skills are sent as a short list (name, description and file path), not their full text: Claude Code, Codex and Copilot open a skill's file only when it applies (the `skills` folder is added as read-only reference, like a linked folder), and local or API-key models get the text inlined, shortened inside task chains. **Your rules:** put short rules you want every task to follow in `%LOCALAPPDATA%\LocalAgentRouterData\rules.md`; the first 4,000 characters go with every request, on every route and provider. Edit them in **Settings → General → Rules for every task** and press **Save rules**, or edit the file directly. Under **Shared skills**, each skill shows its size, how many tasks it went out with, and how many of those actually used it (the provider opened its file), with how they ended, their average token use per run and the ratings their answers got (kept locally in `skill-use.json`). Below the skills, **Token use by provider** lists calls and tokens for each provider and model, counted from each provider's own report (kept in `token-use.json`); each call's tokens also show in the task's details pane. Copilot doesn't report tokens, and Codex reports only a total. Local and API-key models get skill text inlined, so their use can't be seen and isn't counted. Use it to drop skills that are never used or cost a lot without helping. Skills you added from the task box's **+** menu have a **Delete** 
+button there in Settings; it removes the skill's file and its always-on approval and keeps its usage counts. Skills 
+installed from GitHub or imported from other tools aren't deleted from the app. Rate answer quality and whether Auto chose the right route; both stay local and aggregate counts inform future GPT routing prompts. Provider status checks show installed and sign-in readiness without displaying credentials.
 
 ## Settings
 
 Open **Settings** from the bottom of the left panel (or the ⚙ button in the top bar while the left panel is hidden). Sections are listed down the left side: **General**, **Appearance**, **Routing & models**, **Sessions**, **Shared skills** and **Add new skills**.
 
-The desktop uses a three-area layout: projects and sessions on the left, the conversation in the center, and an agent output panel on the right. While a task runs, the panel streams what the agent is doing: status steps, the files Claude Code reads and edits, and the text each provider prints. **Task details** at the bottom of the panel shows the project scope, selected files, skills, and how the active route uses them. Collapse the panel with **Hide details**.
+The desktop uses a three-area layout: projects and sessions on the left, the conversation in the center, and an agent output panel on the right. While a task runs, the panel streams what the agent is doing: status steps, the files Claude Code reads and edits, and the text each provider prints. **Task details** at the bottom of the panel shows the project scope, selected files, skills, and how the active route uses them. Collapse it with the panel button at the top right (the left one hides projects). The top bar also shows the current project and, on the right, whether the local model and AI tools are ready; hover them for details.
 
 You can run several sessions at once, in the same project or in different ones. Start a task, then open another session or project and start work there; the first keeps running. Each session runs one request at a time and has its own output and **Stop**, and stopping one doesn't affect the others. Sessions keep running if you reload the window: when it comes back, running sessions reappear with everything they've written so far, and finished answers are saved even if no window was open. A session that failed or was stopped while you were away shows its error and **Retry** again for 30 minutes. Quitting the app stops all sessions.
 
@@ -194,7 +204,7 @@ Run `node evaluate-routing.mjs` to score the GPT route selector against syntheti
 
 ### Task chains
 
-Choose **Task chain**, or use Auto for an app/spec request needing multiple roles. The planning provider splits the work into coding, UI, art and review tasks as needed. A security audit is never part of a chain: ask for one separately (Security route) when you want it. Build tasks with separate declared paths run together; overlapping tasks run sequentially. Reviews run after builds finish. Each task uses its configured role provider. The final response includes each result and any failures; findings are reported rather than automatically repaired. Select one project. Thread access still applies, and Review edits first produces one combined preview. Declared file ownership guides providers; it is not a separate filesystem sandbox per task.
+Choose **Task chain**, or use Auto for an app/spec request needing multiple roles. The planning provider splits the work into coding, UI, art and review tasks as needed. A security audit is never part of a chain: ask for one separately (Security route) when you want it. Build tasks with separate declared paths run together; overlapping tasks run sequentially. Reviews run after builds finish. Each task uses its configured role provider. The final response includes each result and any failures; findings are reported rather than automatically repaired. To keep prompts small enough for local models, each task gets only its own task, a one-line list of the other tasks and a short handoff (about 1,500 characters) from each earlier task; the full results appear only in the final response. Chain prompts also carry less project memory (latest 4 reports, shortened) and, for chat providers such as Colibri, at most about 12,000 characters of project files. Select one project. Thread access still applies, and Review edits first produces one combined preview. Declared file ownership guides providers; it is not a separate filesystem sandbox per task.
 
 ### Persistent project memory (0.14.0)
 Every project provider run now receives recent saved reports across threads and restarts. Review and security reports have a separate history so ordinary coding tasks do not crowd them out. Reports live in the app data folder under `project-memory/`, separate from the latest-task handoff. Reviews and security audits must reconcile earlier findings with current files and distinguish verified fixes from unverified claims; other routes get the history as background only, so their answers stay short. Recent context is bounded (12 records per history, 64 KB tail); full histories remain on disk. Memory contains provider reports, not independently verified security verdicts. Staged edits still require applying and verification.
@@ -205,7 +215,7 @@ CLI tasks may run longer than 15 minutes while producing output. After 15 minute
 
 Desktop discovers active phone requests about every two seconds. In mobile chat, Enter sends and Shift+Enter inserts a newline. The plus menu offers phone attachments, server project text files, and linking an existing server project folder.
 
-While a response runs, submit a nonempty message to queue it. **Steer** stops the current provider run and restarts its task with your correction; it is not live provider input. Submit with an empty composer to stop. Queued work belongs to the running server and does not survive a server restart.
+While a response runs, three buttons replace Send: **Steer** (blue, also what Enter does) stops the current provider run and restarts its task with your correction; it is not live provider input. **Queue** sends your message after the response finishes. **Stop** ends the response. Queued work belongs to the running server and does not survive a server restart.
 
 In server **Settings ? Remote access**, optionally enter a custom device key (24?128 printable characters, no spaces). Choose a unique, hard-to-guess key. **Replace key** on a paired device invalidates its previous key and shows a fresh one to copy. The original key cannot be recovered because only its hash is stored. **Copy connection code** includes address and key: paste it into the phone's Connect screen to fill both without typing the address. Treat that code like a password. Automatic network discovery remains pending.
 

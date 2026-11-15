@@ -23,9 +23,19 @@
           <div id="projects" class="project-list"><div class="muted">Loading projects…</div></div>
         </section>
         <section class="side-section sessions-section">
-          <div class="section-heading"><span>Sessions</span><span class="heading-actions"><button id="import-sessions" class="icon-button" title="Import Claude Code and Codex sessions from this computer and Codex Cloud" aria-label="Import CLI sessions">⤓</button><button id="reindex-sessions" class="icon-button" title="Re-file imported sessions: move each to its best project, then merge ones on the same topic" aria-label="Re-file imported sessions">⟳</button><button id="teleport-session" class="icon-button" title="Pull a Claude Code cloud session (claude.ai/code) into this project" aria-label="Pull a Claude Code cloud session">☁</button><button id="merge-sessions" class="icon-button" title="Merge all listed sessions into one" aria-label="Merge listed sessions">⇊</button><button id="new-session" class="icon-button add-button" title="New session" aria-label="New session">+</button></span></div>
+          <div class="section-heading"><span>Sessions</span><span class="heading-actions">
+            <details class="heading-menu">
+              <summary class="icon-button" title="More session actions" aria-label="More session actions">⋯</summary>
+              <div class="heading-menu-list">
+                <button id="import-sessions" type="button" title="Import Claude Code and Codex sessions from this computer and Codex Cloud">⤓ Import CLI sessions</button>
+                <button id="teleport-session" type="button" title="Pull a Claude Code cloud session (claude.ai/code) into this project">☁ Pull a cloud session…</button>
+                <button id="reindex-sessions" type="button" title="Re-file imported sessions: move each to its best project, then merge ones on the same topic">⟳ Re-file imported sessions</button>
+                <button id="merge-sessions" type="button" title="Merge all listed sessions into one">⇊ Merge listed sessions</button>
+                <label class="heading-menu-check"><input id="pending-only" type="checkbox"> Pending reviews only</label>
+              </div>
+            </details>
+            <button id="new-session" class="icon-button add-button" title="New session" aria-label="New session">+</button></span></div>
           <input id="session-search" type="search" placeholder="Search sessions" aria-label="Search sessions">
-          <label class="pending-toggle"><input id="pending-only" type="checkbox"> Pending reviews</label>
           <div id="import-status" class="import-status muted" aria-live="polite"></div>
           <div id="sessions" class="session-list"><div class="muted">Choose a project to see its sessions.</div></div>
         </section>
@@ -34,7 +44,7 @@
 
       <main class="main-panel">
         <header class="topbar">
-          <button id="toggle-sidebar" type="button" class="settings-button" aria-expanded="true">Hide projects</button>
+          <button id="toggle-sidebar" type="button" class="panel-toggle" aria-expanded="true" aria-label="Hide projects" title="Hide projects"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="2.5" y="3.5" width="15" height="13" rx="2.5"/><path d="M7.5 3.5v13"/></svg></button>
           <div class="route-picker">
             <button id="route-button" type="button" class="route-button" aria-haspopup="menu" aria-expanded="false" aria-controls="route-menu" title="Choose how tasks are routed"><span id="route-label">Auto</span><span class="route-chevron" aria-hidden="true">⌄</span></button>
             <div id="route-menu" class="route-menu" role="menu" aria-label="Routing" hidden></div>
@@ -52,43 +62,23 @@
               <option value="quick">Quick questions</option>
             </select>
           </div>
-          <label class="thread-access" title="Limits what any route may do in this thread. It can only narrow a route's own access.">
-            <span class="eyebrow">THREAD ACCESS</span>
-            <select id="thread-access">
-              <option value="">Full (route default)</option>
-              <option value="staged">Review edits first</option>
-              <option value="read">Read-only</option>
-              <option value="none">No project access</option>
-            </select>
-          </label>
-          <label class="thread-access" title="Claude Code permission mode for this thread, the same choices as Claude desktop. Codex and Copilot follow their own settings.">
-            <span class="eyebrow">PERMISSIONS</span>
-            <select id="permission-mode">
-              <option value="default">Ask permissions</option>
-              <option value="acceptEdits">Accept edits</option>
-              <option value="plan">Plan mode</option>
-              <option value="auto">Auto</option>
-            </select>
-          </label>
           <div class="current-project">
-            <div class="eyebrow">CURRENT PROJECT</div>
-            <div id="project-name" class="project-name">Choose a project</div>
-            <div id="project-path" class="project-path"></div>
+            <span id="project-name" class="project-name">Choose a project</span>
+            <span id="project-path" class="project-path"></span>
           </div>
-          <button id="open-settings-top" type="button" class="settings-button topbar-settings" title="Settings" aria-label="Settings"><span aria-hidden="true">⚙</span></button>
-          <button id="toggle-inspector" type="button" class="settings-button" aria-expanded="true">Hide details</button>
+          <div class="status-row" id="status-row" aria-live="polite">
+            <span id="colibri-status" class="status-item"><i class="status-dot"></i>Local model</span>
+            <span id="cli-status" class="status-item"></span>
+          </div>
+          <button id="open-settings-top" type="button" class="panel-toggle topbar-settings" title="Settings" aria-label="Settings"><span aria-hidden="true">⚙</span></button>
+          <button id="toggle-inspector" type="button" class="panel-toggle" aria-expanded="true" aria-label="Hide details" title="Hide details"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="2.5" y="3.5" width="15" height="13" rx="2.5"/><path d="M12.5 3.5v13"/></svg></button>
         </header>
-
-        <div class="status-row" id="status-row" aria-live="polite">
-          <span id="colibri-status" class="status-item"><i class="status-dot"></i>Checking local model…</span>
-          <span id="cli-status" class="status-item" title="Installation is checked; sign-in is confirmed when you use a provider."></span>
-        </div>
 
         <div id="messages" class="messages">
           <div id="empty-state" class="empty-state">
             <div class="empty-icon"><img src="/brand.svg" alt=""></div>
             <h1>What are we working on?</h1>
-            <p>Auto uses your configured Route Planning provider, then sends the task to the provider selected for its category. Use Routing &amp; models in Settings to set a preferred provider/model and a cross-provider backup for each task. Choose Colibri directly to keep a question local.</p>
+            <p>Ask anything. Each request goes to the AI tool you set up for that kind of work.</p>
             <div class="suggestions">
               <button data-prompt="Explain the main parts of this project.">Explain this project</button>
               <button data-prompt="Review the current changes for bugs and risks.">Review current changes</button>
@@ -100,41 +90,64 @@
         <section id="approval-cards" class="approval-cards" aria-label="Waiting for your approval" aria-live="polite" hidden></section>
 
         <form id="prompt-form" class="composer">
-          <details class="skills-panel">
-            <summary><span>Shared skills</span><span id="skills-count">Loading…</span></summary>
-            <p class="skills-help">Choose relevant skills for this task. The shared-skill limit in Settings controls how many are sent; always-on approvals take priority.</p>
-            <div id="skills-list" class="skills-list"></div>
-            <button id="add-skill-toggle" class="skill-add-button" type="button">Add a shared skill</button>
-            <div id="skill-form" class="skill-form" hidden>
-              <label>Skill name<input id="skill-name" maxlength="60" placeholder="e.g. Concise summaries"></label>
-              <label>Category<input id="skill-category" list="skill-categories" maxlength="40" value="General"><datalist id="skill-categories"></datalist></label>
-              <label>Instructions<textarea id="skill-instructions" rows="4" maxlength="12000" placeholder="Write provider-neutral guidance for this skill."></textarea></label>
-              <div class="skill-form-actions"><button id="save-skill" type="button">Save skill</button><button id="cancel-skill" type="button">Cancel</button><span id="skill-form-status" aria-live="polite"></span></div>
-              <small>Skills appear by category in skills.md, with full instructions in linked files under skills/.</small>
-            </div>
-          </details>
-          <div class="context-tools">
-            <div class="plus-wrap">
-              <button id="plus-button" type="button" class="plus-button" aria-haspopup="true" aria-expanded="false" aria-controls="plus-menu" title="Add files or folders" aria-label="Add files or folders">+</button>
-              <div id="plus-menu" class="plus-menu" hidden>
-                <label class="plus-item" for="attachment-files">Attach files…</label>
-                <button id="choose-context" type="button" class="plus-item">Choose project files…</button>
-                <button id="pick-folder" type="button" class="plus-item" title="Pick any folder on this PC. It stays linked to this project, read-only.">Link a folder…</button>
-                <div class="plus-heading">Linked folders <small>read-only, saved with this project</small></div>
-                <div id="linked-folders"></div>
-              </div>
-            </div>
-            <input id="attachment-files" type="file" multiple accept=".c,.cc,.cfg,.conf,.cpp,.cs,.css,.csv,.go,.h,.hpp,.html,.java,.js,.json,.jsx,.md,.mjs,.ps1,.py,.rb,.rs,.sh,.sql,.toml,.ts,.tsx,.txt,.xml,.yaml,.yml,.pdf,image/png,image/jpeg,image/webp">
-            <span id="context-count" class="context-count">No extra context</span>
-            <div id="attachment-list" class="attachment-list"></div>
-          </div>
-          <textarea id="prompt" rows="3" placeholder="Describe a task…" aria-label="Task"></textarea>
+          <div id="attachment-list" class="attachment-list"></div>
+          <input id="attachment-files" type="file" multiple accept=".c,.cc,.cfg,.conf,.cpp,.cs,.css,.csv,.go,.h,.hpp,.html,.java,.js,.json,.jsx,.md,.mjs,.ps1,.py,.rb,.rs,.sh,.sql,.toml,.ts,.tsx,.txt,.xml,.yaml,.yml,.pdf,image/png,image/jpeg,image/webp">
+          <textarea id="prompt" rows="2" placeholder="Describe a task…" aria-label="Task"></textarea>
           <div class="composer-bottom">
-            <span id="workspace-note">Choose a project before asking a question.</span>
-            <button id="steer" type="submit" hidden>Steer</button><button id="send" class="send-button" type="submit" disabled><span>Send</span><span aria-hidden="true">↑</span></button>
+            <div class="composer-tools">
+              <div class="plus-wrap">
+                <button id="plus-button" type="button" class="plus-button" aria-haspopup="true" aria-expanded="false" aria-controls="plus-menu" title="Add files, folders or skills" aria-label="Add files, folders or skills">+</button>
+                <div id="plus-menu" class="plus-menu" hidden>
+                  <label class="plus-item" for="attachment-files">Attach files…</label>
+                  <button id="choose-context" type="button" class="plus-item">Choose project files…</button>
+                  <button id="pick-folder" type="button" class="plus-item" title="Pick any folder on this PC. It stays linked to this project, read-only.">Link a folder…</button>
+                  <div class="plus-heading">Linked folders <small>read-only, saved with this project</small></div>
+                  <div id="linked-folders"></div>
+                  <div class="plus-heading plus-heading-row"><span>Shared skills</span><small id="skills-count">Loading…</small></div>
+                  <div class="skills-panel">
+                    <p class="skills-help">Pick skills for this task. Always-on skills from Settings are sent first, up to the limit there.</p>
+                    <div id="skills-list" class="skills-list"></div>
+                    <button id="add-skill-toggle" class="skill-add-button" type="button">Add a shared skill</button>
+                    <div id="skill-form" class="skill-form" hidden>
+                      <label>Skill name<input id="skill-name" maxlength="60" placeholder="e.g. Concise summaries"></label>
+                      <label>Category<input id="skill-category" list="skill-categories" maxlength="40" value="General"><datalist id="skill-categories"></datalist></label>
+                      <label>Instructions<textarea id="skill-instructions" rows="4" maxlength="12000" placeholder="Write provider-neutral guidance for this skill."></textarea></label>
+                      <div class="skill-form-actions"><button id="save-skill" type="button">Save skill</button><button id="cancel-skill" type="button">Cancel</button><span id="skill-form-status" aria-live="polite"></span></div>
+                      <small>Skills appear by category in skills.md, with full instructions in linked files under skills/.</small>
+                    </div>
+                  </div>
+                  <p class="plus-note">PDF text is extracted on this computer. Images go only to the Quick questions provider. Text context may be sent to cloud providers, so keep secrets out of it. Saved attachments stay on this computer.</p>
+                </div>
+              </div>
+              <div id="options-wrap" class="options-wrap">
+                <!-- Only shown in a thin window: the two pickers below fold into this menu instead of crowding the row. -->
+                <button id="options-button" type="button" class="plus-button options-button" aria-haspopup="true" aria-expanded="false" aria-controls="thread-options" title="Thread access and permissions" aria-label="Thread access and permissions">⋯</button>
+                <div id="thread-options" class="thread-options">
+                  <select id="thread-access" class="pill-select" aria-label="Thread access" title="Thread access: limits what any route may do in this thread. It can only narrow a route's own access.">
+                    <option value="">Full access</option>
+                    <option value="staged">Review edits first</option>
+                    <option value="read">Read-only</option>
+                    <option value="none">No project access</option>
+                  </select>
+                  <select id="permission-mode" class="pill-select" aria-label="Claude Code permission mode" title="Claude Code permission mode for this thread, the same choices as Claude desktop. Codex and Copilot follow their own settings.">
+                    <option value="default">Ask permissions</option>
+                    <option value="acceptEdits">Accept edits</option>
+                    <option value="plan">Plan mode</option>
+                    <option value="auto">Auto</option>
+                  </select>
+                </div>
+              </div>
+              <span id="context-count" class="context-count"></span>
+            </div>
+            <div class="run-actions">
+              <button id="queue" type="submit" class="run-button" hidden title="Send after this response finishes">Queue</button>
+              <button id="steer" type="submit" class="run-button steer-button" hidden title="Restart this response with your correction (Enter)">Steer</button>
+              <button id="stop" type="button" class="run-button stop-button" hidden title="Stop this session's response">Stop</button>
+              <button id="send" class="send-button" type="submit" disabled><span>Send</span><span aria-hidden="true">↑</span></button>
+            </div>
           </div>
         </form>
-        <div class="privacy-note">PDF text is extracted on this computer. Images are sent only to the Quick questions provider. Text context may be included in cloud prompts; keep credentials and secrets out of context. Saved attachments stay on this computer.</div>
+        <div id="workspace-note" class="privacy-note">Choose a project before asking a question.</div>
       </main>
       <aside id="inspector" class="inspector-panel" aria-label="Live agent output and task details">
         <div class="inspector-heading"><span>Agent output</span><span id="inspector-live" class="inspector-live" hidden>LIVE</span></div>
@@ -178,12 +191,21 @@
         <div class="context-dialog-footer"><span id="new-project-status" aria-live="polite"></span><button type="submit" class="send-button">Create project</button></div>
       </form>
     </dialog>
+    <div id="project-menu" class="project-menu" role="menu" hidden><button type="button" role="menuitem" id="project-menu-unmerge">Unmerge projects…</button></div>
+    <dialog id="unmerge-dialog" class="context-dialog small-dialog" aria-labelledby="unmerge-title">
+      <div class="context-dialog-inner">
+        <div class="context-dialog-header"><div><h2 id="unmerge-title">Unmerge projects</h2><p id="unmerge-where"></p></div><button type="button" id="close-unmerge" class="icon-button" aria-label="Close">×</button></div>
+        <div id="unmerge-list" class="unmerge-list"></div>
+        <div class="context-dialog-footer"><span id="unmerge-status" aria-live="polite"></span><button id="unmerge-all" type="button" class="send-button">Split out all</button></div>
+      </div>
+    </dialog>
     <dialog id="settings-dialog" class="context-dialog settings-dialog">
       <div class="context-dialog-inner">
         <div class="context-dialog-header"><div><h2>Settings</h2><p>Personalize your workspace and provider choices.</p></div><button id="close-settings" type="button" class="icon-button" aria-label="Close">×</button></div>
         <div class="settings-body">
         <nav class="settings-tabs" role="tablist" aria-orientation="vertical" aria-label="Settings sections">
           <button type="button" role="tab" class="settings-tab active" data-settings-tab="general"><span aria-hidden="true">⌂</span>General</button>
+          <button type="button" role="tab" class="settings-tab" data-settings-tab="tools"><span aria-hidden="true">⌘</span>AI tools</button>
           <button type="button" role="tab" class="settings-tab" data-settings-tab="appearance"><span aria-hidden="true">◐</span>Appearance</button>
           <button type="button" role="tab" class="settings-tab" data-settings-tab="routing"><span aria-hidden="true">⇄</span>Routing &amp; models</button>
           <button type="button" role="tab" class="settings-tab" data-settings-tab="sessions"><span aria-hidden="true">☰</span>Sessions</button>
@@ -192,6 +214,12 @@
           <button type="button" role="tab" class="settings-tab" data-settings-tab="remote"><span aria-hidden="true">⇆</span>Remote access</button>
         </nav>
         <div class="settings-scroll">
+          <section class="settings-section settings-page" data-settings-page="tools" hidden>
+            <h3>Command-line AI tools</h3>
+            <p class="settings-help">Install and sign in to the tools you have subscriptions for. Install opens a PowerShell window that runs the command shown; Sign in opens the tool so you can log in. The installer can also install these for you.</p>
+            <div class="model-catalog-tools"><button id="cli-tools-refresh" type="button" class="context-button">Check again</button><span id="cli-tools-status" class="settings-help" aria-live="polite"></span></div>
+            <div id="cli-tools" class="cli-tools"></div>
+          </section>
           <section class="settings-section settings-page" data-settings-page="appearance" hidden>
             <h3>Theme</h3>
             <label class="settings-field">Theme<select id="theme-choice"><option value="system">Follow Windows</option><option value="light">Light</option><option value="dark">Dark</option></select></label>
@@ -209,8 +237,14 @@
           <section class="settings-section settings-page" data-settings-page="general">
             <h3>Workspace</h3>
             <label class="settings-field">Projects folder<input id="projects-root" type="text" placeholder="C:\\Users\\you\\Projects"></label>
-            <p class="settings-help">Install or sign in to AI tools, connect a local model, or add API keys.</p>
+            <p class="settings-help">Connect a local model or add API keys. Command-line tools are under AI tools.</p>
             <button id="run-setup" type="button" class="context-button">Run setup again</button>
+          </section>
+          <section class="settings-section settings-page" data-settings-page="general">
+            <h3>Rules for every task</h3>
+            <label class="settings-field">rules.md<textarea id="rules-text" rows="6" maxlength="20000" spellcheck="true" aria-describedby="rules-help rules-count" placeholder="- Reply in plain English.&#10;- Never commit without asking."></textarea></label>
+            <p id="rules-help" class="settings-help">Short rules sent with every request, on every route and provider. They never override safety rules. Only the first 4,000 characters are sent.</p>
+            <div class="shortcut-row"><button id="save-rules" type="button" class="context-button">Save rules</button><span id="rules-count" class="settings-help" aria-live="polite"></span></div>
           </section>
           <section class="settings-section settings-page" data-settings-page="routing" hidden>
             <h3>Local models (Colibri)</h3>
@@ -257,6 +291,9 @@
             <p class="settings-help">Approved skills are included automatically with every provider, up to the limit above. You can approve any number; when the limit is smaller, approvals are used first in the order selected.</p>
             <input id="approved-skill-search" type="search" placeholder="Find a skill" aria-label="Find an always-on skill">
             <div id="approved-skills" class="approved-skills"></div>
+            <h3>Token use by provider</h3>
+            <p class="settings-help">Counted from each provider's own report, for every call in a streamed task (route planning, chain steps and fallbacks too). Copilot doesn't report tokens; Codex reports only a total.</p>
+            <ul id="token-use" class="settings-help"></ul>
           </section>
           <section class="settings-section settings-page" data-settings-page="add-skills" hidden>
             <h3>Add a skill from GitHub</h3>

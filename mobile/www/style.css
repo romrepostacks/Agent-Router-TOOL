@@ -242,6 +242,13 @@ input[role="switch"]:checked::after { transform: translateX(20px); }
 .round-button.send { color: #fff; background: var(--accent); font-weight: 700; }
 .round-button.send.stop { background: var(--danger); font-size: 16px; }
 .round-button:disabled { opacity: .4; }
+.run-actions { display: flex; gap: 8px; justify-content: flex-end; padding: 6px 4px 0; }
+.run-actions .chip-button { min-height: 36px; }
+.run-actions .chip-button:disabled { opacity: .4; }
+.chip-button.steer { color: #fff; background: var(--accent); border-color: transparent; }
+.chip-button.stop { color: var(--danger); }
+#token-use .row-text { padding: 8px 0; }
+#rules-text { width: 100%; min-height: 120px; resize: vertical; border: 1px solid var(--hairline); border-radius: 14px; padding: 10px 12px; background: transparent; font-size: 15px; }
 .composer-chips { display: flex; gap: 6px; overflow-x: auto; padding: 6px 2px 2px; scrollbar-width: none; }
 .composer-chips .chip-button { min-height: 32px; font-size: 13px; white-space: nowrap; background: color-mix(in srgb, var(--text) 6%, transparent); border-color: transparent; }
 .attachment-list { display: flex; flex-wrap: wrap; gap: 6px; }

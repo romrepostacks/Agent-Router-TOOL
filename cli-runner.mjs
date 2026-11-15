@@ -62,7 +62,7 @@ export function savedPermissionSuggestions(request) {
   return (Array.isArray(request?.permission_suggestions) ? request.permission_suggestions : [])
     .filter((item) => item && typeof item === "object" && SAVED_DESTINATIONS.has(item.destination) && (item.type !== "addRules" || item.behavior === "allow"));
 }
-export async function runClaudeStream(command, args, cwd, env, { prompt, onText, onTool, onLine, onApproval, ...options } = {}) {
+export async function runClaudeStream(command, args, cwd, env, { prompt, onText, onTool, onLine, onApproval, onUsage, ...options } = {}) {
   const initId = `init-${Date.now()}`;
   let io = null;
   let result = null;
@@ -92,7 +92,12 @@ export async function runClaudeStream(command, args, cwd, env, { prompt, onText,
       try { event = JSON.parse(line); } catch { onLine?.(`${line}\n`); continue; }
       if (event.type === "control_response" && event.response?.request_id === initId) send({ type: "user", message: { role: "user", content: prompt }, parent_tool_use_id: null });
       if (event.type === "control_request" && typeof event.request_id === "string" && event.request) answer(event.request_id, event.request);
-      if (event.type === "result") { result = event; io?.end(); } // one prompt per run: closing stdin lets the CLI exit
+      if (event.type === "result") { // one prompt per run: closing stdin lets the CLI exit
+        result = event;
+        io?.end();
+        const u = event.usage;
+        if (u) onUsage?.({ input: (u.input_tokens || 0) + (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0), cached: u.cache_read_input_tokens || 0, output: u.output_tokens || 0 });
+      }
       if (event.type !== "assistant") continue;
       for (const part of event.message?.content || []) {
         if (part.type === "text" && part.text) onText?.(part.text);

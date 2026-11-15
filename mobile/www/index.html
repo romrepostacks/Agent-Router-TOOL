@@ -4,8 +4,8 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
     <meta name="color-scheme" content="light dark">
-    <meta name="theme-color" content="#eef1f8" media="(prefers-color-scheme: light)">
-    <meta name="theme-color" content="#0b0d14" media="(prefers-color-scheme: dark)">
+    <meta name="theme-color" content="#fbf8f3" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#0e1018" media="(prefers-color-scheme: dark)">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -61,24 +61,24 @@
       <section class="view chat-view" data-view="chat" hidden>
         <div id="messages" class="messages" aria-live="polite"></div>
         <section id="approvals" class="approvals" aria-label="Waiting for your approval" hidden></section>
-        <form id="composer" class="composer glass">
+        <!-- While a response runs (same as the desktop since 0.22.1): Enter or Steer restarts with the correction, Queue sends after it, Stop (in place of Send) ends it. -->
+        <div id="run-actions" class="run-actions" hidden>
+          <button id="queue" type="submit" form="composer" class="chip-button">Queue</button>
+          <button id="steer" type="submit" form="composer" class="chip-button steer">Steer</button>
+        </div>
+        <form id="composer" class="composer">
           <div id="attachment-list" class="attachment-list"></div>
+          <textarea enterkeyhint="send" id="prompt" rows="1" placeholder="Ask or describe a task…" aria-label="Message"></textarea>
           <div class="composer-row">
             <button id="attach" type="button" class="round-button" aria-label="Attach files">+</button>
-            <textarea enterkeyhint="send" id="prompt" rows="1" placeholder="Ask or describe a task…" aria-label="Task" enterkeyhint="send"></textarea>
+            <div class="composer-chips">
+              <button id="mode-chip" type="button" class="chip-button">Auto</button>
+              <button id="skills-chip" type="button" class="chip-button">Skills</button>
+              <button id="access-chip" type="button" class="chip-button">Full access</button>
+              <button id="permission-chip" type="button" class="chip-button">Ask permissions</button>
+            </div>
             <button id="send" type="submit" class="round-button send" aria-label="Send"><span aria-hidden="true">↑</span></button>
-          </div>
-          <!-- While a response runs (same as the desktop since 0.22.1): Enter or Steer restarts with the correction, Queue sends after it, Stop ends it. -->
-          <div id="run-actions" class="run-actions" hidden>
-            <button id="queue" type="submit" class="chip-button">Queue</button>
-            <button id="steer" type="submit" class="chip-button steer">Steer</button>
-            <button id="stop" type="button" class="chip-button stop">Stop</button>
-          </div>
-          <div class="composer-chips">
-            <button id="mode-chip" type="button" class="chip-button">Auto</button>
-            <button id="skills-chip" type="button" class="chip-button">Skills</button>
-            <button id="access-chip" type="button" class="chip-button">Full access</button>
-            <button id="permission-chip" type="button" class="chip-button">Ask permissions</button>
+            <button id="stop" type="button" class="round-button send stop" aria-label="Stop" hidden><span aria-hidden="true"></span></button>
           </div>
           <input id="attachment-files" type="file" multiple hidden accept=".c,.cc,.cfg,.conf,.cpp,.cs,.css,.csv,.go,.h,.hpp,.html,.java,.js,.json,.jsx,.md,.mjs,.ps1,.py,.rb,.rs,.sh,.sql,.toml,.ts,.tsx,.txt,.xml,.yaml,.yml,image/png,image/jpeg,image/webp">
         </form>

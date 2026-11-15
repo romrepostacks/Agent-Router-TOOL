@@ -1,5 +1,12 @@
 # Release notes
 
+## 0.30.0
+
+- **New look for the phone apps: "Ember".** Ink-dark by default with an amber accent and monospace titles and labels; a warm light version is under **Settings → Appearance**. Both pass the WCAG AA contrast check.
+- **Floating chat screen on the phone.** No top bar in a chat: Back and **Output** float over the messages. Answers read as plain text with a small route label, your messages sit in soft bubbles, and approval cards have an amber edge.
+- **One rounded task box.** The text sits on top, with **+**, the route/skills/access chips and a round Send button below it. Send stays grey until you type. While a response runs, Send turns into a square **Stop** button and **Queue** / **Steer** float just above the box.
+- Desktop app unchanged apart from the version, which now matches the phone apps.
+
 ## 0.29.0
 
 - **Sessions name themselves.** A new session is titled from your first message, cut down to the task: "We should add automatic session naming. Let's also…" becomes "Add automatic session naming". Rename it from **⋯** as before.

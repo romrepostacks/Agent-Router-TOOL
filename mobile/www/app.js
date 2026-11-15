@@ -103,7 +103,7 @@ const DEVICES = { iphone: { platform: "ios", top: 62, bottom: 34 }, note20: { pl
     document.documentElement.style.setProperty("--safe-top", `${device.top}px`);
     document.documentElement.style.setProperty("--safe-bottom", `${device.bottom}px`);
   }
-  const appearance = localStorage.getItem("ar-appearance") || "system";
+  const appearance = localStorage.getItem("ar-appearance") || "dark";
   document.documentElement.dataset.theme = appearance;
   // Keep the composer above the on-screen keyboard where the browser doesn't resize the page for it.
   const vv = window.visualViewport;
@@ -629,7 +629,7 @@ function refreshComposer() {
   const busy = Boolean(run?.active);
   $("run-actions").hidden = !busy;
   $("send").hidden = busy;
-  $("send").disabled = !state.project;
+  $("stop").hidden = !busy;
   refreshFollowupButtons();
   const allProjects = state.project?.scope === "all";
   if (allProjects && EDIT_ROUTES.has(state.mode)) state.mode = "auto";
@@ -648,13 +648,15 @@ function growPrompt() {
   const prompt = $("prompt");
   prompt.style.height = "auto";
   prompt.style.height = `${Math.min(prompt.scrollHeight, 168)}px`;
+  refreshFollowupButtons();
 }
-// Queue and Steer need something to send; Stop is always available while a response runs.
+// Send, Queue and Steer need something to send; Stop is always available while a response runs.
 function refreshFollowupButtons() {
   const empty = !$("prompt").value.trim();
   $("queue").disabled = $("steer").disabled = empty;
+  $("send").disabled = empty || !state.project;
 }
-$("prompt").addEventListener("input", () => { growPrompt(); refreshFollowupButtons(); });
+$("prompt").addEventListener("input", growPrompt);
 $("stop").addEventListener("click", () => {
   const running = viewedRun();
   if (running?.active) request(`/api/runs/${encodeURIComponent(running.sessionId)}/cancel`, { method: "POST" }).catch(toastError);
@@ -1176,7 +1178,7 @@ function renderInbox() {
 async function loadSettingsView() {
   $("settings-server").textContent = conn.url;
   $("settings-version").textContent = conn.appVersion ? `App ${conn.appVersion} · Server ${conn.version}` : `Server ${conn.version}`;
-  $("appearance").value = localStorage.getItem("ar-appearance") || "system";
+  $("appearance").value = localStorage.getItem("ar-appearance") || "dark";
   $("notify-toggle").checked = localStorage.getItem("ar-notify") === "1";
   $("notify-toggle").disabled = !LocalNotifications && !("Notification" in window);
   try {

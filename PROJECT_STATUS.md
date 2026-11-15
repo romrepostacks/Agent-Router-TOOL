@@ -1,5 +1,14 @@
 # Local Agent Router — Project Status
 
+## Current change (v0.30.0, 2026-11-14): phone app gets the Ember theme + floating chat layout
+
+- Owner picked option C, **Ember**, from `replica/theme-options.html`. Its tokens (`replica/design/themes.json`) now drive `mobile/www/style.css` (light in `:root`, dark in `[data-theme="dark"]` and system-dark). `--display` is monospace and used for titles and small labels. Dark is the default appearance when none is saved (`ar-appearance` in `mobile/www/app.js`).
+- Chat view: no nav bar background (a fade from `--bg` instead); Back and Output are floating glass buttons; messages scroll under them. Answers are plain text, user turns use `--bubble`. Approval cards: surface + accent left rule.
+- Composer (`mobile/www/index.html`): textarea on top, row of + / chips / Send below. Send is disabled while the box is empty (`refreshFollowupButtons`). While running, `#stop` (round, square icon) replaces Send, and `#run-actions` (Queue/Steer, `form="composer"`) sits above the composer.
+- Desktop unchanged; version bumped to 0.30.0 so desktop and phone match.
+- Checked: syntax, `npm test`. Not checked on a device: the chat screen with messages, keyboard open, Android back button styling.
+- Next: install the 0.30.0 APK/IPA and check the chat screen in dark and light.
+
 ## Design exploration (2026-11-14, no app change, version unchanged): iOS theme candidates
 
 - Recon of the Claude and ChatGPT iOS App Store listings: `replica/recon.md`, `replica/features.csv`. Screenshots in `replica/screens/` are reference only and gitignored.

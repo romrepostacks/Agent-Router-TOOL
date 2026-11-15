@@ -66,8 +66,9 @@ The phone apps live in `mobile/` (Capacitor 7). Both connect to a Server the sam
 What the phone app does (matches the desktop app as of 0.27):
 
 - **Projects and sessions:** open a project, search its sessions, filter to pending reviews, import CLI sessions, start a new session. A new session names itself from your first message (for example "Fix the login bug"); **⋯** on a session renames it, moves it to another project, or deletes it.
+- **Look:** the "Ember" theme (dark by default, amber accent; **Settings → Appearance** switches to Light or System). In a chat, Back and **Output** float over the messages, answers read as plain text and your messages sit in soft bubbles.
 - **Tasks:** pick the route, shared skills, thread access and the Claude Code permission mode from the chips under the task box. **+** attaches phone files, server project files, or links another server project folder.
-- **While a response runs:** **Steer** (or Enter) restarts it with your correction, **Queue** sends after it, **Stop** ends it. **Output** shows the live agent output, including tokens per call.
+- **While a response runs:** **Steer** (or Enter) restarts it with your correction, **Queue** sends after it (both float above the task box), and the round **Stop** button in place of Send ends it. **Output** shows the live agent output, including tokens per call.
 - **Approvals:** Always allow, Allow or Deny on approval cards, in the chat or the Inbox. Review and apply staged changes.
 - **Skills:** each skill in the **Skills** sheet shows its usage line (used in X of Y runs, average tokens). Skills you added in the app have a **×** to delete them.
 - **Settings:** server status, projects folder, skill limit, **Local models only**, routing and models per route, **Rules for every task**, and **Token use by provider**.

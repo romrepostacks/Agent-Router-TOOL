@@ -14,7 +14,7 @@ A Windows desktop app that sends each request to the AI tool best suited for it:
    - **API keys (optional)** – OpenAI and Anthropic keys, encrypted by Windows and stored only on that PC.
    - **Review** – shows which tool will handle each route, picked from what is actually set up.
 3. Run setup again any time from **Settings → General → Run setup again**.
-4. **Settings → AI tools** shows whether Claude Code, Codex and Copilot are installed and signed in. **Install** opens a PowerShell window running the official install command (Node.js is offered first if Codex or Copilot need it); **Sign in** opens the tool so you can log in. **Check again** re-detects without restarting.
+4. **Settings → AI tools** shows whether Claude Code, Codex and Copilot are installed and signed in. **Install** opens a PowerShell window running the official install command (Node.js is offered first if Codex or Copilot need it; without winget it is downloaded from nodejs.org); **Sign in** opens the tool so you can log in. **Check again** re-detects without restarting.
 
 If a route's tool is missing or not set up, the app automatically uses the next available tool for that route.
 

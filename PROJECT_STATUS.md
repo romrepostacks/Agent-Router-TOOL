@@ -1,8 +1,15 @@
 # Local Agent Router — Project Status
 
+## Current change (v0.28.3, 2026-11-15): AI tools install fixes from the sandbox run
+
+- **Claude Code refused to install from Setup** ("doesn't support 32-bit Windows"). Setup (NSIS) is a 32-bit program, so the `powershell.exe` it started was the 32-bit one. `customInstall` in `build/installer.nsh` now runs `$WINDIR\sysnative\WindowsPowerShell\v1.0\powershell.exe` (64-bit), falling back to `powershell.exe`. Settings → AI tools was already 64-bit (started from Electron).
+- **No winget meant no Node.js, so no Codex or Copilot** (both install through npm). Without winget, `build/install-clis.ps1` and Settings → AI tools (`NODE_INSTALL` in `server.mjs`) now download the current LTS `.msi` from nodejs.org (x64 or arm64) and run it with `msiexec /passive`. winget is still used when present.
+- `test/installer-roles.test.mjs` checks both; `test/cli-install-sandbox.ps1` no longer expects the Node.js step to fail.
+- Next: build 0.28.3 and rerun `test/cli-install.wsb`; all of `node`, `npm`, `claude`, `codex`, `copilot` should PASS.
+
 ## Test tooling (2026-11-15, no app change, version stays 0.28.2)
 
-- **AI tools sandbox test:** `test/cli-install.wsb` opens Windows Sandbox with `release\` and `test\` mapped read-only and runs `test/cli-install-sandbox.ps1`: it starts the newest `LocalAgentRouter-Setup-<version>.exe` with `/TOOLS=claude,codex,copilot`, then checks `node`, `npm`, `claude`, `codex`, `copilot` on PATH and the app's `DisplayVersion` ("<version> server"), and lists the manual steps (Settings → AI tools Check again / Install / Sign in, setup wizard, Client run). Results go to `cli-install-results.txt` on the sandbox desktop. Sandbox has no winget, so the Node.js step fails there by design and exercises the retry from Settings. Not yet run.
+- **AI tools sandbox test:** `test/cli-install.wsb` opens Windows Sandbox with `release\` and `test\` mapped read-only and runs `test/cli-install-sandbox.ps1`: it starts the newest `LocalAgentRouter-Setup-<version>.exe` with `/TOOLS=claude,codex,copilot`, then checks `node`, `npm`, `claude`, `codex`, `copilot` on PATH and the app's `DisplayVersion` ("<version> server"), and lists the manual steps (Settings → AI tools Check again / Install / Sign in, setup wizard, Client run). Results go to `cli-install-results.txt` on the sandbox desktop. First run (0.28.2) failed: Claude Code refused 32-bit PowerShell, and Node.js (so Codex and Copilot) needed winget. Both fixed in 0.28.3.
 
 ## Current change (v0.28.2, 2026-11-15)
 

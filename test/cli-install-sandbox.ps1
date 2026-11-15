@@ -37,7 +37,7 @@ $setup = Get-ChildItem "$desk\installer\LocalAgentRouter-Setup-*.exe" |
 if (-not $setup) { Write-Host "No installer in release\. Build one first (build-installer.cmd)." -ForegroundColor Red; return }
 
 Write-Host "Installer: $($setup.Name)"
-Write-Host "Winget present: $([bool](Get-Command winget -ErrorAction SilentlyContinue)) (Sandbox has none, so the Node.js step is expected to fail: that tests the retry path.)"
+Write-Host "Winget present: $([bool](Get-Command winget -ErrorAction SilentlyContinue)) (Sandbox has none, so Node.js comes from the nodejs.org installer instead; accept its UAC prompt if one appears.)"
 Check
 
 Write-Host ""

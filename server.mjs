@@ -2043,9 +2043,17 @@ async function refreshWindowsPath() {
   } catch { /* keep the current PATH */ }
 }
 
+// Node.js through winget, or, where there is none (Windows Sandbox, LTSC, older Windows), the current LTS
+// installer straight from nodejs.org. Same steps as build/install-clis.ps1.
+const NODE_INSTALL = "if (Get-Command winget -ErrorAction SilentlyContinue) { winget install -e --id OpenJS.NodeJS.LTS --accept-source-agreements --accept-package-agreements } else { "
+  + "$ProgressPreference = 'SilentlyContinue'; $v = (Invoke-RestMethod https://nodejs.org/dist/index.json | Where-Object lts | Select-Object -First 1).version; "
+  + "$a = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'arm64' } else { 'x64' }; $msi = Join-Path $env:TEMP \"node-$v-$a.msi\"; "
+  + "Write-Host \"winget is not available. Downloading Node.js $v from nodejs.org...\"; Invoke-WebRequest \"https://nodejs.org/dist/$v/node-$v-$a.msi\" -OutFile $msi -UseBasicParsing; "
+  + "$p = Start-Process msiexec.exe -ArgumentList '/i', \"`\"$msi`\"\", '/passive' -Wait -PassThru; if ($p.ExitCode -notin 0, 3010) { Write-Host \"Node.js setup failed with exit code $($p.ExitCode).\" -ForegroundColor Red } }";
+
 // What the setup screen offers for each command-line tool. Commands are fixed here; nothing from the page is run.
 const SETUP_TOOLS = {
-  node: { name: "Node.js", why: "Needed to install Codex and Copilot.", install: "if (Get-Command winget -ErrorAction SilentlyContinue) { winget install -e --id OpenJS.NodeJS.LTS --accept-source-agreements --accept-package-agreements } else { Write-Host 'winget is not available. Opening the Node.js download page; run the installer, then press Check again.'; Start-Process https://nodejs.org/en/download }", guide: "https://nodejs.org/en/download" },
+  node: { name: "Node.js", why: "Needed to install Codex and Copilot.", install: NODE_INSTALL, guide: "https://nodejs.org/en/download" },
   claude: { name: "Claude Code", why: "Coding and UI work with your Claude subscription.", install: "irm https://claude.ai/install.ps1 | iex", login: "claude", loginHint: "Type /login if it doesn't ask you to sign in, then close the window.", guide: "https://docs.claude.com/en/docs/claude-code/setup" },
   codex: { name: "Codex", why: "Route planning, reviews and planning with your ChatGPT plan.", install: "npm install -g @openai/codex", login: "codex login", needsNode: true, guide: "https://github.com/openai/codex" },
   copilot: { name: "GitHub Copilot", why: "Security audits and GitHub requests with your Copilot plan.", install: "npm install -g @github/copilot", login: "copilot", loginHint: "Type /login and follow the steps, then close the window.", needsNode: true, guide: "https://docs.github.com/copilot/how-tos/set-up/install-copilot-cli" },

@@ -1,5 +1,10 @@
 # Release notes
 
+## 0.28.3
+
+- **Claude Code installs from Setup again.** Setup started the 32-bit PowerShell, and Claude Code's installer refused it as "32-bit Windows". Setup now uses the 64-bit PowerShell.
+- **Codex and Copilot install on PCs without winget** (Windows Sandbox, LTSC, older Windows). Node.js, which they need for npm, is now downloaded from nodejs.org and installed when winget isn't there, both in Setup and in **Settings → AI tools**.
+
 ## 0.28.2
 
 - **Skills reach the local model again on project routes.** Since 0.23.0 skills go out as a short index with file paths, and chat providers (local model, OpenAI and Anthropic API) get the skill text inlined because they can't open files. On routes that read the project (Review, Project, Code and the rest) that inlined text was thrown away, so those providers saw only file paths they couldn't open. Fixed, with a test (`test/chat-provider-skills.test.mjs`).

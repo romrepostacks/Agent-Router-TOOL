@@ -54,9 +54,11 @@ test("a Server install can install the AI tools, only known names reach PowerShe
   // The script's install commands match the Settings → AI tools ones (SETUP_TOOLS in server.mjs).
   const script = await readFile(new URL("../build/install-clis.ps1", import.meta.url), "utf8");
   const server = await readFile(new URL("../server.mjs", import.meta.url), "utf8");
-  for (const pkg of ["@openai/codex", "@github/copilot", "OpenJS.NodeJS.LTS", "https://claude.ai/install.ps1"]) {
-    assert.ok(script.includes(pkg) && server.includes(pkg), pkg);
+  for (const pkg of ["@openai/codex", "@github/copilot", "OpenJS.NodeJS.LTS", "https://nodejs.org/dist/index.json", "'/passive'", "https://claude.ai/install.ps1"]) {
+    assert.ok(script.replaceAll('"', "'").includes(pkg) && server.includes(pkg), pkg);
   }
+  // Setup is 32-bit; the tools script must run in 64-bit PowerShell or Claude Code's installer refuses it.
+  assert.match(nsh, /sysnative\\WindowsPowerShell\\v1\.0\\powershell\.exe[\s\S]*ExecWait '"\$1" [^']*install-clis\.ps1/);
 });
 
 test("the phone apps aren't packed into the Windows app", () => {

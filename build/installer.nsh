@@ -208,7 +208,12 @@ FunctionEnd
   ${If} $RouterRole == "server"
   ${AndIf} $RouterTools != ""
     DetailPrint "Installing AI tools: $RouterTools"
-    ExecWait 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$INSTDIR\resources\install-clis.ps1" -Tools "$RouterTools"'
+    ; Setup is a 32-bit program, so plain powershell.exe would be the 32-bit one, and Claude Code's installer
+    ; refuses that ("doesn't support 32-bit Windows"). sysnative is the 64-bit System32 as seen from 32-bit code.
+    StrCpy $1 "$WINDIR\sysnative\WindowsPowerShell\v1.0\powershell.exe"
+    IfFileExists "$1" +2
+      StrCpy $1 "powershell.exe"
+    ExecWait '"$1" -NoProfile -ExecutionPolicy Bypass -File "$INSTDIR\resources\install-clis.ps1" -Tools "$RouterTools"'
   ${EndIf}
 
   ; Remove the old Squirrel install. User data lives in LocalAgentRouterData and is not touched.

@@ -31,8 +31,16 @@ $npmTools = @(@{ id = "codex"; name = "Codex"; package = "@openai/codex" }, @{ i
   Where-Object { $wanted -contains $_.id -and -not (Has $_.id) }
 if ($npmTools -and -not (Has "npm")) {
   Step "Node.js (needed for Codex and Copilot)" {
-    if (-not (Has "winget")) { throw "winget is not available. Install Node.js from https://nodejs.org, then install the tools from Settings -> AI tools." }
-    winget install -e --id OpenJS.NodeJS.LTS --accept-source-agreements --accept-package-agreements
+    if (Has "winget") { winget install -e --id OpenJS.NodeJS.LTS --accept-source-agreements --accept-package-agreements; return }
+    # No winget (Windows Sandbox, LTSC, older Windows): the current LTS installer straight from nodejs.org.
+    $ProgressPreference = "SilentlyContinue"
+    $v = (Invoke-RestMethod https://nodejs.org/dist/index.json | Where-Object lts | Select-Object -First 1).version
+    $a = if ($env:PROCESSOR_ARCHITECTURE -eq "ARM64") { "arm64" } else { "x64" }
+    $msi = Join-Path $env:TEMP "node-$v-$a.msi"
+    Write-Host "winget is not available. Downloading Node.js $v from nodejs.org..."
+    Invoke-WebRequest "https://nodejs.org/dist/$v/node-$v-$a.msi" -OutFile $msi -UseBasicParsing
+    $p = Start-Process msiexec.exe -ArgumentList "/i", "`"$msi`"", "/passive" -Wait -PassThru
+    if ($p.ExitCode -notin 0, 3010) { throw "Node.js setup failed with exit code $($p.ExitCode)." }
   }
 }
 foreach ($tool in $npmTools) {

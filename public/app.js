@@ -699,7 +699,11 @@ function renderMessages() {
     iconImage.alt = "";
     icon.append(iconImage);
     const heading = document.createElement("h1");
-    heading.textContent = "What are we working on?";
+    const hour = new Date().getHours();
+    heading.textContent = `${hour < 5 ? "Working late" : hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening"}. What's next?`;
+    const greeting = document.createElement("div");
+    greeting.className = "empty-greeting";
+    greeting.append(icon, heading);
     const description = document.createElement("p");
     description.textContent = "Ask anything. Each request goes to the AI tool you set up for that kind of work.";
     const suggestions = document.createElement("div");
@@ -711,7 +715,7 @@ function renderMessages() {
       button.addEventListener("click", () => { $("prompt").value = prompt; $("prompt").focus(); });
       suggestions.append(button);
     }
-    empty.append(icon, heading, description, suggestions);
+    empty.append(greeting, description, suggestions);
     list.append(empty);
     return;
   }
@@ -723,9 +727,6 @@ function addMessage(list, message, messageIndex) {
   const { role, content, route, feedback, temporary, attachments = [], proposalId } = message;
   const item = document.createElement("div");
   item.className = "message " + (role === "assistant" ? "assistant" : "user");
-  const avatar = document.createElement("div");
-  avatar.className = "avatar";
-  avatar.textContent = role === "assistant" ? "✳" : "You";
   const body = document.createElement("div");
   body.className = "message-content";
   if (route) {
@@ -832,7 +833,7 @@ function addMessage(list, message, messageIndex) {
     }
     body.append(routeControls);
   }
-  item.append(avatar, body);
+  item.append(body);
   list.append(item);
 }
 

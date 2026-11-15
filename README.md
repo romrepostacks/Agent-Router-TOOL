@@ -65,7 +65,7 @@ The phone apps live in `mobile/` (Capacitor 7). Both connect to a Server the sam
 
 What the phone app does (matches the desktop app as of 0.27):
 
-- **Projects and sessions:** open a project, search its sessions, filter to pending reviews, import CLI sessions, start a new session. **⋯** on a session renames it, moves it to another project, or deletes it.
+- **Projects and sessions:** open a project, search its sessions, filter to pending reviews, import CLI sessions, start a new session. A new session names itself from your first message (for example "Fix the login bug"); **⋯** on a session renames it, moves it to another project, or deletes it.
 - **Tasks:** pick the route, shared skills, thread access and the Claude Code permission mode from the chips under the task box. **+** attaches phone files, server project files, or links another server project folder.
 - **While a response runs:** **Steer** (or Enter) restarts it with your correction, **Queue** sends after it, **Stop** ends it. **Output** shows the live agent output, including tokens per call.
 - **Approvals:** Always allow, Allow or Deny on approval cards, in the chat or the Inbox. Review and apply staged changes.

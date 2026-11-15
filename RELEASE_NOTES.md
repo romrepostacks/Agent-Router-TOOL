@@ -1,5 +1,10 @@
 # Release notes
 
+## 0.29.0
+
+- **Sessions name themselves.** A new session is titled from your first message, cut down to the task: "We should add automatic session naming. Let's also…" becomes "Add automatic session naming". Rename it from **⋯** as before.
+- **Calmer chat layout with a new "Harbor" palette.** Cool slate greys replace the warm ones (dark mode too). Answers read as plain text without avatars, your messages sit in soft bubbles on the right, and the rating buttons show when you point at an answer. The start screen has a time-of-day greeting, the composer is larger, grows as you type, and sends with a round arrow button. The selected project and session are highlighted in grey instead of the accent color.
+
 ## 0.28.4
 
 - **Node.js download no longer fails with 404 on PCs without winget.** Windows PowerShell 5.1 read the nodejs.org release list wrongly, so the download address had no version in it. Codex and Copilot failed after it. Fixed in Setup and in **Settings → AI tools**.

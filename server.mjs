@@ -1954,6 +1954,22 @@ function attachRun(run, res) {
   res.on("close", () => run.listeners.delete(res)); // detaching never stops the run
 }
 
+// Names a new session from its first message: first line and sentence, without greetings or "can you"/"let's" lead-ins, cut at a word.
+// ponytail: wording heuristic, no model call (keeps naming instant, local, and free); ask the local model if titles need to be smarter.
+export function sessionTitle(text, max = 48) {
+  let title = String(text || "").split("\n").map((line) => line.trim()).find(Boolean) || "";
+  title = title.split(/(?<=[.!?])\s+/)[0];
+  for (let pass = 0; pass < 3; pass++) {
+    title = title
+      .replace(/^(?:hey|hi|hello|ok(?:ay)?|so|please|pls)\b[\s,!.]*/i, "")
+      .replace(/^(?:can|could|would|will) you\s+(?:please\s+)?/i, "")
+      .replace(/^(?:i(?:'d| would)? (?:like|want|need)(?: you)? to|we (?:should|need to)|let'?s|help me(?: to)?)\s+/i, "");
+  }
+  title = title.replace(/[\s?.!:,;]+$/, "");
+  if (title.length > max) title = title.slice(0, max + 1).replace(/\s+\S*$/, "").replace(/[\s,;:]+$/, "") + "…";
+  return title ? title[0].toUpperCase() + title.slice(1) : "New session";
+}
+
 // Saves one finished exchange to a session. Used by the page and by streamed runs when they finish.
 async function appendExchange(id, data) {
   return withFileLock(SESSIONS_FILE, async () => {
@@ -1974,7 +1990,7 @@ async function appendExchange(id, data) {
     const now = new Date().toISOString();
     session.messages.push({ role: "user", content: data.user, ...(Array.isArray(data.attachments) ? { attachments: data.attachments.filter((name) => typeof name === "string").slice(0, 15) } : {}), ...(saveMaterials && materials.length ? { attachmentContext: materials } : {}), ...(materials.length && !saveMaterials ? { attachmentsNotSaved: true } : {}), createdAt: now });
     session.messages.push({ role: "assistant", content: data.assistant, route: String(data.route || "Colibri"), ...(typeof data.proposalId === "string" ? { proposalId: data.proposalId } : {}), ...(Array.isArray(data.usedSkillIds) && data.usedSkillIds.length ? { usedSkillIds: data.usedSkillIds.filter((id) => typeof id === "string").slice(0, 100) } : {}), createdAt: now });
-    if (session.title === "New session") session.title = data.user.replace(/\s+/g, " ").slice(0, 64) || "New session";
+    if (session.title === "New session") session.title = sessionTitle(data.user);
     session.updatedAt = now;
     session.messages = session.messages.slice(-MAX_MESSAGES);
     delete session.importedFrom; // continued here, so a later import must not overwrite it

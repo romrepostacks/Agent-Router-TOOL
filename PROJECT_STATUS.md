@@ -1,5 +1,12 @@
 # Local Agent Router — Project Status
 
+## Current change (v0.29.0, 2026-11-14): automatic session names + chat-app layout
+
+- **Session naming:** `sessionTitle()` in `server.mjs` names a "New session" from its first message (first line and sentence, greetings and "can you"/"let's"/"we should" lead-ins dropped, cut at a word near 48 characters). It's a wording rule, not a model call, so it's instant and stays on the PC. Test: `test/session-title.test.mjs`. Imported and renamed sessions keep their titles.
+- **UI:** modeled on the common layout of desktop/phone chat apps (quiet sidebar, answers without avatars, user turns in right-hand bubbles, large rounded composer, serif greeting) with our own "Harbor" palette (cool slate neutrals, indigo fallback accent; the Windows accent still wins). `field-sizing: content` grows the composer. Rating rows show on hover/focus (always on touch screens or once rated). Phone app unchanged.
+- Checked: syntax, `npm test`, and a headless Edge screenshot of the start screen at 1400px. Not checked: a conversation with messages, dark mode, narrow widths.
+- Next: `npm start`, open a session with messages in light and dark mode, and at a narrow width.
+
 ## Current change (v0.28.4, 2026-11-15): Node.js download 404 without winget
 
 - Sandbox run of 0.28.3: Claude Code installed, but the Node.js download returned 404, so Codex and Copilot failed. Cause: Windows PowerShell 5.1 sends `Invoke-RestMethod`'s JSON array down the pipeline as one object, so `Where-Object lts` picked nothing and `$v` was empty (`/dist//node--x64.msi`). `build/install-clis.ps1` and `NODE_INSTALL` in `server.mjs` now store the list in `$releases` first, pick the newest LTS that ships `win-<arch>-msi`, and stop with a clear error if none is found. `test/installer-roles.test.mjs` guards against the piped form.

@@ -1,10 +1,12 @@
 const pendingFollowups = new Map();
 const $ = (id) => document.getElementById(id);
 let recordingShortcut = false;
-const state = { projects: [], project: null, sessions: [], session: null, busy: false, runs: new Map(), skills: [], categories: [], selectedSkills: loadSelectedSkills(), preapprovedSkillIds: [], pendingPreapprovedSkillIds: [], skillsLimit: -1, pendingSkillsLimit: -1, theme: "system", settingsRoot: "", settingsConfigured: false, settingsPrompted: false, attachments: [], contextIds: [], contextFiles: [], contextProjectId: null, proposal: null, proposals: {}, lastRunStatus: "Ready when you are.", modelPrefs: {}, modelCatalog: null };
+const state = { projects: [], project: null, sessions: [], session: null, busy: false, runs: new Map(), skills: [], categories: [], selectedSkills: loadSelectedSkills(), preapprovedSkillIds: [], pendingPreapprovedSkillIds: [], skillsLimit: -1, pendingSkillsLimit: -1, theme: "system", palette: "harbor", settingsRoot: "", settingsConfigured: false, settingsPrompted: false, attachments: [], contextIds: [], contextFiles: [], contextProjectId: null, proposal: null, proposals: {}, lastRunStatus: "Ready when you are.", modelPrefs: {}, modelCatalog: null };
 
-function applyTheme(theme) {
+function applyTheme(theme, palette = state.palette) {
   state.theme = theme;
+  state.palette = palette;
+  document.documentElement.dataset.palette = palette;
   const active = theme === "system" ? (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light") : theme;
   document.documentElement.dataset.theme = active;
   document.documentElement.style.colorScheme = active;
@@ -17,7 +19,7 @@ async function refreshWindowsAccent() {
       document.documentElement.style.setProperty("--windows-accent", color);
       const channels = [1, 3, 5].map((offset) => Number.parseInt(color.slice(offset, offset + 2), 16) / 255).map((value) => value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4);
       const luminance = channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722;
-      document.documentElement.style.setProperty("--accent-ink", luminance > 0.42 ? "#12202a" : "#ffffff");
+      document.documentElement.style.setProperty("--windows-accent-ink", luminance > 0.42 ? "#12202a" : "#ffffff");
     }
   } catch {}
 }
@@ -910,6 +912,7 @@ async function loadSkills() {
   state.pendingPreapprovedSkillIds = [...state.preapprovedSkillIds];
   state.selectedSkills = state.selectedSkills.filter((id) => available.has(id) && !state.preapprovedSkillIds.includes(id)).slice(0, taskSkillSlots());
   state.theme = settings.theme || "system";
+  state.palette = settings.palette || "harbor";
   state.settingsRoot = settings.projectsRoot;
   state.settingsConfigured = settings.configured;
   state.modelPrefs = settings;
@@ -1771,6 +1774,7 @@ async function openSettings() {
   state.pendingSkillsLimit = Number.isSafeInteger(settings.skillsLimit) ? settings.skillsLimit : -1;
   $("projects-root").value = settings.projectsRoot;
   $("theme-choice").value = settings.theme || "system";
+  $("palette-choice").value = settings.palette || "harbor";
   $("skills-limit").value = state.pendingSkillsLimit;
   $("shortcut-key").value = settings.shortcut ?? "Control+Shift+Space";
   $("auto-merge-imports").checked = Boolean(settings.autoMergeImports);
@@ -1778,7 +1782,7 @@ async function openSettings() {
   $("local-models-status").textContent = "";
   loadLocalModels();
   loadRules();
-  applyTheme($("theme-choice").value);
+  applyTheme($("theme-choice").value, $("palette-choice").value);
   selectSettingsTab("general");
   renderApprovedSkills();
   if (!$("settings-dialog").open) $("settings-dialog").showModal();
@@ -2011,11 +2015,12 @@ async function saveSettings() {
   try {
     const roles = ["routePlanning", "longTermPlanning", "coding", "review", "security", "ui", "art", "github", "quick"];
     const modelSettings = Object.fromEntries(roles.flatMap((role) => [[`${role}Primary`, $(`${role}-primary`).value], [`${role}Fallback`, $(`${role}-fallback`).value]]));
-    const settings = await request("/api/settings", { method: "POST", body: JSON.stringify({ projectsRoot: $("projects-root").value, theme: $("theme-choice").value, skillsLimit, shortcut: $("shortcut-key").value, autoMergeImports: $("auto-merge-imports").checked, localOnly: $("local-only").checked, ...modelSettings, preapprovedSkillIds: state.pendingPreapprovedSkillIds }) });
+    const settings = await request("/api/settings", { method: "POST", body: JSON.stringify({ projectsRoot: $("projects-root").value, theme: $("theme-choice").value, palette: $("palette-choice").value, skillsLimit, shortcut: $("shortcut-key").value, autoMergeImports: $("auto-merge-imports").checked, localOnly: $("local-only").checked, ...modelSettings, preapprovedSkillIds: state.pendingPreapprovedSkillIds }) });
     const rootChanged = state.settingsRoot !== settings.projectsRoot;
     state.settingsRoot = settings.projectsRoot;
     state.settingsConfigured = true;
     state.theme = settings.theme;
+    state.palette = settings.palette;
     state.modelPrefs = settings;
     state.skillsLimit = settings.skillsLimit;
     state.pendingSkillsLimit = settings.skillsLimit;
@@ -2203,7 +2208,10 @@ for (const handle of document.querySelectorAll(".resizer")) {
 applyLayout();
 $("mode").addEventListener("change", renderInspector);
 $("approved-skill-search").addEventListener("input", renderApprovedSkills);
-$("theme-choice").addEventListener("change", () => { const saved = state.theme; applyTheme($("theme-choice").value); state.theme = saved; });
+// Live preview: apply the picked theme without making it the saved one.
+const previewTheme = () => { const { theme, palette } = state; applyTheme($("theme-choice").value, $("palette-choice").value); Object.assign(state, { theme, palette }); };
+$("theme-choice").addEventListener("change", previewTheme);
+$("palette-choice").addEventListener("change", previewTheme);
 $("skills-limit").addEventListener("input", () => {
   const limit = $("skills-limit").valueAsNumber;
   if (!Number.isSafeInteger(limit) || limit < -1) {

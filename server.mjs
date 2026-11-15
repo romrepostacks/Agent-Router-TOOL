@@ -2443,7 +2443,7 @@ async function handleRequest(req, res, fromRemote = false) {
           [`${role}Fallback`, saved[`${role}Fallback`] || (oldFallback ? `${fallbackProvider}::${oldFallback}` : "")],
         ];
       }));
-      return json(res, 200, { projectsRoot: PROJECTS_ROOT, colibriModel: saved.colibriModel || COLIBRI_MODEL, localBaseUrl: COLIBRI_BASE_URL, configured: Boolean(saved.configured), setupComplete: Boolean(saved.setupComplete || saved.configured), theme: saved.theme || "system", skillsLimit, shortcut: saved.shortcut ?? "Control+Shift+Space", autoMergeImports: Boolean(saved.autoMergeImports), localOnly: Boolean(saved.localOnly), claudeDefaultMode: await claudeDefaultMode(), ...routing, preapprovedSkillIds: Array.isArray(saved.preapprovedSkillIds) ? saved.preapprovedSkillIds : [] });
+      return json(res, 200, { projectsRoot: PROJECTS_ROOT, colibriModel: saved.colibriModel || COLIBRI_MODEL, localBaseUrl: COLIBRI_BASE_URL, configured: Boolean(saved.configured), setupComplete: Boolean(saved.setupComplete || saved.configured), theme: saved.theme || "system", palette: saved.palette || "harbor", skillsLimit, shortcut: saved.shortcut ?? "Control+Shift+Space", autoMergeImports: Boolean(saved.autoMergeImports), localOnly: Boolean(saved.localOnly), claudeDefaultMode: await claudeDefaultMode(), ...routing, preapprovedSkillIds: Array.isArray(saved.preapprovedSkillIds) ? saved.preapprovedSkillIds : [] });
     }
     if (req.method === "POST" && url.pathname === "/api/settings") {
       const data = await bodyJson(req);
@@ -2454,6 +2454,8 @@ async function handleRequest(req, res, fromRemote = false) {
       if (model.length > 160) return json(res, 400, { error: "That local model name is too long." });
       const theme = data.theme || previous.theme || "system";
       if (!["system", "light", "dark"].includes(theme)) return json(res, 400, { error: "Choose Follow Windows, Light, or Dark." });
+      const palette = data.palette || previous.palette || "harbor";
+      if (!["harbor", "moss", "ember"].includes(palette)) return json(res, 400, { error: "Choose Harbor, Moss, or Ember." });
       const skillsLimit = data.skillsLimit === undefined ? (Number.isSafeInteger(previous.skillsLimit) ? previous.skillsLimit : -1) : data.skillsLimit;
       if (!Number.isSafeInteger(skillsLimit) || skillsLimit < -1) return json(res, 400, { error: "Skill limit must be −1, zero, or a positive whole number." });
       const modelKeys = ["routePlanningPrimary", "routePlanningFallback", "longTermPlanningPrimary", "longTermPlanningFallback", "codingPrimary", "codingFallback", "reviewPrimary", "reviewFallback", "securityPrimary", "securityFallback", "uiPrimary", "uiFallback", "artPrimary", "artFallback", "githubPrimary", "githubFallback", "quickPrimary", "quickFallback"];
@@ -2471,7 +2473,7 @@ async function handleRequest(req, res, fromRemote = false) {
       await mkdir(DATA_DIR, { recursive: true });
       const autoMergeImports = data.autoMergeImports === undefined ? Boolean(previous.autoMergeImports) : data.autoMergeImports === true;
       const localOnly = data.localOnly === undefined ? Boolean(previous.localOnly) : data.localOnly === true;
-      const saved = { ...(await rawSettings()), projectsRoot: root, colibriModel: model, configured: true, theme, skillsLimit, shortcut, autoMergeImports, localOnly, ...models, preapprovedSkillIds };
+      const saved = { ...(await rawSettings()), projectsRoot: root, colibriModel: model, configured: true, theme, palette, skillsLimit, shortcut, autoMergeImports, localOnly, ...models, preapprovedSkillIds };
       await writeFile(SETTINGS_FILE, JSON.stringify(saved, null, 2), "utf8");
       globalThis.setRouterTheme?.(theme);
       return json(res, 200, saved);

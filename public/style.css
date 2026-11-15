@@ -1,10 +1,11 @@
-/* Palette "Harbor": cool slate neutrals + the Windows accent (indigo when Windows gives none).
+/* Palette "Harbor" (default): cool slate neutrals + the Windows accent (indigo when Windows gives none).
+   "Moss" and "Ember" (html[data-palette], same tokens as the phone app) use their own accent instead.
    Layout follows the calm chat-app pattern: quiet sidebar, bubble-less answers, user turns in soft bubbles, one big rounded composer.
    Every color below is a token, so dark mode only swaps tokens. */
 :root {
   color-scheme: light;
   --windows-accent: #4c5fd5;
-  --accent-ink: #ffffff;
+  --accent-ink: var(--windows-accent-ink, #ffffff);
   --ink: #18202b;
   --ink-2: #364152;
   --muted: #5f6b7d;
@@ -48,6 +49,31 @@ html[data-theme="dark"] {
   --red-light: #482829;
   --blue: #2f6fe4;
   --shadow: 0 12px 32px #00000066;
+}
+
+/* Moss: sage greens, rounded display type. */
+html[data-palette="moss"] {
+  --ink: #1a211c; --ink-2: #364036; --muted: #586357; --line: #dde3d6; --line-strong: #c7d0c0;
+  --paper: #f9faf7; --canvas: #f3f5f0; --surface: #ffffff; --sidebar: #ebefe6; --soft-surface: #eef1ea; --hover-surface: #e1e7da; --user-bubble: #e4eadf;
+  --green: #2f6b4f; --accent-ink: #ffffff; --red: #b3372f; --red-light: #f8ecea;
+  --display-font: ui-rounded, "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+}
+html[data-palette="moss"][data-theme="dark"] {
+  --ink: #e9efe9; --ink-2: #c2cdc4; --muted: #9cab9f; --line: #27322b; --line-strong: #36443a;
+  --paper: #151b17; --canvas: #111613; --surface: #18201b; --sidebar: #111613; --soft-surface: #1b241f; --hover-surface: #223027; --user-bubble: #223027;
+  --green: #7fc8a0; --accent-ink: #0f1712; --red: #f07a6e; --red-light: #3d2522;
+}
+/* Ember: warm paper / ink-dark, amber accent, monospace display type. */
+html[data-palette="ember"] {
+  --ink: #1d1a14; --ink-2: #3d372c; --muted: #635c4f; --line: #e8e0d2; --line-strong: #d6ccb9;
+  --paper: #fdfcf9; --canvas: #fbf8f3; --surface: #ffffff; --sidebar: #f3ede2; --soft-surface: #f5f0e7; --hover-surface: #ebe3d5; --user-bubble: #f1ebe0;
+  --green: #a8560a; --accent-ink: #ffffff; --red: #b42318; --red-light: #faece9;
+  --display-font: ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+html[data-palette="ember"][data-theme="dark"] {
+  --ink: #f1f2f7; --ink-2: #c9cddb; --muted: #a0a6bb; --line: #272d3d; --line-strong: #363d50;
+  --paper: #131622; --canvas: #0e1018; --surface: #161a26; --sidebar: #0e1018; --soft-surface: #1a1f2d; --hover-surface: #232838; --user-bubble: #232838;
+  --green: #f2a541; --accent-ink: #1a1205; --red: #ff7a70; --red-light: #47272a;
 }
 
 * { box-sizing: border-box; }

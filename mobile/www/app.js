@@ -95,6 +95,15 @@ function el(tag, props = {}, ...children) {
 // ?device= lets preview.html frame the app as an iPhone 16 Pro Max (iOS 26) or Galaxy Note20; a real phone uses
 // env(safe-area-inset-*) from the system.
 const DEVICES = { iphone: { platform: "ios", top: 62, bottom: 34 }, note20: { platform: "android", top: 32, bottom: 16 } };
+// Theme (Ember / Harbor / Moss) and mode (System / Light / Dark) are saved per phone. "System" is resolved here so the CSS only sees light or dark.
+const PALETTES = ["ember", "harbor", "moss"];
+function applyAppearance() {
+  const palette = localStorage.getItem("ar-palette");
+  const mode = localStorage.getItem("ar-appearance") || "dark";
+  document.documentElement.dataset.palette = PALETTES.includes(palette) ? palette : "ember";
+  document.documentElement.dataset.theme = mode === "system" ? (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light") : mode;
+}
+
 (() => {
   const device = DEVICES[new URLSearchParams(location.search).get("device")];
   const platform = device?.platform || (/android/i.test(navigator.userAgent) ? "android" : /iphone|ipad|ipod/i.test(navigator.userAgent) ? "ios" : "ios");
@@ -103,8 +112,8 @@ const DEVICES = { iphone: { platform: "ios", top: 62, bottom: 34 }, note20: { pl
     document.documentElement.style.setProperty("--safe-top", `${device.top}px`);
     document.documentElement.style.setProperty("--safe-bottom", `${device.bottom}px`);
   }
-  const appearance = localStorage.getItem("ar-appearance") || "dark";
-  document.documentElement.dataset.theme = appearance;
+  applyAppearance();
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyAppearance);
   // Keep the composer above the on-screen keyboard where the browser doesn't resize the page for it.
   const vv = window.visualViewport;
   vv?.addEventListener("resize", () => document.documentElement.style.setProperty("--kb", `${Math.max(0, innerHeight - vv.height - vv.offsetTop)}px`));
@@ -1179,6 +1188,7 @@ async function loadSettingsView() {
   $("settings-server").textContent = conn.url;
   $("settings-version").textContent = conn.appVersion ? `App ${conn.appVersion} · Server ${conn.version}` : `Server ${conn.version}`;
   $("appearance").value = localStorage.getItem("ar-appearance") || "dark";
+  $("palette").value = document.documentElement.dataset.palette;
   $("notify-toggle").checked = localStorage.getItem("ar-notify") === "1";
   $("notify-toggle").disabled = !LocalNotifications && !("Notification" in window);
   try {
@@ -1206,10 +1216,8 @@ async function loadSettingsView() {
   } catch (error) { $("settings-status").textContent = error.message; }
 }
 
-$("appearance").addEventListener("change", (event) => {
-  localStorage.setItem("ar-appearance", event.target.value);
-  document.documentElement.dataset.theme = event.target.value;
-});
+$("appearance").addEventListener("change", (event) => { localStorage.setItem("ar-appearance", event.target.value); applyAppearance(); });
+$("palette").addEventListener("change", (event) => { localStorage.setItem("ar-palette", event.target.value); applyAppearance(); });
 $("notify-toggle").addEventListener("change", async (event) => {
   if (event.target.checked && LocalNotifications) event.target.checked = (await LocalNotifications.requestPermissions().catch(() => ({}))).display === "granted";
   else if (event.target.checked && Notification.permission !== "granted") event.target.checked = (await Notification.requestPermission()) === "granted";

@@ -13,7 +13,7 @@
   --tab-h: 64px;
   --r-sm: 6px; --r-md: 12px; --r-lg: 18px;
 
-  /* "Ember" theme (replica/design/themes.json, option C): ink-dark first, amber accent. Light values below. */
+  /* Base = "Ember" (replica/design/themes.json, option C), the default: amber accent. Harbor and Moss override below. */
   --bg: #fbf8f3;
   --surface: #ffffff;
   --bubble: #f1ebe0;
@@ -35,6 +35,7 @@
 }
 .android { --tap: 48px; --font: Roboto, "Google Sans", system-ui, sans-serif; --nav-h: 56px; }
 
+/* app.js resolves "System" to light or dark, so CSS only sees data-theme="light" | "dark" and data-palette. */
 :root[data-theme="dark"] {
   --bg: #0e1018; --surface: #161a26; --bubble: #232838; --text: #f1f2f7; --muted: #a0a6bb; --hairline: #272d3d; --border-input: #6b7390;
   --accent: #f2a541; --accent-text: #1a1205; --danger: #ff7a70; --success: #5fd39a;
@@ -42,14 +43,34 @@
   --blob-1: #3a2810; --blob-2: #1a2036; --blob-3: #141826;
   color-scheme: dark;
 }
-@media (prefers-color-scheme: dark) {
-  :root[data-theme="system"] {
-    --bg: #0e1018; --surface: #161a26; --bubble: #232838; --text: #f1f2f7; --muted: #a0a6bb; --hairline: #272d3d; --border-input: #6b7390;
-    --accent: #f2a541; --accent-text: #1a1205; --danger: #ff7a70; --success: #5fd39a;
-    --glass-shadow: 0 8px 24px rgba(0, 0, 0, .45);
-    --blob-1: #3a2810; --blob-2: #1a2036; --blob-3: #141826;
-    color-scheme: dark;
-  }
+
+/* "Harbor" (option A): cool slate, indigo accent, system type. Matches the desktop's default. */
+:root[data-palette="harbor"] {
+  --display: -apple-system, "SF Pro Display", system-ui, Roboto, sans-serif;
+  --r-sm: 10px; --r-md: 16px; --r-lg: 24px;
+  --bg: #f6f7f9; --surface: #ffffff; --bubble: #e8ecf2; --text: #141821; --muted: #5a6271; --hairline: #e1e5eb; --border-input: #7b8493;
+  --accent: #4f46e5; --accent-text: #ffffff; --danger: #c62f2f; --success: #1f7a4d;
+  --blob-1: #d9dcfb; --blob-2: #e6ebf2; --blob-3: #dfe4ec;
+}
+:root[data-palette="harbor"][data-theme="dark"] {
+  --bg: #0f1217; --surface: #171b22; --bubble: #222833; --text: #eef1f6; --muted: #9aa3b2; --hairline: #262c36; --border-input: #6b7483;
+  --accent: #8b84ff; --accent-text: #0f1217; --danger: #ff6b6b; --success: #4cc38a;
+  --blob-1: #23234a; --blob-2: #172030; --blob-3: #141922;
+}
+
+/* "Moss" (option B): sage greens, rounded type. */
+:root[data-palette="moss"] {
+  --font: ui-rounded, "SF Pro Rounded", -apple-system, system-ui, Roboto, sans-serif;
+  --display: ui-rounded, "SF Pro Rounded", -apple-system, system-ui, Roboto, sans-serif;
+  --r-sm: 12px; --r-md: 18px; --r-lg: 28px;
+  --bg: #f3f5f0; --surface: #ffffff; --bubble: #e4eadf; --text: #1a211c; --muted: #586357; --hairline: #dde3d6; --border-input: #849080;
+  --accent: #2f6b4f; --accent-text: #ffffff; --danger: #b3372f; --success: #2f7a3d;
+  --blob-1: #cfe3d4; --blob-2: #e6ebdf; --blob-3: #dde4d6;
+}
+:root[data-palette="moss"][data-theme="dark"] {
+  --bg: #111613; --surface: #18201b; --bubble: #223027; --text: #e9efe9; --muted: #9cab9f; --hairline: #27322b; --border-input: #6c7a70;
+  --accent: #7fc8a0; --accent-text: #0f1712; --danger: #f07a6e; --success: #7fd28f;
+  --blob-1: #1d3326; --blob-2: #18221c; --blob-3: #131a16;
 }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }

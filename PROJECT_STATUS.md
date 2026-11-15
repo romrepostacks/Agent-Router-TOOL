@@ -1,5 +1,12 @@
 # Local Agent Router — Project Status
 
+## Current change (v0.31.0, 2026-11-14): user-picked theme (Harbor / Moss / Ember) + light/dark/system, desktop and phone
+
+- Phone (`mobile/www`): `data-palette` on `<html>` (`ember` default, `harbor`, `moss`) next to `data-theme`. `applyAppearance()` in `app.js` resolves System to light/dark (and re-runs on `prefers-color-scheme` change), so `style.css` has no system media block any more. Saved per phone in `localStorage` (`ar-palette`, `ar-appearance`). Settings → Appearance card: Theme + Mode selects.
+- Desktop (`public/`): `palette` setting (`harbor` default) saved by `POST /api/settings`, validated in `server.mjs`. `html[data-palette="moss"|"ember"]` blocks in `style.css` swap the tokens and use their own accent; Harbor keeps the Windows accent. The Windows accent's text color now lands in `--windows-accent-ink` so the palettes can set `--accent-ink`. Settings → Appearance: Theme, then Light or dark (Mode); both preview live and revert on close without saving.
+- Test: `test/theme-palette.test.mjs`. Checked: syntax, `npm test` (96 pass). Not checked by eye: any theme in the running desktop app or on a phone.
+- Next: `npm start`, switch Moss and Ember in light and dark; then the 0.31.0 APK/IPA.
+
 ## Current change (v0.30.0, 2026-11-14): phone app gets the Ember theme + floating chat layout
 
 - Owner picked option C, **Ember**, from `replica/theme-options.html`. Its tokens (`replica/design/themes.json`) now drive `mobile/www/style.css` (light in `:root`, dark in `[data-theme="dark"]` and system-dark). `--display` is monospace and used for titles and small labels. Dark is the default appearance when none is saved (`ar-appearance` in `mobile/www/app.js`).

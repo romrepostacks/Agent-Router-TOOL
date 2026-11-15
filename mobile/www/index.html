@@ -103,9 +103,14 @@
           <div class="row-line"><span>Version</span><span id="settings-version" class="value"></span></div>
           <button id="disconnect" type="button" class="text-button danger">Disconnect</button>
         </div>
+        <div class="group-label">Appearance</div>
+        <div class="card glass">
+          <label class="row-line">Theme<select id="palette"><option value="ember">Ember</option><option value="harbor">Harbor</option><option value="moss">Moss</option></select></label>
+          <label class="row-line">Mode<select id="appearance"><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select></label>
+          <p class="hint">Ember: amber with monospace titles. Harbor: cool slate and indigo, like the desktop app. Moss: sage green with rounded type. System follows the phone's light or dark setting.</p>
+        </div>
         <div class="group-label">This phone</div>
         <div class="card glass">
-          <label class="row-line">Appearance<select id="appearance"><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select></label>
           <label class="row-line">Alerts when the app is in the background<input id="notify-toggle" type="checkbox" role="switch"></label>
           <p class="hint">Alerts show while the app is open or recently used. When you come back to the app it catches up on anything it missed. Alerts while it's fully closed need push notifications, which the server doesn't send yet.</p>
         </div>

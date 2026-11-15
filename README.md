@@ -66,7 +66,7 @@ The phone apps live in `mobile/` (Capacitor 7). Both connect to a Server the sam
 What the phone app does (matches the desktop app as of 0.27):
 
 - **Projects and sessions:** open a project, search its sessions, filter to pending reviews, import CLI sessions, start a new session. A new session names itself from your first message (for example "Fix the login bug"); **⋯** on a session renames it, moves it to another project, or deletes it.
-- **Look:** the "Ember" theme (dark by default, amber accent; **Settings → Appearance** switches to Light or System). In a chat, Back and **Output** float over the messages, answers read as plain text and your messages sit in soft bubbles.
+- **Look:** three themes, Ember (the default: amber, monospace titles), Harbor (slate and indigo, like the desktop) and Moss (sage, rounded type), each in Light, Dark (the default) or System, under **Settings → Appearance**. In a chat, Back and **Output** float over the messages, answers read as plain text and your messages sit in soft bubbles.
 - **Tasks:** pick the route, shared skills, thread access and the Claude Code permission mode from the chips under the task box. **+** attaches phone files, server project files, or links another server project folder.
 - **While a response runs:** **Steer** (or Enter) restarts it with your correction, **Queue** sends after it (both float above the task box), and the round **Stop** button in place of Send ends it. **Output** shows the live agent output, including tokens per call.
 - **Approvals:** Always allow, Allow or Deny on approval cards, in the chat or the Inbox. Review and apply staged changes.
@@ -185,7 +185,7 @@ installed from GitHub or imported from other tools aren't deleted from the app. 
 
 ## Settings
 
-Open **Settings** from the bottom of the left panel (or the ⚙ button in the top bar while the left panel is hidden). Sections are listed down the left side: **General**, **Appearance**, **Routing & models**, **Sessions**, **Shared skills** and **Add new skills**.
+Open **Settings** from the bottom of the left panel (or the ⚙ button in the top bar while the left panel is hidden). Sections are listed down the left side: **General**, **Appearance**, **Routing & models**, **Sessions**, **Shared skills** and **Add new skills**. **Appearance** has the theme (Harbor, the default, which uses your Windows accent color; Moss; or Ember, the phone app's default) and the mode (Follow Windows, Light or Dark).
 
 The desktop uses a three-area layout: projects and sessions on the left, the conversation in the center, and an agent output panel on the right. While a task runs, the panel streams what the agent is doing: status steps, the files Claude Code reads and edits, and the text each provider prints. **Task details** at the bottom of the panel shows the project scope, selected files, skills, and how the active route uses them. Collapse it with the panel button at the top right (the left one hides projects). The top bar also shows the current project and, on the right, whether the local model and AI tools are ready; hover them for details.
 

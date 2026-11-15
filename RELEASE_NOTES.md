@@ -1,5 +1,10 @@
 # Release notes
 
+## 0.31.0
+
+- **Pick your theme: Harbor, Moss or Ember**, on both the desktop and the phone apps. Harbor is cool slate with your Windows accent color (the desktop's default), Moss is sage green with rounded headings, and Ember is amber with monospace headings (the phone's default).
+- **Light, dark or follow the system, for every theme.** Desktop: **Settings → Appearance → Theme** and **Mode**. Phone: **Settings → Appearance**, saved on that phone. The phone's System setting now switches straight away when the phone changes between light and dark.
+
 ## 0.30.0
 
 - **New look for the phone apps: "Ember".** Ink-dark by default with an amber accent and monospace titles and labels; a warm light version is under **Settings → Appearance**. Both pass the WCAG AA contrast check.

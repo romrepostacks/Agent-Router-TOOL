@@ -1422,7 +1422,7 @@ async function runProviderCall(choice, prompt, project, kind, options = {}) {
   const skillDirs = prompt.includes(SKILL_INDEX_START) ? ["--add-dir", SKILLS_DIR] : [];
   if (CHAT_PROVIDERS.has(provider)) {
     let content = await expandSkillIndex(prompt, options.compactContext ? 3000 : 8000);
-    if (project && access !== "none") content = `${await colibriProjectContext(project, prompt, options.compactContext ? 12_000 : undefined)}\n\n${prompt}`;
+    if (project && access !== "none") content = `${await colibriProjectContext(project, prompt, options.compactContext ? 12_000 : undefined)}\n\n${content}`;
     if (access === "git") content += `\n\n${gitNote}`;
     if (access === "edit") content += "\n\nTo create or change a file, output its complete new contents exactly like this, once per file, with a path relative to the project root:\n<<<FILE path/to/file.ext\n...full file contents...\n>>>END\nOutside those blocks, briefly explain what you changed.";
     options.onPrompt?.(content.length);

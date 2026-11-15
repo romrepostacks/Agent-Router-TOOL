@@ -1,5 +1,12 @@
 # Local Agent Router — Project Status
 
+## Current change (v0.28.2, 2026-11-15)
+
+- **Review + release of 0.22–0.28.1.** The 18 commits that were only on the PC's `main` (0.22.0 → 0.28.1) were reviewed, pushed and merged to GitHub `main`. `npm test` 93/93; desktop page smoke-loaded in headless Chromium at 1400px and 600px (no page errors; ⋯ options button shows only when thin).
+- **Fix found in review:** `runProviderCall()` built a chat provider's prompt as `projectContext + prompt`, dropping the `expandSkillIndex()` result, so on project routes the local model/API providers got skill file paths instead of skill text. Now `projectContext + content`. Regression test: `test/chat-provider-skills.test.mjs` (fake local model, Review route, Local models only).
+- Version 0.28.2 (desktop and phone). Release v0.28.2: Windows installer + Android debug APK built on the PC, unsigned iPhone IPA from the `ios-unsigned.yml` workflow (runs on the push to `main` because `mobile/package.json` changed).
+- Android APK stays a PC build on purpose: a CI-built debug APK has a different debug key, so Android would refuse to update the installed app without uninstalling it (losing the pairing).
+
 ## Current change (v0.28.1, 2026-11-14)
 
 - **Dark mode dropdown fix (owner report: menus opened light in dark mode).** `.pill-select` (`#thread-access`, `#permission-mode`) has `background: transparent`, so Chromium drew its option list with the default light colors. `style.css` now gives `option, optgroup` the theme's `--ink` / `--surface`, which covers every `<select>` in the app. Not yet checked in the running app.

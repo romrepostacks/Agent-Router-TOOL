@@ -1,5 +1,10 @@
 # Release notes
 
+## 0.28.2
+
+- **Skills reach the local model again on project routes.** Since 0.23.0 skills go out as a short index with file paths, and chat providers (local model, OpenAI and Anthropic API) get the skill text inlined because they can't open files. On routes that read the project (Review, Project, Code and the rest) that inlined text was thrown away, so those providers saw only file paths they couldn't open. Fixed, with a test (`test/chat-provider-skills.test.mjs`).
+- Phone apps rebuilt as 0.28.2 so the desktop and phone versions match.
+
 ## 0.28.1
 
 - **Dropdown lists follow dark mode.** The Thread access and permission pickers (and every other dropdown) opened a light list in dark mode. They now use the dark colors.

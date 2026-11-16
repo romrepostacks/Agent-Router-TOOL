@@ -6,7 +6,7 @@ Guidance for any AI agent (Claude Code, Codex, Copilot, etc.) working on this re
 - Update `PROJECT_STATUS.md` (current status + next steps) in the same change as any feature or fix.
 - Bump `version` in `package.json` in the same change as any feature or fix: minor (0.12.0 → 0.13.0) for a feature, patch (0.12.0 → 0.12.1) for a fix. Skip it only if the current version has never been built into an installer (no `release\LocalAgentRouter-Setup-<version>.exe`, and for 0.15.0 and earlier no `release\make\squirrel.windows\x64\*-<version>-full.nupkg`). Two builds with the same version can't be told apart once installed. Tag the change in `PROJECT_STATUS.md` with the new version and add it to `RELEASE_NOTES.md`. `build-installer.cmd` refuses to build a version that was already built.
 - Keep `README.md` accurate for end users; it is also the install guide.
-- Commit on `main` with a clear message; the repo has no remote yet.
+- Commit on `main` with a clear message. The GitHub remote is `origin`; push only when asked. Phone builds (Android APK, iOS IPA) run on GitHub Actions after a push.
 
 ## Layout
 - `electron-builder.config.cjs` + `build/installer.nsh` – Windows NSIS installer: install for me / everyone, folder choice, update in place, removal of old Squirrel installs (0.15.0 and earlier). Never change `appId`: the installer finds earlier installs by it.

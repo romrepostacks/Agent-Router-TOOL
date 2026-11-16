@@ -50,6 +50,7 @@ export async function runRufloTask(command, prompt, project, env, options = {}, 
       options.onActivity?.(`${detail}\n`);
     },
   });
-  if (!routed || !swarm) throw new Error("The execution host did not complete Ruflo routing and swarm setup. Inspect activity before retrying; no original-backend fallback was attempted.");
+  // Read-only answers need Ruflo's routing decision but no swarm; there is no work to fan out.
+  if (!routed || (!swarm && !options.readOnly)) throw new Error(`The execution host did not complete Ruflo routing${options.readOnly ? "" : " and swarm setup"}. Inspect activity before retrying; no original-backend fallback was attempted.`);
   return content;
 }

@@ -45,3 +45,13 @@ test("missing or failed Ruflo never falls back to the original backend", async (
     },
   }), /did not complete Ruflo/);
 });
+
+test("read-only Ruflo runs finish with routing alone; edits still need a swarm", async () => {
+  const routeOnly = async (command, args, cwd, env, cb) => {
+    cb.onTool("mcp__ruflo__hooks_route", {}, "r"); cb.onToolResult("r", '{"agent":"coder"}', false);
+    return "answer";
+  };
+  assert.equal(await runRufloTask("claude", "q", { path: "/p" }, {}, { readOnly: true }, { check: async () => {}, run: routeOnly }), "answer");
+  await assert.rejects(runRufloTask("claude", "q", { path: "/p" }, {}, {}, { check: async () => {}, run: routeOnly }), /swarm setup/);
+  await assert.rejects(runRufloTask("claude", "q", { path: "/p" }, {}, { readOnly: true }, { check: async () => {}, run: async () => "x" }), /did not complete Ruflo routing\./);
+});

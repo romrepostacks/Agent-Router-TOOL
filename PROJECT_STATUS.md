@@ -1,4 +1,12 @@
-# Current change (v0.33.0): Ruflo installed, backend comparison test, Android CI
+# Current change (v0.33.0): read-only Ruflo runs without a swarm, editing comparison
+
+- Read-only Ruflo runs (questions, review, planning) now finish once Ruflo's routing step returns; only editing runs still require swarm setup (`readOnly` option in `ruflo-runner.mjs`). Kept 0.33.0: no installer exists for it.
+- AGENTS.md: replaced the outdated "no remote" line (remote is `origin` on GitHub; phone builds run on Actions).
+- Editing comparison (`--mode code`, staged copy, add a JSDoc above `parseSse`; Bash/PowerShell cards denied): Original finished in 30 s. Ruflo made the same correct edit in 38 s, but ended as an error. `hooks_route` picked "architect" by keyword match, the host delegated to one builder agent, and no swarm started, so the swarm gate failed. Report: `.agent-router/compare/compare-2026-11-16T03-59-06-027Z.md`. Neither run touched the project folder.
+- Next: decide whether small edits may skip the swarm too (Ruflo itself chose one agent here); try a multi-file edit that should trigger a swarm.
+- Validation: syntax checks pass; full suite 106/106.
+
+# Previous change (v0.33.0): Ruflo installed, backend comparison test, Android CI
 
 - Installed Ruflo 3.77.1 into `.tools/ruflo` (npm skipped its install scripts; the MCP server starts and lists 393 tools). Ruflo writes `.claude-flow/` state into the project folder; now git-ignored.
 - Added `scripts/compare-backends.mjs`: sends one prompt to both versions on free ports with a throwaway session each, allows approval cards only for tools matching `--allow-tools` (all others denied), and writes a side-by-side report to `.agent-router/compare/`. Unit test: `test/compare-backends.test.mjs`.

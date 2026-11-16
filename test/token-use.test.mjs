@@ -26,6 +26,24 @@ for await (const line of readline.createInterface({ input: process.stdin })) {
   assert.deepEqual(seen, [{ input: 9010, cached: 8000, output: 250 }]);
 });
 
+test("modelUsage (whole session, subagents included) wins over main-thread usage; cost, turns and API time pass through", async () => {
+  const fake = path.join(root, "fake-claude-models.mjs");
+  await writeFile(fake, `
+import readline from "node:readline";
+const out = (m) => process.stdout.write(JSON.stringify(m) + "\\n");
+for await (const line of readline.createInterface({ input: process.stdin })) {
+  const m = JSON.parse(line);
+  if (m.type === "control_request") out({ type: "control_response", response: { subtype: "success", request_id: m.request_id } });
+  if (m.type === "user") out({ type: "result", is_error: false, result: "ok", total_cost_usd: 0.42, num_turns: 7, duration_api_ms: 3000,
+    usage: { input_tokens: 1, output_tokens: 1 },
+    modelUsage: { opus: { inputTokens: 100, cacheReadInputTokens: 900, cacheCreationInputTokens: 50, outputTokens: 40 }, haiku: { inputTokens: 10, outputTokens: 5 } } });
+}
+`);
+  const seen = [];
+  await runClaudeStream(process.execPath, [fake], undefined, undefined, { prompt: "hi", onUsage: (u) => seen.push(u) });
+  assert.deepEqual(seen, [{ input: 1060, cached: 900, output: 45, models: ["opus", "haiku"], costUsd: 0.42, turns: 7, apiMs: 3000 }]);
+});
+
 test("Codex token totals come from its last 'tokens used' line, both layouts", () => {
   assert.deepEqual(codexTokens("codex\nanswer\ntokens used\n12,345\n"), { total: 12345 });
   assert.deepEqual(codexTokens("[2026-01-01T00:00:00] tokens used: 900\n...\n[2026-01-01T00:01:00] tokens used: 1500"), { total: 1500 });

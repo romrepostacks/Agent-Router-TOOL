@@ -1,5 +1,17 @@
 import { spawn, execFile } from "node:child_process";
 
+// Claude Code's result event → { input, cached, output, models }. `usage` covers the main thread only; `modelUsage`
+// (when present) is the whole session per model, subagents included, so it wins. Cache reads and writes count as input.
+export function claudeUsage(u = {}, modelUsage) {
+  const per = Object.entries(modelUsage || {});
+  if (!per.length) return { input: (u.input_tokens || 0) + (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0), cached: u.cache_read_input_tokens || 0, output: u.output_tokens || 0 };
+  const sum = (pick) => per.reduce((total, [, m]) => total + (pick(m) || 0), 0);
+  return {
+    input: sum((m) => (m.inputTokens || 0) + (m.cacheReadInputTokens || 0) + (m.cacheCreationInputTokens || 0)),
+    cached: sum((m) => m.cacheReadInputTokens), output: sum((m) => m.outputTokens), models: per.map(([name]) => name),
+  };
+}
+
 export function runCli(command, args, cwd, env, { signal, onDelta, onActivity, stdin, idleTimeoutMs = 15 * 60 * 1000 } = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, { cwd, env, windowsHide: true, stdio: [stdin === undefined ? "ignore" : "pipe", "pipe", "pipe"] });
@@ -97,7 +109,8 @@ export async function runClaudeStream(command, args, cwd, env, { prompt, onText,
         result = event;
         io?.end();
         const u = event.usage;
-        if (u) onUsage?.({ input: (u.input_tokens || 0) + (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0), cached: u.cache_read_input_tokens || 0, output: u.output_tokens || 0 });
+        const extra = Object.entries({ costUsd: event.total_cost_usd, turns: event.num_turns, apiMs: event.duration_api_ms }).filter(([, value]) => typeof value === "number");
+        if (u) onUsage?.({ ...claudeUsage(u, event.modelUsage), ...Object.fromEntries(extra) });
       }
       if (event.type === "user") for (const part of event.message?.content || []) {
         if (part.type === "tool_result") onToolResult?.(part.tool_use_id, part.content, Boolean(part.is_error));

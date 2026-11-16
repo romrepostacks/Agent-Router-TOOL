@@ -6,6 +6,8 @@
 - Ruflo runs need a swarm only when work fans out to more than one agent. Answers and small single-agent edits finish after Ruflo's routing step; Activity notes "No swarm" when none started.
 - Fixed: approval prompts from Claude Code subagents failed with "Stream closed" once the main turn ended. Subagents now run in the foreground (`CLAUDE_CODE_DISABLE_BACKGROUND_TASKS`), so every write they ask for reaches an approval card.
 - The comparison script saves each version's proposed files from staged edits under `.agent-router/compare/<run>/<version>/` (never applied).
+- Token counts for Claude Code runs now include subagents (from Claude Code's per-model totals), plus API-equivalent cost, turns and model API time. A finished or failed run's final event carries its per-call `usage`.
+- The comparison report adds tokens, cost, turns, models, time to first output, output size, missing required files, broken local links, external loads and source-term coverage (`--require`, `--terms`), and saves raw metrics as `.json`.
 
 # v0.32.0
 

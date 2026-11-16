@@ -2761,10 +2761,10 @@ async function handleRequest(req, res, fromRemote = false) {
           result.saved = true;
         }
         track("done");
-        finishRun(run, "done", result);
+        finishRun(run, "done", { ...result, usage: calls }); // usage: per-call token counts, for the page and compare-backends
       } catch (error) {
         track(controller.signal.aborted ? "stopped" : "failed");
-        finishRun(run, "error", controller.signal.aborted ? stopped : { error: error.message || "The request failed." });
+        finishRun(run, "error", { ...(controller.signal.aborted ? stopped : { error: error.message || "The request failed." }), usage: calls });
       }
       return;
     }

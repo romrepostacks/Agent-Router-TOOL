@@ -1,4 +1,12 @@
-# Current change (v0.33.0): swarm only for multi-agent work, subagent approval fix, landing-page comparison
+# Current change (v0.33.0): token and cost metrics, game landing-page benchmark
+
+- Claude Code usage now comes from the result event's `modelUsage` (whole session, subagents included) with `costUsd`, `turns`, `apiMs`; `claudeUsage()` in `cli-runner.mjs`. The run's final `done`/`error` event carries `usage` (per-call list).
+- `scripts/compare-backends.mjs` reports tokens, cost, turns, models, model API time, time to first output, and output checks (`--require`, `--terms`: required files, broken local links, external loads, source-term coverage); raw metrics saved as `.json`.
+- The previous landing-page run (04-14-33) had no token data; its times were a tie (258.8 s vs 256.6 s).
+- Game benchmark (one-pager for Poke Legends: Lands of Nine from a trimmed repo snapshot in `.agent-router/compare/game/`, staged, web and shell denied): both finished, all required files, 0 broken links, 0 external loads, all 13 source terms. Original: 581 s, 2.49M tokens (67K out), $3.73, 23 turns, 11 approvals. Ruflo (3-agent swarm): 257 s, 1.74M tokens (43K out), $2.43, 15 turns, 18 approvals. Report: `.agent-router/compare/compare-2026-11-16T04-43-29-852Z.md`. One run each; repeat before deciding.
+- Validation: syntax checks pass; full suite 109/109.
+
+# Previous change (v0.33.0): swarm only for multi-agent work, subagent approval fix, landing-page comparison
 
 - Ruflo gate: routing is always required; a swarm only when the host delegates to more than one agent. Answers and single-agent edits finish without one, and Activity records "No swarm". `readOnly` option removed.
 - Fixed "Tool permission request failed: AbortError: Stream closed": `runClaudeStream` closes stdin at the first `result`, so background subagents lost their approvals. Claude runs now set `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1` (subagents stay foreground; parallel calls still run together). Affected both versions.

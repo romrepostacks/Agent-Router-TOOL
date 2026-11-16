@@ -312,8 +312,8 @@ async function connect(quiet = false) {
   if (problem) { conn.ok = false; status.textContent = problem; return show(); }
   if (!quiet) status.textContent = "Connecting…";
   try {
-    const { version, role } = await request("/api/version");
-    conn.version = `v${version}${role ? ` ${role}` : ""}`;
+    const { version, role, backend } = await request("/api/version");
+    conn.version = `v${version}${role ? ` ${role}` : ""}${backend === "ruflo" ? " · Ruflo" : ""}`;
     conn.ok = true;
     localStorage.setItem("ar-server", conn.url);
     const saved = await tokenStore.set(conn.token).catch(() => false);

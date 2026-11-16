@@ -1,4 +1,45 @@
+# Current change (v0.32.0): Ruflo second version
+
+- Added `npm run start:ruflo`: the existing UI with Ruflo MCP coordination and a Claude Code execution host, separate settings/sessions/profile, no original route planning or provider fallback.
+- Passes observed agent requests and Ruflo tool results through Activity and saved delegation details; keeps approvals, cancellation, thread limits, locks and staged proposals.
+- Review fix: the Ruflo tooltip on the version label is no longer overwritten by the Client tooltip.
+- Next: install the pinned Ruflo runtime (`.tools/ruflo` is absent, so the Ruflo version can't run tasks yet) and exercise a real swarm, approvals and cancellation; build iOS on macOS.
+- Validation: syntax checks pass; full suite 103/103. Both servers start side by side (8765 classic, 8775 Ruflo) and answer `/api/version` and `/api/status`; only the Ruflo one reports `backend: "ruflo"`. Android: `mobile/dist/AgentRouter-0.32.0-debug.apk` built with JDK 21. iOS: needs macOS/Xcode, not built.
+
+# Current change (v0.31.2): remove blanket commit restrictions
+
+- Removed the task-chain commit prohibition, the rules editor commit restriction example, and the personal-skills commit restriction in AGENTS.md. Secret-protection guidance remains.
+- Retained 0.31.2: no installer exists for this version. No server configuration changed.
+- Validation: syntax checks pass; 99/100 tests pass. Diagnostics fails in os.userInfo with ENOMEM. The archived patch-generator.md is write-protected and unchanged. Managed .git access is read-only.
+- Next: remove the archived plugin restriction when that file is writable.
+
+# Current change (v0.31.2): explicitly requested Git actions
+
+- Removed the GitHub route prompt's blanket commit ban. Explicit Git requests are permitted, with specific authorization for destructive actions and provider approvals/thread limits preserved. A push alone does not authorize a commit.
+- Retained 0.31.2 because no installer exists for this version. This changes route instructions, not server configuration.
+- Validation: syntax checks pass; Git prompt regression test passes. Full suite: 98/99 pass; diagnostics fails in os.userInfo (uv_os_get_passwd ENOMEM). No live provider run performed. Commit unavailable: this session grants only read access to .git.
+- Next: exercise an explicitly requested commit through a live provider approval card.
+
+# Current change (v0.31.2): permission request passthrough
+
+- Codex app-server and Copilot ACP replace non-interactive execution at the shared provider entry point for sessions, routes, fallback and task chains. Command/file permission requests use existing desktop/mobile cards; missing or failed handlers decline. Provider sandbox and managed restrictions remain in force.
+- Approval waits hold the inactivity timer despite background activity and concurrent requests.
+- Validation: syntax checks and interactive protocol tests pass; full suite: 97/98 passed (diagnostics fails at Windows os.userInfo with ENOMEM). Android build attempted: Java unavailable on PATH. iOS build attempted: requires macOS/Xcode. No mobile artifacts built.
+- Next: exercise real provider cards; build Android with JDK 21 and iOS on macOS.
+
 # Local Agent Router — Project Status
+
+## Personal skill catalog refresh (2026-11-14; no app version change)
+
+- Completed replica (11), caveman (17), and comfy (12) family grouping in the project-local catalog, preserving all child files. Together with compliance and context-mode, the catalog now has 40 parseable entries. Fixed invalid question-mark separators on the earlier parent entries. Backup: `skills.md.before-family-refresh.bak`.
+- The running app reads its user-data catalog, not this project copy. Its live count is unchanged because this task is restricted to the project folder.
+- Next: apply the reviewed catalog and parent files to the running app user-data skills folder in a task authorized for that location.
+
+## Personal skill catalog (2026-11-14; no app version change)
+
+- Grouped the five compliance skills and four context-mode skills into two parent entries in the project-local personal catalog. Original child files are preserved; `skills.md.before-other-families.bak` restores the previous catalog.
+- Parents include operation boundaries and fallback guidance for providers that cannot open child files. Personal skills and the catalog remain untracked as required. No application or server configuration changed.
+- Next: select the parent entries in the catalog used by the running app; the external user-data catalog was outside this task workspace and was not modified.
 
 ## Current change (v0.31.1, 2026-11-14): changed-file list moves from the chat to an action log
 

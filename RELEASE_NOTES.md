@@ -1,3 +1,18 @@
+# v0.32.0
+
+- Added a separately launched Ruflo version using the existing desktop/mobile front end, with isolated sessions and settings for side-by-side comparison.
+- Ruflo coordinates tasks through MCP with Claude Code as execution host. Original routing and provider fallback are excluded; observed agent requests and returned decisions are shown in Activity.
+- Preserved approval cards, Stop, read-only workflows, project locks and staged proposals. Requires a separately installed pinned Ruflo runtime; see README.
+
+# v0.31.2
+
+- Removed the task-chain commit prohibition and the rules editor commit restriction example.
+
+- GitHub requests allow explicitly requested commits and other Git actions; provider approvals and thread limits still apply.
+
+- Codex and Copilot pass interactive command/file permission requests to approval cards across sessions and routes.
+- Approval waits stay exempt from the inactivity timeout even during provider activity.
+
 # Release notes
 
 ## 0.31.1

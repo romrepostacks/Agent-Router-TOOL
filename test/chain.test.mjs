@@ -34,6 +34,7 @@ test('chain step prompts stay bounded as steps add results', async () => {
   assert.match(prompt, /current project files/);
   assert.doesNotMatch(prompt, /Assigned paths/);
   const build = chainStepPrompt('Do the thing', plan, plan.steps[0], []);
+  assert.doesNotMatch(build, /do not commit|never commit/i);
   assert.match(build, /Assigned paths: server\.mjs/);
   assert.doesNotMatch(build, /Handoffs/);
   assert.equal(compactHandoff('short'), 'short');

@@ -126,7 +126,7 @@ export function chainStepPrompt(task, plan, step, results = []) {
     plan.summary ? `Plan: ${plan.summary}` : "",
     `Steps:\n${steps.join("\n")}`,
     `Your task: ${step.task}`,
-    review ? "Check the finished work in the current project files; the handoffs below are the build tasks' own reports, not proof." : `Assigned paths: ${step.files.join(", ")}\nOnly edit assigned paths. Do not commit. Report integration needs.`,
+    review ? "Check the finished work in the current project files; the handoffs below are the build tasks' own reports, not proof." : `Assigned paths: ${step.files.join(", ")}\nOnly edit assigned paths. Report integration needs.`,
     handoffs.length ? `Handoffs from earlier tasks:\n${handoffs.join("\n\n")}` : "",
   ].filter(Boolean).join("\n");
 }

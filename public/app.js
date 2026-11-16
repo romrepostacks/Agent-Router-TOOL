@@ -2490,10 +2490,15 @@ refreshWindowsAccent();
 // The installer role ("server" or "client") follows the version so the two installs can be told apart.
 // A Client window loads the server's page; the server echoes the Client's own label as `client`, so show that one.
 // Remote devices can't manage pairing (the server answers 403), so the Remote access tab is hidden for them.
-request("/api/version").then(({ version, role, client, remote }) => {
-  const label = client || `${version}${role ? ` ${role}` : ""}`;
+request("/api/version").then(({ version, role, client, remote, backend }) => {
+  const label = (client || `${version}${role ? ` ${role}` : ""}`) + (backend === "ruflo" ? " · Ruflo" : "");
   $("app-version").textContent = `v${label}`;
   $("app-version").title = client ? `This Client is ${client}; the server is ${version} ${role || ""}`.trim() : "";
+  if (backend === "ruflo") {
+    document.title = "Local Agent Router — Ruflo";
+    document.querySelector('[data-settings-tab="routing"]')?.remove();
+    $("app-version").title = "Ruflo coordinates all tasks; agent requests and returned decisions appear in Activity.";
+  }
   if (remote) for (const tab of ["remote", "tools"]) document.querySelector(`[data-settings-tab="${tab}"]`)?.remove(); // both run on the server PC only
 }).catch(() => {});
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { if (state.theme === "system") applyTheme("system"); });

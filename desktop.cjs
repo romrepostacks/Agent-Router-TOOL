@@ -3,6 +3,8 @@ const { readFileSync } = require("node:fs");
 const { mkdir, readFile, writeFile } = require("node:fs/promises");
 const path = require("node:path");
 
+const RUFLO_BACKEND = process.argv.includes("--ruflo");
+if (RUFLO_BACKEND) app.setPath("userData", `${app.getPath("userData")}-ruflo`);
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) app.quit();
 
@@ -45,7 +47,7 @@ function createWindow() {
     height: 940,
     minWidth: 980,
     minHeight: 640,
-    title: "Local Agent Router",
+    title: RUFLO_BACKEND ? "Local Agent Router — Ruflo" : "Local Agent Router",
     icon: path.join(__dirname, "assets", "icon.ico"),
     webPreferences: {
       contextIsolation: true,
@@ -64,7 +66,7 @@ function createWindow() {
 
 async function openServer() {
   try {
-    const preferences = JSON.parse(await readFile(path.join(localData(), "LocalAgentRouterData", "settings.json"), "utf8"));
+    const preferences = JSON.parse(await readFile(path.join(localData(), RUFLO_BACKEND ? "LocalAgentRouterRufloData" : "LocalAgentRouterData", "settings.json"), "utf8"));
     nativeTheme.themeSource = ["system", "light", "dark"].includes(preferences.theme) ? preferences.theme : "system";
     setRouterShortcut(preferences.shortcut || "Control+Shift+Space");
   } catch {}

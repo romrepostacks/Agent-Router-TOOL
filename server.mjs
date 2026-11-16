@@ -1,4 +1,7 @@
 import { runCli, runClaudeStream, isUsageLimitError } from "./cli-runner.mjs";
+import { runCodexStream } from "./codex-runner.mjs";
+import { runCopilotStream } from "./copilot-runner.mjs";
+import { runRufloTask } from "./ruflo-runner.mjs";
 import { execFile, spawn } from "node:child_process";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { appendFile, copyFile, lstat, mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
@@ -17,12 +20,13 @@ import { fileURLToPath } from "node:url";
 
 const execFileAsync = promisify(execFile);
 const HOST = "127.0.0.1";
-const PORT = Number(process.env.AGENT_ROUTER_PORT || 8765);
+const RUFLO_BACKEND = process.argv.includes("--ruflo");
+const PORT = Number(process.env.AGENT_ROUTER_PORT || (RUFLO_BACKEND ? 8775 : 8765));
 let activePort = PORT;
 let PROJECTS_ROOT = path.resolve(process.env.AGENT_ROUTER_PROJECTS_ROOT || path.join(process.env.USERPROFILE || process.cwd(), "Projects"));
 let COLIBRI_MODEL = process.env.COLIBRI_MODEL || "";
 const LOCAL_DATA_ROOT = process.env.LOCALAPPDATA || path.join(process.env.USERPROFILE || process.cwd(), "AppData", "Local");
-const DATA_DIR = path.join(LOCAL_DATA_ROOT, "LocalAgentRouterData");
+const DATA_DIR = path.join(LOCAL_DATA_ROOT, RUFLO_BACKEND ? "LocalAgentRouterRufloData" : "LocalAgentRouterData");
 const LEGACY_DATA_DIR = path.join(LOCAL_DATA_ROOT, "LocalAgentRouter");
 const SESSIONS_FILE = path.join(DATA_DIR, "sessions.json");
 const PROPOSALS_FILE = path.join(DATA_DIR, "proposals.json");
@@ -1398,6 +1402,7 @@ export const tokenSummary = (u) => u.total !== undefined && u.input === undefine
 // One provider call. options.onUsage gets { provider, model, input?, cached?, output?, total? } exactly once per call,
 // with no counts when the provider doesn't report them (Copilot in -s mode, a local server without usage).
 async function runProviderTask(choice, prompt, project, kind, options = {}) {
+  if (RUFLO_BACKEND) throw new Error("This version uses Ruflo exclusively; original provider dispatch is disabled.");
   const { provider, model } = choiceParts(choice);
   let usage = null;
   try { return await runProviderCall(choice, prompt, project, kind, { ...options, onUsage: (counted) => { usage = counted; } }); }
@@ -1461,24 +1466,15 @@ async function runProviderCall(choice, prompt, project, kind, options = {}) {
     });
   }
   if (provider === "codex") {
-    // `codex exec` can't ask mid-run, so its sandbox and approval policy come from the user's ~/.codex/config.toml.
     const input = access === "git" ? `${prompt}\n\n${gitNote}` : prompt;
-    let tail = "";
-    const onActivity = options.onActivity;
-    try {
-      return await runCli(command, ["exec", "--cd", cwd, ...(model ? ["--model", model] : []), "--skip-git-repo-check"], cwd, process.env, { ...options, stdin: input, onActivity: (text) => { tail = (tail + text).slice(-2000); onActivity(text); } });
-    } finally {
-      const counted = codexTokens(tail);
-      if (counted) options.onUsage?.(counted);
-    }
+    return runCodexStream(command, [], cwd, process.env, { ...options, prompt: input, model });
   }
   if (provider === "copilot") {
-    // Tool approvals come from the user's Copilot CLI configuration; non-interactive runs refuse what it doesn't allow.
-    const args = ["-s", ...(model ? ["--model", model] : [])];
+    const args = [...(model ? ["--model", model] : [])];
     if (project) args.push("--add-dir", project.path);
     for (const item of linked) args.push("--add-dir", item.path);
     args.push(...skillDirs);
-    return runCli(command, args, cwd, process.env, { ...options, stdin: prompt });
+    return runCopilotStream(command, args, cwd, process.env, { ...options, prompt });
   }
   throw new Error(`Unknown provider ${provider}.`);
 }
@@ -1608,7 +1604,9 @@ async function implementWithRole(role, task, project, skillText, options, { plan
     const where = staged ? "Work only in this private project copy." : "Edit the project folder directly; stay inside it.";
     const prompt = `${kind === "ui" ? "Act as a UI designer and frontend engineer. Inspect the existing interface and implement the requested visual and interaction changes, matching the project's conventions." : kind === "art" ? "Create or update the requested visual assets in the project. Prefer editable SVG or existing project asset formats; if this provider cannot render raster images, create a usable vector asset or a clear asset brief rather than claiming a raster was generated." : "Inspect the project and implement the requested changes."} ${where} You may run the project's syntax checks and tests (node --check, node --test, npm test). Follow existing conventions and shared project instructions. Do not access credentials, API keys, environment variables, or secret files. Finish with what you changed in a few lines.${NEXT_STEPS_RULE}${skillText}\n\nTask:\n${task}${plan ? `\n\nPlan:\n${plan}` : ""}${options.chained ? "" : sharedHandoffSection(await readHandoff(project))}`;
     options.onStatus?.(staged ? `${role} is working in a private project copy…` : `${role} is editing the project folder…`);
-    const content = await runRoleTask(role, role === "art" ? "codex::" : "claude::opus", prompt, workingProject, kind, { ...options, stagedCopy: staged || options.stagedCopy });
+    const content = role === "ruflo"
+      ? await runRufloTask(CLI.claude, prompt, workingProject, cleanClaudeEnvironment(), { ...options, permissionMode: options.permissionMode || await claudeDefaultMode() })
+      : await runRoleTask(role, role === "art" ? "codex::" : "claude::opus", prompt, workingProject, kind, { ...options, stagedCopy: staged || options.stagedCopy });
     if (!staged && options.chained) return { content, route: role, proposal: null };
     if (!staged) {
       const after = baseline && await workspaceFiles(project.path).catch(() => null);
@@ -1752,6 +1750,16 @@ async function runRoute(route, messages, project, skillText = "", localSkillText
     try { return await runRoute(route, messages, project, skillText, localSkillText, { ...options, editLock: lock }, via); }
     finally { lock.release(); }
   }
+  if (RUFLO_BACKEND) {
+    const decisions = [];
+    const rufloOptions = { ...options, rufloDecisions: decisions };
+    const result = route === "code"
+      ? await implementWithRole("ruflo", task, project, skillText, rufloOptions)
+      : { content: await runRufloTask(CLI.claude,
+        `Thread access: read-only. Do not edit files or run project scripts. ${route === "route" ? "Plan only; do not execute the plan." : "Answer the request using Ruflo coordination."}\n${skillText}\n${messages.map((item) => `${item.role}: ${item.content}`).join("\n\n")}`,
+        project, cleanClaudeEnvironment(), { ...rufloOptions, permissionMode: "plan" }) };
+    return { ...result, route: "Ruflo swarm", delegated: ["Ruflo", ...decisions], backend: "ruflo" };
+  }
   if (route === "chain") return runChain(task, project, skillText, options);
   if (route === "project") {
     options.onStatus?.("Reading the selected project files…");
@@ -1778,7 +1786,7 @@ async function runRoute(route, messages, project, skillText = "", localSkillText
     return { ...result, route: label(name), delegated: delegated(name) };
   }
   if (route === "github" || route === "push") {
-    const prompt = `Carry out only the explicit GitHub or git action the user requested. Inspect repository state first. Never force-push, create commits, or perform unrelated remote changes. For a push, push only already-committed work.\n\nUser request: ${task}${skillText}`;
+    const prompt = `Carry out only the explicit GitHub or git action the user requested. Inspect repository state first. Perform commits, pushes, or other Git changes when the user explicitly requests them; do not invent unrelated Git or remote changes. A push request alone does not authorize creating a commit. Force-push, history rewrites, and destructive Git actions require an explicit request for that specific action. Follow provider approval requests and thread access limits; never bypass them. If a provider or managed policy blocks the requested action, report the exact restriction instead of claiming Git is categorically unavailable.\n\nUser request: ${task}${skillText}`;
     const content = await runRoleTask("github", "copilot::auto", prompt, project, "github", options);
     await saveHandoff(project, { route: "GitHub requests", status: "Completed", task, summary: content });
     return { content, route: label("GitHub requests"), delegated: delegated("GitHub requests") };
@@ -2037,6 +2045,15 @@ async function handleChat(data, options = {}) {
     mode = threadMode(mode, session, message);
   }
 
+  if (RUFLO_BACKEND) {
+    // Route menu entries are constraints only. Ruflo owns planning and agent choice.
+    if ((await readSettings()).localOnly) throw new Error("The Ruflo version currently needs a Claude Code execution host. Disable Local models only explicitly, or use the original version for local-only tasks.");
+    if (!project || project.scope === "all") throw new Error("Select one project folder for the Ruflo version.");
+    if (options.accessLimit === "none") throw new Error("This thread has no project access. Change Thread access to use Ruflo.");
+    const readOnly = options.accessLimit === "read" || ["project", "review", "security", "longterm", "quick", "route"].includes(mode);
+    return runRoute(readOnly ? (mode === "route" ? "route" : "project") : "code", messages, project,
+      `${skillText}\nRequested workflow constraint: ${mode}.`, localSkillText, options);
+  }
   if (mode === "auto" || mode === "route") {
     options.onStatus?.("Choosing a route…");
     const decision = await gptPlanRoute(messages, skillText, { signal: options.signal, onStatus: options.onStatus, onActivity: options.onActivity, onApproval: options.onApproval, onPrompt: options.onPrompt, onUsage: options.onUsage });
@@ -2181,7 +2198,7 @@ async function handleSetup(req, res, url) {
 // Remote access for Client installs and the phone apps: a second listener bound to this PC's Tailscale address only
 // (never 0.0.0.0, so the LAN can't reach it). Every request on it needs `Authorization: Bearer <device token>`.
 // Tokens are shown once when a device is added; settings keep only their SHA-256.
-const REMOTE_DEFAULT_PORT = 8766;
+const REMOTE_DEFAULT_PORT = RUFLO_BACKEND ? 8776 : 8766;
 // Things that act on the server PC's own desktop or secrets; remote devices get 403.
 const LOCAL_ONLY_PATHS = /^\/api\/(?:remote(?:\/|$)|setup\/(?:terminal|keys)$|sessions\/teleport$|projects\/linked\/pick$)/;
 const remote = { server: null, address: "", port: 0, error: "", lastSeen: new Map() };
@@ -2411,7 +2428,7 @@ async function handleRequest(req, res, fromRemote = false) {
     if (req.method === "GET" && url.pathname === "/api/version") {
       // `client` is the connecting Client install's own label ("0.17.0 client"), sent by its window; show it when present.
       const client = String(req.headers["x-router-client"] || "");
-      return json(res, 200, { version: APP_VERSION, role: APP_ROLE, label: `${APP_VERSION} ${APP_ROLE}`, remote: Boolean(device),
+      return json(res, 200, { version: APP_VERSION, role: APP_ROLE, ...(RUFLO_BACKEND ? { backend: "ruflo" } : {}), label: `${APP_VERSION} ${APP_ROLE}`, remote: Boolean(device),
         ...(device ? { device: { id: device.id, name: device.name }, client: /^[\w .-]{1,40}$/.test(client) ? client : null } : {}) });
     }
     if (req.method === "GET" && url.pathname === "/api/status") return json(res, 200, await status());
@@ -2803,7 +2820,7 @@ server.on("close", () => { if (remote.server) { remote.server.closeAllConnection
 export async function startServer(port = PORT, { role = APP_ROLE } = {}) {
   if (role !== APP_ROLE) throw new Error("A Client installation doesn't run tasks on this PC; it connects to a Server installation.");
   await mkdir(DATA_DIR, { recursive: true });
-  for (const name of ["sessions.json", "proposals.json", "settings.json"]) {
+  for (const name of RUFLO_BACKEND ? [] : ["sessions.json", "proposals.json", "settings.json"]) {
     try { await access(path.join(DATA_DIR, name)); continue; } catch {}
     try {
       const legacyFile = path.join(LEGACY_DATA_DIR, name);

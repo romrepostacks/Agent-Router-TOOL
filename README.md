@@ -1,3 +1,20 @@
+# Ruflo second version (0.32.0)
+
+Run the current app with `npm start` and the Ruflo version with `npm run start:ruflo` in another terminal. Both use the same front end. Install the pinned Ruflo runtime first, from this project folder:
+
+```powershell
+npm install --prefix .tools/ruflo --no-save ruflo@3.77.1
+npm run start:ruflo
+```
+
+Node.js and signed-in Claude Code must be on PATH. Ruflo is the sole coordinator in this version, through its MCP interface; Claude Code hosts tool execution. The original route planner, provider preferences, fallback and task-chain planner are not used. Route menu choices constrain the request; Ruflo chooses the agent workflow. Routing & models settings are hidden in the Ruflo desktop view.
+
+The version label says **Ruflo**. Activity shows Ruflo tool requests, returned decisions (including agents/models when supplied by Ruflo), and host agent requests. A requested agent is not proof of completed work. Missing Ruflo or failed coordination reports an error without provider fallback. Provider approval cards, Stop, thread access, project edit locks and reviewed staged copies still apply. Read-only workflows use Claude Code Plan mode. Like the original app, thread instructions and staging are not an OS sandbox.
+
+Ruflo uses separate `LocalAgentRouterRufloData` sessions/settings and a separate Electron profile. Configure the project root in its Settings. The server-only launch is `node server.mjs --ruflo` (loopback port **8775**); remote access defaults to **8776**. Pair phones separately with the Ruflo server's address and port to compare the same mobile front end. Both versions edit the same project folders, so run editing comparisons sequentially; their in-memory project locks are separate.
+
+This integrates the [Ruflo MCP execution-host model](https://github.com/ruvnet/ruflo#start-here), rather than treating coordination-state commands as completed agent work. The runtime is installed separately and is not included in the existing Windows installer.
+
 # Local Agent Router
 
 Session integration (0.21.0): clients can POST a {title} to /api/sessions/:id/rename and a {projectId} to /api/sessions/:id/project. Titles must contain 1?200 characters; project assignment requires an unmerged project and no active or queued work. Both return the saved session. Existing thread access and permission settings are retained. Desktop controls are pending.
@@ -155,6 +172,8 @@ Every installed provider (Colibri, Codex, Claude Code, Copilot) can be assigned 
 | Coding, UI Designer, Art Asset generation | Editing files in the project (in a private copy with a review step if you ask for one) |
 | GitHub requests | git and GitHub work |
 
+GitHub requests can commit or push when you explicitly request those actions. Asking only to push does not authorize a new commit. Destructive Git actions require a specific request. Provider approvals, managed policies and thread access limits still apply.
+
 Each thread (session) can narrow this further with the **Thread access** picker next to the **+** button under the task box (it shows *Full access* by default; in a thin window it and the Claude Code permission picker are in the **⋯** menu beside **+**): *Full* uses the table above, *Review edits first* sends every edit through a private copy you Apply and blocks git/GitHub, *Read-only* blocks editing and GitHub routes, and *No project access* allows only Quick questions. A thread can never get more access than its route.
 
 **Permissions.** The permission picker under the task box (the chip of the same name on the phone) sets Claude Code's mode for the thread, with the same four choices as Claude desktop: *Ask permissions* (asks before edits and commands its settings don't allow), *Accept edits* (file edits run without asking), *Plan mode* (Claude plans first; the plan comes up as an approval card before anything changes) and *Auto* (Claude decides, with its own checks on risky actions). A new thread starts on your Claude Code default mode (`permissions.defaultMode` in `~/.claude/settings.json`), or Ask permissions. Bypass permissions isn't offered. Codex and Copilot ignore this picker and follow their own settings.
@@ -163,7 +182,7 @@ Each thread (session) can narrow this further with the **Thread access** picker 
 
 - **Always allow** – runs it and asks Claude Code to save the rule it suggested (for example `Bash(npm test:*)`) in its own settings file, so Claude Code stops asking for it. The router never remembers answers itself. Shown only when Claude Code offers a rule it can save; otherwise the card says Always allow isn't available for this request. In a staged copy the rule lands in the copy's `.claude/settings.local.json` and shows up in the change preview.
 - **Allow** – runs it this once.
-- **Deny** – refuses it. Stop denies every open card. Cards show for any open page following the run, including after a reload. Codex (`codex exec`) and Copilot can't ask during a run, so they do only what their own configuration allows (Codex: `sandbox_mode` and `approval_policy` in `~/.codex/config.toml`; Copilot: its tool approval settings) and refuse the rest. To limit what a provider can do, set it in that provider's configuration. Local models and API-key models have no file tools, so they receive the project's file list, key docs and any files your request names inline; for editing routes it returns whole files that the router writes into the private copy. Claude Code always uses your signed-in subscription (API key overrides are removed from its environment).
+- **Deny** – refuses it. Stop denies every open card. Cards show for any open page following the run, including after a reload. Codex uses app-server with on-request approvals and Copilot uses ACP, so command and file permission requests reach the same Allow/Deny cards across routes and sessions. Provider sandbox and managed policies still apply. These cards offer Allow once or Deny; saved rules remain provider-controlled. Local models and API-key models have no file tools, so they receive the project's file list, key docs and any files your request names inline; for editing routes it returns whole files that the router writes into the private copy. Claude Code always uses your signed-in subscription (API key overrides are removed from its environment).
 
 The app does not store provider credentials. Cloud agents receive the task and can inspect files in the selected project. Keep secrets out of prompts and project folders accessible to agents.
 
@@ -221,3 +240,5 @@ While a response runs, three buttons replace Send: **Steer** (blue, also what En
 In server **Settings ? Remote access**, optionally enter a custom device key (24?128 printable characters, no spaces). Choose a unique, hard-to-guess key. **Replace key** on a paired device invalidates its previous key and shows a fresh one to copy. The original key cannot be recovered because only its hash is stored. **Copy connection code** includes address and key: paste it into the phone's Connect screen to fill both without typing the address. Treat that code like a password. Automatic network discovery remains pending.
 
 Auto remembers an implementation workflow for implementation follow-ups while retaining saved thread limits. Explicit read-only threads remain read-only; questions and reviews still route normally. See [KNOWN_PROBLEMS.md](KNOWN_PROBLEMS.md) for remaining device acceptance.
+
+Task-chain build steps follow the project's commit instructions and provider approvals; the router adds no blanket commit prohibition.

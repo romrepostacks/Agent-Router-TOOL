@@ -9,6 +9,7 @@ export function runCli(command, args, cwd, env, { signal, onDelta, onActivity, s
     const append = (current, text) => (current + text).slice(-24_000);
     let timer;
     let closed = false;
+    let holds = 0;
     const stop = () => {
       if (process.platform === "win32" && child.pid) {
         execFile("taskkill.exe", ["/PID", String(child.pid), "/T", "/F"], { windowsHide: true }, (error) => { if (error) child.kill(); });
@@ -16,7 +17,7 @@ export function runCli(command, args, cwd, env, { signal, onDelta, onActivity, s
     };
     const resetTimer = () => {
       clearTimeout(timer);
-      if (!closed) timer = setTimeout(() => { timedOut = true; stop(); }, idleTimeoutMs);
+      if (!closed && !holds) timer = setTimeout(() => { timedOut = true; stop(); }, idleTimeoutMs);
     };
     resetTimer();
     if (signal?.aborted) stop();
@@ -29,7 +30,7 @@ export function runCli(command, args, cwd, env, { signal, onDelta, onActivity, s
       stdin({
         write: (text) => { if (child.stdin.writable) child.stdin.write(text); },
         end: () => child.stdin.end(),
-        hold: async (promise) => { clearTimeout(timer); try { return await promise; } finally { resetTimer(); } },
+        hold: async (promise) => { holds++; clearTimeout(timer); try { return await promise; } finally { holds--; resetTimer(); } },
       });
     } else if (stdin !== undefined) child.stdin.end(stdin);
     child.stdout.on("data", (text) => { resetTimer(); stdout = append(stdout, text); onDelta?.(text); });
@@ -62,7 +63,7 @@ export function savedPermissionSuggestions(request) {
   return (Array.isArray(request?.permission_suggestions) ? request.permission_suggestions : [])
     .filter((item) => item && typeof item === "object" && SAVED_DESTINATIONS.has(item.destination) && (item.type !== "addRules" || item.behavior === "allow"));
 }
-export async function runClaudeStream(command, args, cwd, env, { prompt, onText, onTool, onLine, onApproval, onUsage, ...options } = {}) {
+export async function runClaudeStream(command, args, cwd, env, { prompt, onText, onTool, onToolResult, onLine, onApproval, onUsage, ...options } = {}) {
   const initId = `init-${Date.now()}`;
   let io = null;
   let result = null;
@@ -98,10 +99,13 @@ export async function runClaudeStream(command, args, cwd, env, { prompt, onText,
         const u = event.usage;
         if (u) onUsage?.({ input: (u.input_tokens || 0) + (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0), cached: u.cache_read_input_tokens || 0, output: u.output_tokens || 0 });
       }
+      if (event.type === "user") for (const part of event.message?.content || []) {
+        if (part.type === "tool_result") onToolResult?.(part.tool_use_id, part.content, Boolean(part.is_error));
+      }
       if (event.type !== "assistant") continue;
       for (const part of event.message?.content || []) {
         if (part.type === "text" && part.text) onText?.(part.text);
-        if (part.type === "tool_use") onTool?.(part.name, part.input || {});
+        if (part.type === "tool_use") onTool?.(part.name, part.input || {}, part.id);
       }
     }
   };
@@ -121,4 +125,3 @@ export function isUsageLimitError(error) {
   const tail = String(error?.message || error).split("\n").slice(-12).join("\n");
   return /\b(?:hit|reached|exceeded)\b[^\n]{0,40}\b\d+[ -]hours?\s+limit\b|\b(?:usage|request|premium request|ai credit|credit|message)s? (?:limit|quota|cap)\b[^\n]*\b(?:reached|exceeded|exhausted|resets?|wait|try again)\b|\b(?:hit|reached|exceeded|out of)\b[^\n]{0,80}\b(?:usage|monthly|weekly|daily|request|premium request|ai credit|credit|rate)[ -]?(?:limits?|quota|cap)\b|\binsufficient_quota\b|\bresource_exhausted\b|\bbilling_hard_limit\b|\brate.?limit[^\n]*\b(?:reached|exceeded)\b|\b429\b[^\n]*\b(?:quota|credit|usage|limit)/i.test(tail);
 }
-

@@ -7,7 +7,7 @@ import path from "node:path";
 import test from "node:test";
 
 const root = await mkdtemp(path.join(os.tmpdir(), "router-token-use-"));
-Object.assign(process.env, { USERPROFILE: root, HOME: root, LOCALAPPDATA: path.join(root, "local") });
+Object.assign(process.env, { AGENT_ROUTER_RUFLO: "0", USERPROFILE: root, HOME: root, LOCALAPPDATA: path.join(root, "local") });
 const { recordTokenUse, runTokens, codexTokens, openAiUsage, tokenSummary } = await import("../server.mjs");
 
 test("Claude Code's result event usage is reported, cache reads and writes counted as input", async () => {

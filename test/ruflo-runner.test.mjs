@@ -61,3 +61,9 @@ test("Ruflo needs a swarm only when work fans out to several agents", async () =
   await assert.rejects(runRufloTask("claude", "q", { path: "/p" }, {}, {}, deps(routed(2))), /swarm setup for 2 agents/);
   await assert.rejects(runRufloTask("claude", "q", { path: "/p" }, {}, {}, deps(async () => "x")), /did not complete Ruflo routing\./);
 });
+
+test("Ruflo preserves a host limit response before checking coordination", async () => {
+  await assert.rejects(runRufloTask("claude", "task", { path: "/p" }, {}, {}, {
+    check: async () => {}, run: async () => "You've hit your 5-hour limit · resets 7pm",
+  }), /5-hour limit/);
+});

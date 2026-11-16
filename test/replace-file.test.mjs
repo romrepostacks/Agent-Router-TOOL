@@ -6,7 +6,7 @@ import path from "node:path";
 import test from "node:test";
 
 const root = await mkdtemp(path.join(os.tmpdir(), "router-replace-"));
-Object.assign(process.env, { USERPROFILE: root, HOME: root, LOCALAPPDATA: path.join(root, "local") });
+Object.assign(process.env, { AGENT_ROUTER_RUFLO: "0", USERPROFILE: root, HOME: root, LOCALAPPDATA: path.join(root, "local") });
 const { replaceFile } = await import("../server.mjs");
 
 test("replaces a file that another reader holds open for a moment", async () => {

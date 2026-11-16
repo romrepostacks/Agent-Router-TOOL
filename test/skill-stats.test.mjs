@@ -6,7 +6,7 @@ import path from "node:path";
 import test from "node:test";
 
 const root = await mkdtemp(path.join(os.tmpdir(), "router-skill-stats-"));
-Object.assign(process.env, { USERPROFILE: root, HOME: root, LOCALAPPDATA: path.join(root, "local") });
+Object.assign(process.env, { AGENT_ROUTER_RUFLO: "0", USERPROFILE: root, HOME: root, LOCALAPPDATA: path.join(root, "local") });
 const { recordSkillUse, skillUseWatcher, cliToolText } = await import("../server.mjs");
 
 test("counts sent per skill, and runs, outcomes and prompt size only for used skills", async () => {

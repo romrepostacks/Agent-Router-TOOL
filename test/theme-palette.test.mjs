@@ -8,7 +8,7 @@ import test from "node:test";
 const root = await mkdtemp(path.join(os.tmpdir(), "router-palette-"));
 const projects = path.join(root, "Projects");
 await mkdir(projects, { recursive: true });
-Object.assign(process.env, { USERPROFILE: root, HOME: root, LOCALAPPDATA: path.join(root, "local"), AGENT_ROUTER_PROJECTS_ROOT: projects });
+Object.assign(process.env, { AGENT_ROUTER_RUFLO: "0", USERPROFILE: root, HOME: root, LOCALAPPDATA: path.join(root, "local"), AGENT_ROUTER_PROJECTS_ROOT: projects });
 const { startServer } = await import("../server.mjs");
 const server = await startServer(0);
 const base = `http://127.0.0.1:${server.address().port}`;

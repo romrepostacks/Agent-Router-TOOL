@@ -62,7 +62,7 @@ await mkdir(path.join(projects, "demo"), { recursive: true });
 const cliMarker = path.join(root, "cloud-cli-ran");
 const fakeCli = path.join(root, "fake-cli.mjs");
 await writeFile(fakeCli, `import { writeFileSync } from "node:fs"; writeFileSync(${JSON.stringify(cliMarker)}, "ran"); console.log("ROUTE: REVIEW");`);
-Object.assign(process.env, {
+Object.assign(process.env, { AGENT_ROUTER_RUFLO: "0",
   USERPROFILE: root, HOME: root, LOCALAPPDATA: path.join(root, "local"), AGENT_ROUTER_PROJECTS_ROOT: projects,
   CODEX_CLI: fakeCli, CLAUDE_CLI: fakeCli, COPILOT_CLI: fakeCli, // a cloud CLI that runs leaves a marker file
   COLI_SETUP_HOME: home, COLIBRI_PYTHON: process.execPath, COLIBRI_BASE_URL: `http://127.0.0.1:${port}/v1`,

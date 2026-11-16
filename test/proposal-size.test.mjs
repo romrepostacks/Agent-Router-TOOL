@@ -6,7 +6,7 @@ import path from "node:path";
 import test from "node:test";
 
 const root = await mkdtemp(path.join(os.tmpdir(), "router-proposals-"));
-Object.assign(process.env, { USERPROFILE: root, HOME: root, LOCALAPPDATA: path.join(root, "local") });
+Object.assign(process.env, { AGENT_ROUTER_RUFLO: "0", USERPROFILE: root, HOME: root, LOCALAPPDATA: path.join(root, "local") });
 const { trimProposals } = await import("../server.mjs");
 
 const proposal = (id, chars) => ({ id, changes: [{ before: "a".repeat(chars / 2), after: "b".repeat(chars / 2) }] });

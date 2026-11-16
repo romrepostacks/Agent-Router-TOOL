@@ -7,7 +7,6 @@
   "main": "desktop.cjs",
   "scripts": {
     "start": "electron .",
-    "start:ruflo": "electron . --ruflo",
     "test": "node --test test/*.test.mjs",
     "make": "electron-builder --win --config electron-builder.config.cjs"
   },

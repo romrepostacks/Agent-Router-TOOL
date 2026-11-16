@@ -1,6 +1,6 @@
 import path from "node:path";
 import { access } from "node:fs/promises";
-import { runClaudeStream } from "./cli-runner.mjs";
+import { runClaudeStream, isUsageLimitError } from "./cli-runner.mjs";
 
 // Ruflo supplies coordination through MCP; Claude Code is its execution host.
 // Never launch hive-mind --claude: that path can skip provider permissions.
@@ -16,8 +16,11 @@ export function describeRufloTool(name, input = {}) {
   return null;
 }
 
+const RUFLO_ENTRY = path.join(import.meta.dirname, ".tools", "ruflo", "node_modules", "ruflo", "bin", "ruflo.js");
+export const rufloInstalled = () => access(RUFLO_ENTRY).then(() => true, () => false);
+
 export async function runRufloTask(command, prompt, project, env, options = {}, { run = runClaudeStream, check = access } = {}) {
-  const entry = path.join(import.meta.dirname, ".tools", "ruflo", "node_modules", "ruflo", "bin", "ruflo.js");
+  const entry = RUFLO_ENTRY;
   try { await check(entry); } catch { throw new Error("Ruflo is not installed. From the app folder run: npm install --prefix .tools/ruflo --no-save ruflo@3.77.1"); }
   const decisions = options.rufloDecisions || [];
   let routed = false;
@@ -52,6 +55,7 @@ export async function runRufloTask(command, prompt, project, env, options = {}, 
       options.onActivity?.(`${detail}\n`);
     },
   });
+  if (isUsageLimitError(content) && String(content).length < 1000) throw new Error(content);
   // Every run needs Ruflo's routing decision. A swarm is required only when work fans out to more than one agent;
   // answers and small single-agent edits (Ruflo's own choice) finish without one.
   if (!routed || (!swarm && agents > 1)) throw new Error(`The execution host did not complete Ruflo routing${routed ? ` and swarm setup for ${agents} agents` : ""}. Inspect activity before retrying; no original-backend fallback was attempted.`);

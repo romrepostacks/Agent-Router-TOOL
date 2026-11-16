@@ -43,7 +43,7 @@ await writeFile(path.join(codexDir, "rollout-elsewhere.jsonl"), jsonl([
 const fakeCodex = path.join(root, "codex");
 await writeFile(fakeCodex, `#!/bin/sh\necho '${JSON.stringify({ tasks: [{ id: "task_1", title: "Refactor auth", status: "ready", updated_at: "2026-01-04T00:00:00Z", environment_label: "me/Alpha-Repo", url: "https://chatgpt.com/codex/tasks/task_1", summary: { files_changed: 2, lines_added: 10, lines_removed: 3 } }], cursor: null })}'\n`, { mode: 0o755 });
 const hasCloud = process.platform !== "win32";
-Object.assign(process.env, { USERPROFILE: home, HOME: home, LOCALAPPDATA: path.join(root, "local"), AGENT_ROUTER_PROJECTS_ROOT: projects, CODEX_CLI: hasCloud ? fakeCodex : "codex-not-installed", CLAUDE_CONFIG_DIR: "", CODEX_HOME: "" });
+Object.assign(process.env, { AGENT_ROUTER_RUFLO: "0", USERPROFILE: home, HOME: home, LOCALAPPDATA: path.join(root, "local"), AGENT_ROUTER_PROJECTS_ROOT: projects, CODEX_CLI: hasCloud ? fakeCodex : "codex-not-installed", CLAUDE_CONFIG_DIR: "", CODEX_HOME: "" });
 delete process.env.CLAUDE_CONFIG_DIR; delete process.env.CODEX_HOME;
 const { startServer } = await import("../server.mjs");
 const server = await startServer(0);

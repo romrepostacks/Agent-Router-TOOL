@@ -1,27 +1,15 @@
-# Ruflo second version (0.32.0, comparison script 0.33.0)
+# Ruflo backend (0.33.0)
 
-Run the current app with `npm start` and the Ruflo version with `npm run start:ruflo` in another terminal. Both use the same front end. Install the pinned Ruflo runtime first, from this project folder:
+[Ruflo](https://github.com/ruvnet/ruflo#start-here) coordinates every task through its MCP interface; signed-in Claude Code hosts tool execution. Install the pinned runtime once, from this project folder (Node.js and Claude Code must be on PATH), then start the app as usual:
 
 ```powershell
 npm install --prefix .tools/ruflo --no-save ruflo@3.77.1
-npm run start:ruflo
+npm start
 ```
 
-Node.js and signed-in Claude Code must be on PATH. Ruflo is the sole coordinator in this version, through its MCP interface; Claude Code hosts tool execution. The original route planner, provider preferences, fallback and task-chain planner are not used. Route menu choices constrain the request; Ruflo chooses the agent workflow. Routing & models settings are hidden in the Ruflo desktop view.
+Route menu choices constrain the request; Ruflo chooses the agent workflow. Activity shows Ruflo tool requests, returned decisions and host agent requests; a requested agent is not proof of completed work. Read-only workflows use Claude Code Plan mode. Provider approval cards, Stop, thread access, project edit locks and reviewed staged copies still apply. Thread instructions and staging are not an OS sandbox.
 
-The version label says **Ruflo**. Activity shows Ruflo tool requests, returned decisions (including agents/models when supplied by Ruflo), and host agent requests. A requested agent is not proof of completed work. Missing Ruflo or failed coordination reports an error without provider fallback. Provider approval cards, Stop, thread access, project edit locks and reviewed staged copies still apply. Read-only workflows use Claude Code Plan mode. Like the original app, thread instructions and staging are not an OS sandbox.
-
-Ruflo uses separate `LocalAgentRouterRufloData` sessions/settings and a separate Electron profile. Configure the project root in its Settings. The server-only launch is `node server.mjs --ruflo` (loopback port **8775**); remote access defaults to **8776**. Pair phones separately with the Ruflo server's address and port to compare the same mobile front end. Both versions edit the same project folders, so run editing comparisons sequentially; their in-memory project locks are separate.
-
-To send one prompt through both versions and compare the results, run (servers start on free ports, so the desktop apps can stay open):
-
-```powershell
-node scripts/compare-backends.mjs --project agent-router --prompt "What does this project do?" --mode project
-```
-
-It writes a side-by-side report (outcome, time, route, agent decisions, approval prompts, answers) to `.agent-router/compare/`. These runs have no session, so every provider approval prompt is declined and listed in the report; keep to read-only modes.
-
-This integrates the [Ruflo MCP execution-host model](https://github.com/ruvnet/ruflo#start-here), rather than treating coordination-state commands as completed agent work. The runtime is installed separately and is not included in the existing Windows installer.
+The built-in router (route planner, provider preferences, fallback, task chains) still runs when Ruflo can't: **Local models only** is on, no single project folder is selected, the thread has no project access, Ruflo isn't installed, or Claude Code isn't set up. The status line says which. If Ruflo's Claude Code host reaches a usage limit, the request switches visibly to the built-in router with another ready provider. Other Ruflo coordination failures report an error. Set `AGENT_ROUTER_RUFLO=0` to turn Ruflo off (the tests do). The Windows installer doesn't include the Ruflo runtime yet.
 
 # Local Agent Router
 

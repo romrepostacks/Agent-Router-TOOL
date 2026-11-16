@@ -11,7 +11,7 @@ await mkdir(path.join(data, "skills", "imported"), { recursive: true });
 await mkdir(path.join(root, "Projects"));
 await writeFile(path.join(data, "skills", "imported", "outside.md"), "Imported skill.\n");
 await writeFile(path.join(data, "skills.md"), "# Universal Skills\n\n## General\n\n- [Outside](skills/imported/outside.md) — Imported skill.\n");
-Object.assign(process.env, { USERPROFILE: root, HOME: root, LOCALAPPDATA: path.join(root, "local"), AGENT_ROUTER_PROJECTS_ROOT: path.join(root, "Projects") });
+Object.assign(process.env, { AGENT_ROUTER_RUFLO: "0", USERPROFILE: root, HOME: root, LOCALAPPDATA: path.join(root, "local"), AGENT_ROUTER_PROJECTS_ROOT: path.join(root, "Projects") });
 const { startServer } = await import("../server.mjs");
 const server = await startServer(0);
 const base = `http://127.0.0.1:${server.address().port}`;

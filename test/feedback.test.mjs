@@ -21,7 +21,7 @@ const fake = http.createServer(async (req, res) => {
 });
 await new Promise((resolve) => fake.listen(0, "127.0.0.1", resolve));
 const secretKey = "sk-should-never-leave";
-Object.assign(process.env, {
+Object.assign(process.env, { AGENT_ROUTER_RUFLO: "0",
   USERPROFILE: root, HOME: root, LOCALAPPDATA: path.join(root, "local"), AGENT_ROUTER_PROJECTS_ROOT: path.join(root, "Projects"),
   OPENAI_API_KEY: secretKey, COLIBRI_BASE_URL: "http://127.0.0.1:9/v1",
   AGENT_ROUTER_FEEDBACK_URL: `http://127.0.0.1:${fake.address().port}/relay`,

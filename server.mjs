@@ -1,7 +1,7 @@
 import { runCli, runClaudeStream, isUsageLimitError } from "./cli-runner.mjs";
 import { runCodexStream } from "./codex-runner.mjs";
 import { runCopilotStream } from "./copilot-runner.mjs";
-import { runRufloTask } from "./ruflo-runner.mjs";
+import { runRufloTask, rufloInstalled } from "./ruflo-runner.mjs";
 import { execFile, spawn } from "node:child_process";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { appendFile, copyFile, lstat, mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
@@ -20,13 +20,12 @@ import { fileURLToPath } from "node:url";
 
 const execFileAsync = promisify(execFile);
 const HOST = "127.0.0.1";
-const RUFLO_BACKEND = process.argv.includes("--ruflo");
-const PORT = Number(process.env.AGENT_ROUTER_PORT || (RUFLO_BACKEND ? 8775 : 8765));
+const PORT = Number(process.env.AGENT_ROUTER_PORT || 8765);
 let activePort = PORT;
 let PROJECTS_ROOT = path.resolve(process.env.AGENT_ROUTER_PROJECTS_ROOT || path.join(process.env.USERPROFILE || process.cwd(), "Projects"));
 let COLIBRI_MODEL = process.env.COLIBRI_MODEL || "";
 const LOCAL_DATA_ROOT = process.env.LOCALAPPDATA || path.join(process.env.USERPROFILE || process.cwd(), "AppData", "Local");
-const DATA_DIR = path.join(LOCAL_DATA_ROOT, RUFLO_BACKEND ? "LocalAgentRouterRufloData" : "LocalAgentRouterData");
+const DATA_DIR = path.join(LOCAL_DATA_ROOT, "LocalAgentRouterData");
 const LEGACY_DATA_DIR = path.join(LOCAL_DATA_ROOT, "LocalAgentRouter");
 const SESSIONS_FILE = path.join(DATA_DIR, "sessions.json");
 const PROPOSALS_FILE = path.join(DATA_DIR, "proposals.json");
@@ -1402,7 +1401,6 @@ export const tokenSummary = (u) => u.total !== undefined && u.input === undefine
 // One provider call. options.onUsage gets { provider, model, input?, cached?, output?, total? } exactly once per call,
 // with no counts when the provider doesn't report them (Copilot in -s mode, a local server without usage).
 async function runProviderTask(choice, prompt, project, kind, options = {}) {
-  if (RUFLO_BACKEND) throw new Error("This version uses Ruflo exclusively; original provider dispatch is disabled.");
   const { provider, model } = choiceParts(choice);
   let usage = null;
   try { return await runProviderCall(choice, prompt, project, kind, { ...options, onUsage: (counted) => { usage = counted; } }); }
@@ -1526,6 +1524,7 @@ async function runRoleTask(role, defaultChoice, prompt, project, kind, options =
   const choices = settings.localOnly ? localChoices(settings, role) : roleChoices(settings, role, defaultChoice);
   const invoke = async (choice) => {
     const content = await runProviderTask(choice, prompt, project, kind, options);
+    if (isUsageLimitError(content) && String(content).length < 1000) throw new Error(content);
     if (memoryFile) {
       try {
         const entry = { role, kind, provider: choice, task: originalPrompt.slice(-2000), summary: content.slice(0, 6000) };
@@ -1540,12 +1539,14 @@ async function runRoleTask(role, defaultChoice, prompt, project, kind, options =
   if (settings.localOnly && !(await providerReady("colibri"))) {
     throw new Error(`Local models only is on, and no local model is answering at ${COLIBRI_BASE_URL}. Start Colibri, or turn the setting off in Settings → Routing & models.`);
   }
+  if (options.failedProvider && choiceParts(choices.fallback).provider === options.failedProvider) choices.fallback = "";
   // Skip a provider that isn't installed or set up: try the fallback, then the best ready provider for this role.
-  if (!settings.localOnly && !(await providerReady(choiceParts(choices.primary).provider))) {
+  if (!settings.localOnly && (choiceParts(choices.primary).provider === options.failedProvider || !(await providerReady(choiceParts(choices.primary).provider)))) {
     const ready = await readyProviders();
+    if (options.failedProvider) ready.delete(options.failedProvider);
     const alternate = choices.fallback && ready.has(choiceParts(choices.fallback).provider) ? choices.fallback : bestChoice(role, ready);
     if (!alternate) throw new Error("No AI provider is set up yet. Open Settings → Run setup to install or connect one.");
-    options.onStatus?.(`${PROVIDER_NAMES[choiceParts(choices.primary).provider] || "The chosen provider"} isn't set up; using ${PROVIDER_NAMES[choiceParts(alternate).provider]} instead…`);
+    options.onStatus?.(`${PROVIDER_NAMES[choiceParts(choices.primary).provider] || "The chosen provider"} is unavailable; using ${PROVIDER_NAMES[choiceParts(alternate).provider]} instead…`);
     choices.primary = alternate;
     if (choices.fallback === alternate) choices.fallback = "";
   }
@@ -1557,7 +1558,7 @@ async function runRoleTask(role, defaultChoice, prompt, project, kind, options =
     let alternate = choices.fallback;
     if (!alternate) {
       const catalog = await availableModelCatalog();
-      const all = (catalog.all || []).filter((entry) => !settings.localOnly || choiceParts(entry.id).provider === "colibri");
+      const all = (catalog.all || []).filter((entry) => (!settings.localOnly || choiceParts(entry.id).provider === "colibri") && choiceParts(entry.id).provider !== options.failedProvider);
       const primary = choiceParts(choices.primary);
       const entries = all.filter((entry) => {
         const candidate = choiceParts(entry.id);
@@ -1750,15 +1751,21 @@ async function runRoute(route, messages, project, skillText = "", localSkillText
     try { return await runRoute(route, messages, project, skillText, localSkillText, { ...options, editLock: lock }, via); }
     finally { lock.release(); }
   }
-  if (RUFLO_BACKEND) {
-    const decisions = [];
-    const rufloOptions = { ...options, rufloDecisions: decisions };
-    const result = route === "code"
-      ? await implementWithRole("ruflo", task, project, skillText, rufloOptions)
-      : { content: await runRufloTask(CLI.claude,
-        `Thread access: read-only. Do not edit files or run project scripts. ${route === "route" ? "Plan only; do not execute the plan." : "Answer the request using Ruflo coordination."}\n${skillText}\n${messages.map((item) => `${item.role}: ${item.content}`).join("\n\n")}`,
-        project, cleanClaudeEnvironment(), { ...rufloOptions, permissionMode: "plan" }) };
-    return { ...result, route: "Ruflo swarm", delegated: ["Ruflo", ...decisions], backend: "ruflo" };
+  if (options.ruflo && !options.failedProvider) {
+    try {
+      const decisions = [];
+      const rufloOptions = { ...options, rufloDecisions: decisions };
+      const result = route === "code"
+        ? await implementWithRole("ruflo", task, project, skillText, rufloOptions)
+        : { content: await runRufloTask(CLI.claude,
+          `Thread access: read-only. Do not edit files or run project scripts. ${route === "route" ? "Plan only; do not execute the plan." : "Answer the request using Ruflo coordination."}\n${skillText}\n${messages.map((item) => `${item.role}: ${item.content}`).join("\n\n")}`,
+          project, cleanClaudeEnvironment(), { ...rufloOptions, permissionMode: "plan" }) };
+      return { ...result, route: "Ruflo swarm", delegated: ["Ruflo", ...decisions], backend: "ruflo" };
+    } catch (error) {
+      if (options.signal?.aborted || !isUsageLimitError(error)) throw error;
+      options.onStatus?.("Ruflo's Claude Code host reached a usage limit; switching to the original router with another provider...");
+      return runRoute(route, messages, project, skillText, localSkillText, { ...options, failedProvider: "claude" }, via);
+    }
   }
   if (route === "chain") return runChain(task, project, skillText, options);
   if (route === "project") {
@@ -2045,11 +2052,18 @@ async function handleChat(data, options = {}) {
     mode = threadMode(mode, session, message);
   }
 
-  if (RUFLO_BACKEND) {
+  // Ruflo is the backend. It needs one project folder, project access, a Claude Code host and its runtime;
+  // Local models only, all-projects/no-project threads and missing Ruflo use the built-in router instead.
+  const rufloBlocked = process.env.AGENT_ROUTER_RUFLO === "0" ? "AGENT_ROUTER_RUFLO=0 turns it off"
+    : (await readSettings()).localOnly ? "Local models only is on"
+    : !project || project.scope === "all" ? "no single project folder is selected"
+    : options.accessLimit === "none" ? "this thread has no project access"
+    : !(await rufloInstalled()) ? "Ruflo isn't installed"
+    : !(await providerReady("claude")) ? "Claude Code isn't set up" : "";
+  if (rufloBlocked) options.onStatus?.(`Ruflo can't run this request (${rufloBlocked}); using the built-in router…`);
+  else {
     // Route menu entries are constraints only. Ruflo owns planning and agent choice.
-    if ((await readSettings()).localOnly) throw new Error("The Ruflo version currently needs a Claude Code execution host. Disable Local models only explicitly, or use the original version for local-only tasks.");
-    if (!project || project.scope === "all") throw new Error("Select one project folder for the Ruflo version.");
-    if (options.accessLimit === "none") throw new Error("This thread has no project access. Change Thread access to use Ruflo.");
+    options = { ...options, ruflo: true };
     const readOnly = options.accessLimit === "read" || ["project", "review", "security", "longterm", "quick", "route"].includes(mode);
     return runRoute(readOnly ? (mode === "route" ? "route" : "project") : "code", messages, project,
       `${skillText}\nRequested workflow constraint: ${mode}.`, localSkillText, options);
@@ -2198,7 +2212,7 @@ async function handleSetup(req, res, url) {
 // Remote access for Client installs and the phone apps: a second listener bound to this PC's Tailscale address only
 // (never 0.0.0.0, so the LAN can't reach it). Every request on it needs `Authorization: Bearer <device token>`.
 // Tokens are shown once when a device is added; settings keep only their SHA-256.
-const REMOTE_DEFAULT_PORT = RUFLO_BACKEND ? 8776 : 8766;
+const REMOTE_DEFAULT_PORT = 8766;
 // Things that act on the server PC's own desktop or secrets; remote devices get 403.
 const LOCAL_ONLY_PATHS = /^\/api\/(?:remote(?:\/|$)|setup\/(?:terminal|keys)$|sessions\/teleport$|projects\/linked\/pick$)/;
 const remote = { server: null, address: "", port: 0, error: "", lastSeen: new Map() };
@@ -2428,7 +2442,7 @@ async function handleRequest(req, res, fromRemote = false) {
     if (req.method === "GET" && url.pathname === "/api/version") {
       // `client` is the connecting Client install's own label ("0.17.0 client"), sent by its window; show it when present.
       const client = String(req.headers["x-router-client"] || "");
-      return json(res, 200, { version: APP_VERSION, role: APP_ROLE, ...(RUFLO_BACKEND ? { backend: "ruflo" } : {}), label: `${APP_VERSION} ${APP_ROLE}`, remote: Boolean(device),
+      return json(res, 200, { version: APP_VERSION, role: APP_ROLE, label: `${APP_VERSION} ${APP_ROLE}`, remote: Boolean(device),
         ...(device ? { device: { id: device.id, name: device.name }, client: /^[\w .-]{1,40}$/.test(client) ? client : null } : {}) });
     }
     if (req.method === "GET" && url.pathname === "/api/status") return json(res, 200, await status());
@@ -2761,7 +2775,7 @@ async function handleRequest(req, res, fromRemote = false) {
           result.saved = true;
         }
         track("done");
-        finishRun(run, "done", { ...result, usage: calls }); // usage: per-call token counts, for the page and compare-backends
+        finishRun(run, "done", { ...result, usage: calls }); // usage: per-call token counts, for the page
       } catch (error) {
         track(controller.signal.aborted ? "stopped" : "failed");
         finishRun(run, "error", { ...(controller.signal.aborted ? stopped : { error: error.message || "The request failed." }), usage: calls });
@@ -2820,7 +2834,7 @@ server.on("close", () => { if (remote.server) { remote.server.closeAllConnection
 export async function startServer(port = PORT, { role = APP_ROLE } = {}) {
   if (role !== APP_ROLE) throw new Error("A Client installation doesn't run tasks on this PC; it connects to a Server installation.");
   await mkdir(DATA_DIR, { recursive: true });
-  for (const name of RUFLO_BACKEND ? [] : ["sessions.json", "proposals.json", "settings.json"]) {
+  for (const name of ["sessions.json", "proposals.json", "settings.json"]) {
     try { await access(path.join(DATA_DIR, name)); continue; } catch {}
     try {
       const legacyFile = path.join(LEGACY_DATA_DIR, name);

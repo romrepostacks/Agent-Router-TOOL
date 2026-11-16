@@ -1,4 +1,15 @@
+# v0.33.0 Ruflo backend
+
+- Ruflo is the backend of the normal app. The separate Ruflo version (`--ruflo`, its own data folder, ports and profile) and the backend comparison script are removed.
+- The built-in router handles requests Ruflo can't run (Local models only, no single project, no project access, Ruflo or Claude Code missing) and Ruflo usage limits. Fixed: that usage-limit fallback was refused before any provider ran.
+
+# v0.33.0 usage-limit fix
+
+- Ruflo host usage limits fail over visibly to original routing with another provider. Short limit-only responses no longer count as successful work.
+
 # v0.33.0
+
+- Comparison reports distinguish provider completion from passing output checks; missing proposals count as empty deliverables and expose missing required files.
 
 - Added `node scripts/compare-backends.mjs` to send the same prompt to the original and Ruflo versions and write a side-by-side report.
 - The Android APK now builds on GitHub Actions (`android-debug` workflow), alongside the iOS IPA.

@@ -11,7 +11,7 @@ await mkdir(path.join(projects, "alpha"), { recursive: true });
 await mkdir(path.join(projects, "beta"), { recursive: true });
 await writeFile(path.join(projects, "alpha", "app.js"), "// alpha\n");
 await writeFile(path.join(projects, "beta", "api.md"), "# Beta API\n");
-Object.assign(process.env, { USERPROFILE: root, HOME: root, LOCALAPPDATA: path.join(root, "local"), AGENT_ROUTER_PROJECTS_ROOT: projects });
+Object.assign(process.env, { AGENT_ROUTER_RUFLO: "0", USERPROFILE: root, HOME: root, LOCALAPPDATA: path.join(root, "local"), AGENT_ROUTER_PROJECTS_ROOT: projects });
 const { startServer, workspaceFiles } = await import("../server.mjs");
 const server = await startServer(0);
 const base = `http://127.0.0.1:${server.address().port}`;

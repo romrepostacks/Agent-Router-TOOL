@@ -19,7 +19,7 @@ const free = await new Promise((resolve) => { const probe = http.createServer().
 const root = await mkdtemp(path.join(os.tmpdir(), "router-remote-"));
 const projects = path.join(root, "Projects");
 await mkdir(path.join(projects, "alpha"), { recursive: true });
-Object.assign(process.env, { USERPROFILE: root, HOME: root, LOCALAPPDATA: path.join(root, "local"), AGENT_ROUTER_PROJECTS_ROOT: projects, AGENT_ROUTER_REMOTE_HOST: "127.0.0.1", COLIBRI_BASE_URL: `http://127.0.0.1:${model.address().port}/v1` });
+Object.assign(process.env, { AGENT_ROUTER_RUFLO: "0", USERPROFILE: root, HOME: root, LOCALAPPDATA: path.join(root, "local"), AGENT_ROUTER_PROJECTS_ROOT: projects, AGENT_ROUTER_REMOTE_HOST: "127.0.0.1", COLIBRI_BASE_URL: `http://127.0.0.1:${model.address().port}/v1` });
 const { startServer, tailscaleAddress } = await import("../server.mjs");
 const server = await startServer(0);
 const local = `http://127.0.0.1:${server.address().port}`;

@@ -8,7 +8,7 @@ import test from "node:test";
 import { runClaudeStream, savedPermissionSuggestions } from "../cli-runner.mjs";
 
 const root = await mkdtemp(path.join(os.tmpdir(), "router-approval-"));
-Object.assign(process.env, { USERPROFILE: root, HOME: root, LOCALAPPDATA: path.join(root, "local"), AGENT_ROUTER_PROJECTS_ROOT: path.join(root, "Projects") });
+Object.assign(process.env, { AGENT_ROUTER_RUFLO: "0", USERPROFILE: root, HOME: root, LOCALAPPDATA: path.join(root, "local"), AGENT_ROUTER_PROJECTS_ROOT: path.join(root, "Projects") });
 const { answerApproval } = await import("../server.mjs");
 
 const RULE = { type: "addRules", rules: [{ toolName: "Bash", ruleContent: "npm test" }], behavior: "allow", destination: "localSettings" };

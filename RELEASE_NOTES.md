@@ -1,3 +1,9 @@
+# v0.33.0
+
+- Added `node scripts/compare-backends.mjs` to send the same prompt to the original and Ruflo versions and write a side-by-side report.
+- The Android APK now builds on GitHub Actions (`android-debug` workflow), alongside the iOS IPA.
+- Ruflo's `.claude-flow/` project state is git-ignored.
+
 # v0.32.0
 
 - Added a separately launched Ruflo version using the existing desktop/mobile front end, with isolated sessions and settings for side-by-side comparison.

@@ -1,4 +1,13 @@
-# Current change (v0.32.0): Ruflo second version
+# Current change (v0.33.0): Ruflo installed, backend comparison test, Android CI
+
+- Installed Ruflo 3.77.1 into `.tools/ruflo` (npm skipped its install scripts; the MCP server starts and lists 393 tools). Ruflo writes `.claude-flow/` state into the project folder; now git-ignored.
+- Added `scripts/compare-backends.mjs`: sends one prompt to both versions on free ports with a throwaway session each, allows approval cards only for tools matching `--allow-tools` (all others denied), and writes a side-by-side report to `.agent-router/compare/`. Unit test: `test/compare-backends.test.mjs`.
+- Added `.github/workflows/android-debug.yml` so the APK builds on GitHub Actions like the iOS IPA.
+- Live result (read-only "project" prompt, `--allow-tools ^mcp__ruflo__`): Original finished in 54 s with a cited answer (Project analysis). Ruflo answered in 31 s, but the run ended as an error: `hooks_route` ran (suggested "coder", confidence 0.3), no swarm was started, and `ruflo-runner.mjs` requires both routing and swarm setup. Without approving `mcp__ruflo__*` cards, Ruflo can't run in Plan mode at all. Ruflo's answer was uncited and repeated AGENTS.md's stale "no remote" line.
+- Next: decide whether read-only Ruflo runs may skip swarm setup; try an editing prompt in the Ruflo UI; fix the stale "no remote" line in AGENTS.md.
+- Validation: syntax checks pass; full suite 105/105.
+
+# Previous change (v0.32.0): Ruflo second version
 
 - Added `npm run start:ruflo`: the existing UI with Ruflo MCP coordination and a Claude Code execution host, separate settings/sessions/profile, no original route planning or provider fallback.
 - Passes observed agent requests and Ruflo tool results through Activity and saved delegation details; keeps approvals, cancellation, thread limits, locks and staged proposals.

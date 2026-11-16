@@ -13,3 +13,6 @@ error.log
 
 # Folders merged into this project (Merge projects) stay on this PC only
 /obsolete/
+
+# Ruflo runtime state written into the project by its MCP server
+.claude-flow/

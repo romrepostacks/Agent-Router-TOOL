@@ -1,4 +1,4 @@
-# Ruflo second version (0.32.0)
+# Ruflo second version (0.32.0, comparison script 0.33.0)
 
 Run the current app with `npm start` and the Ruflo version with `npm run start:ruflo` in another terminal. Both use the same front end. Install the pinned Ruflo runtime first, from this project folder:
 
@@ -12,6 +12,14 @@ Node.js and signed-in Claude Code must be on PATH. Ruflo is the sole coordinator
 The version label says **Ruflo**. Activity shows Ruflo tool requests, returned decisions (including agents/models when supplied by Ruflo), and host agent requests. A requested agent is not proof of completed work. Missing Ruflo or failed coordination reports an error without provider fallback. Provider approval cards, Stop, thread access, project edit locks and reviewed staged copies still apply. Read-only workflows use Claude Code Plan mode. Like the original app, thread instructions and staging are not an OS sandbox.
 
 Ruflo uses separate `LocalAgentRouterRufloData` sessions/settings and a separate Electron profile. Configure the project root in its Settings. The server-only launch is `node server.mjs --ruflo` (loopback port **8775**); remote access defaults to **8776**. Pair phones separately with the Ruflo server's address and port to compare the same mobile front end. Both versions edit the same project folders, so run editing comparisons sequentially; their in-memory project locks are separate.
+
+To send one prompt through both versions and compare the results, run (servers start on free ports, so the desktop apps can stay open):
+
+```powershell
+node scripts/compare-backends.mjs --project agent-router --prompt "What does this project do?" --mode project
+```
+
+It writes a side-by-side report (outcome, time, route, agent decisions, approval prompts, answers) to `.agent-router/compare/`. These runs have no session, so every provider approval prompt is declined and listed in the report; keep to read-only modes.
 
 This integrates the [Ruflo MCP execution-host model](https://github.com/ruvnet/ruflo#start-here), rather than treating coordination-state commands as completed agent work. The runtime is installed separately and is not included in the existing Windows installer.
 
@@ -94,6 +102,8 @@ What the phone app does (matches the desktop app as of 0.27):
 Build with the scripts below rather than plain `npx cap` commands: `npm run build:android` / `npm run build:ios` (`mobile/scripts/build.mjs`) add the Capacitor runtime, allow plain `http://` to the server's Tailscale address, and set the app version from `mobile/package.json`.
 
 ### Android (APK)
+
+Without Android Studio, run the **android-debug** GitHub Actions workflow (`.github/workflows/android-debug.yml`, also run on every push that changes `mobile/`): download `AgentRouter-<version>-debug.apk` from the run's artifacts.
 
 You need a Windows, macOS or Linux PC with **Android Studio** (it includes the Java 21 and Android SDK that Capacitor 7 needs) and Node.js.
 

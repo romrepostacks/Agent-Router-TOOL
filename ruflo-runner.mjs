@@ -7,7 +7,7 @@ import { runClaudeStream } from "./cli-runner.mjs";
 export function rufloArgs(entry, permissionMode = "default") {
   return ["-p", "--permission-mode", permissionMode, "--strict-mcp-config", "--mcp-config",
     JSON.stringify({ mcpServers: { ruflo: { command: "node", args: [entry, "mcp", "start"] } } }),
-    "--append-system-prompt", "Ruflo is the sole coordinator. Before project work, discover and call Ruflo's routing and swarm orchestration tools. Let Ruflo select agents and models. Use its returned plan to drive execution with the host's Agent tool. Do not substitute your own router or claim queued tasks are completed work. If Ruflo is unavailable, stop and report the error. Respect thread access, staged copies, and provider approvals for every worker. Never launch detached workers or permission-bypassing commands. Report which agents/models actually executed, distinguishing selections from completed work."];
+    "--append-system-prompt", "Ruflo is the sole coordinator. Before project work, discover and call Ruflo's routing tool. When the work needs more than one agent, initialize a Ruflo swarm before delegating; a single-agent plan may run without one. Let Ruflo select agents and models. Use its returned plan to drive execution with the host's Agent tool. Do not substitute your own router or claim queued tasks are completed work. If Ruflo is unavailable, stop and report the error. Respect thread access, staged copies, and provider approvals for every worker. Never launch detached workers or permission-bypassing commands. Report which agents/models actually executed, distinguishing selections from completed work."];
 }
 
 export function describeRufloTool(name, input = {}) {
@@ -22,6 +22,7 @@ export async function runRufloTask(command, prompt, project, env, options = {}, 
   const decisions = options.rufloDecisions || [];
   let routed = false;
   let swarm = false;
+  let agents = 0;
   const pending = new Map();
   options.onStatus?.("Ruflo is planning the swarm (Claude Code execution host)…");
   options.onPrompt?.(prompt.length);
@@ -33,6 +34,7 @@ export async function runRufloTask(command, prompt, project, env, options = {}, 
     onLine: options.onActivity,
     onTool: (name, input, id) => {
       if (name.startsWith("mcp__ruflo__")) pending.set(id, name);
+      if (["Agent", "Task"].includes(name)) agents += 1;
       const decision = describeRufloTool(name, input);
       if (decision) { decisions.push(decision); options.onStatus?.(decision); }
       options.onActivity?.(`${name}: ${JSON.stringify(input).slice(0, 4000)}\n`);
@@ -50,7 +52,9 @@ export async function runRufloTask(command, prompt, project, env, options = {}, 
       options.onActivity?.(`${detail}\n`);
     },
   });
-  // Read-only answers need Ruflo's routing decision but no swarm; there is no work to fan out.
-  if (!routed || (!swarm && !options.readOnly)) throw new Error(`The execution host did not complete Ruflo routing${options.readOnly ? "" : " and swarm setup"}. Inspect activity before retrying; no original-backend fallback was attempted.`);
+  // Every run needs Ruflo's routing decision. A swarm is required only when work fans out to more than one agent;
+  // answers and small single-agent edits (Ruflo's own choice) finish without one.
+  if (!routed || (!swarm && agents > 1)) throw new Error(`The execution host did not complete Ruflo routing${routed ? ` and swarm setup for ${agents} agents` : ""}. Inspect activity before retrying; no original-backend fallback was attempted.`);
+  if (!swarm) decisions.push(`No swarm: Ruflo's plan ran on ${agents ? "one agent" : "the host alone"}.`);
   return content;
 }

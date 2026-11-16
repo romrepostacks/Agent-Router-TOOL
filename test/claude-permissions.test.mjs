@@ -19,7 +19,7 @@ for await (const line of readline.createInterface({ input: process.stdin })) {
   if (m.type === "control_response" && m.response.request_id === "ask-1") {
     const r = m.response.response;
     out({ type: "assistant", message: { content: [{ type: "text", text: "decided" }] } });
-    out({ type: "result", is_error: false, result: JSON.stringify({ behavior: r.behavior, command: r.updatedInput?.command, toolUseID: r.toolUseID, permissionTool: args.includes("--permission-prompt-tool stdio") }) });
+    out({ type: "result", is_error: false, result: JSON.stringify({ behavior: r.behavior, command: r.updatedInput?.command, toolUseID: r.toolUseID, permissionTool: args.includes("--permission-prompt-tool stdio"), noBackground: process.env.CLAUDE_CODE_DISABLE_BACKGROUND_TASKS === "1" }) });
   }
 }
 `);
@@ -35,6 +35,7 @@ test("a provider prompt reaches onApproval and Allow runs the tool unchanged", a
   assert.equal(result.command, "rm -rf build");
   assert.equal(result.toolUseID, "tu-1");
   assert.equal(result.permissionTool, true);
+  assert.equal(result.noBackground, true); // background subagents would outlive stdin and lose their approvals
   assert.deepEqual(texts, ["decided"]);
 });
 

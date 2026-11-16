@@ -1,4 +1,12 @@
-# Current change (v0.33.0): read-only Ruflo runs without a swarm, editing comparison
+# Current change (v0.33.0): swarm only for multi-agent work, subagent approval fix, landing-page comparison
+
+- Ruflo gate: routing is always required; a swarm only when the host delegates to more than one agent. Answers and single-agent edits finish without one, and Activity records "No swarm". `readOnly` option removed.
+- Fixed "Tool permission request failed: AbortError: Stream closed": `runClaudeStream` closes stdin at the first `result`, so background subagents lost their approvals. Claude runs now set `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1` (subagents stay foreground; parallel calls still run together). Affected both versions.
+- `scripts/compare-backends.mjs` saves each version's proposed files to `.agent-router/compare/<run>/<version>/` (never applied).
+- Multi-file comparison (one-page product site: `landing/index.html`, `style.css`, 3 SVG mockups, staged; shell denied): both finished in ~257 s with all 5 files. Ruflo ran `hooks_route`, `swarm_init` (hierarchical, 3 agents) and 3 parallel agents (copy, styling, screens); Original ran as one Coding task. Ruflo's proposal also included its `.claude-flow/` state files. Output: `.agent-router/compare/compare-2026-11-16T04-14-33-587Z/`.
+- Validation: syntax checks pass; full suite 106/106.
+
+# Previous change (v0.33.0): read-only Ruflo runs without a swarm, editing comparison
 
 - Read-only Ruflo runs (questions, review, planning) now finish once Ruflo's routing step returns; only editing runs still require swarm setup (`readOnly` option in `ruflo-runner.mjs`). Kept 0.33.0: no installer exists for it.
 - AGENTS.md: replaced the outdated "no remote" line (remote is `origin` on GitHub; phone builds run on Actions).

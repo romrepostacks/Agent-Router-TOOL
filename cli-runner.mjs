@@ -110,8 +110,11 @@ export async function runClaudeStream(command, args, cwd, env, { prompt, onText,
     }
   };
   const fullArgs = [...args, "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--permission-prompt-tool", "stdio"];
+  // stdin closes at the first result, so a background subagent still running after it could never get an approval
+  // answered ("Stream closed"). Keep subagents in the foreground; parallel Agent calls in one turn still run together.
+  const runEnv = { ...(env || process.env), CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1" };
   try {
-    await runCli(command, fullArgs, cwd, env, { ...options, onDelta: read, stdin: (handle) => { io = handle; send({ type: "control_request", request_id: initId, request: { subtype: "initialize" } }); } });
+    await runCli(command, fullArgs, cwd, runEnv, { ...options, onDelta: read, stdin: (handle) => { io = handle; send({ type: "control_request", request_id: initId, request: { subtype: "initialize" } }); } });
     read("\n");
   } catch (error) {
     read("\n");

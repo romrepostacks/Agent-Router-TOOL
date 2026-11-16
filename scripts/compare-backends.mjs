@@ -27,7 +27,7 @@ export function summarize(name, events, ms) {
   const result = final?.data || {};
   return {
     name, ms, outcome: final?.event || "no result",
-    route: result.route || "", delegated: result.delegated || [], error: result.error || "",
+    route: result.route || "", delegated: result.delegated || [], error: result.error || "", proposalId: result.proposal?.id || "", files: [],
     statuses: events.filter((item) => item.event === "status").map((item) => item.data.status),
     approvals: events.filter((item) => item.event === "approval").map((item) => `${item.data.tool}: ${item.data.title}`),
     content: result.content || events.filter((item) => item.event === "delta").map((item) => item.data.text).join(""),
@@ -41,8 +41,9 @@ export function report(prompt, mode, project, runs) {
     row("Outcome", (run) => run.outcome), row("Time", (run) => `${(run.ms / 1000).toFixed(1)} s`),
     row("Route", (run) => run.route || "—"), row("Agents / decisions", (run) => run.delegated.length),
     row("Status updates", (run) => run.statuses.length), row("Approval prompts", (run) => run.approvals.length),
-    row("Answer length", (run) => `${run.content.length} chars`), row("Error", (run) => run.error || "—"),
+    row("Answer length", (run) => `${run.content.length} chars`), row("Files proposed", (run) => run.files.length), row("Error", (run) => run.error || "—"),
     ...runs.flatMap((run) => [``, `## ${run.name}`, ``, `### Decisions`, ...(run.delegated.length ? run.delegated.map((item) => `- ${String(item).slice(0, 400)}`) : ["- none"]),
+      ``, `### Proposed files (saved, not applied)`, ...(run.files.length ? run.files.map((file) => `- ${file}`) : ["- none"]),
       ``, `### Approval prompts`, ...(run.approvals.length ? run.approvals.map((item) => `- ${item}`) : ["- none"]),
       ``, `### Answer`, ``, run.content || run.error || "(empty)"]), ``].join("\n");
 }
@@ -102,8 +103,22 @@ async function main() {
     const body = { message: prompt, mode, projectId: project };
     const runs = await Promise.all([runOne("Original", servers[0].url, body, allowTools), runOne("Ruflo", servers[1].url, body, allowTools)]);
     const dir = path.join(ROOT, ".agent-router", "compare");
+    const stamp = `compare-${new Date().toISOString().replace(/[:.]/g, "-")}`;
+    // Staged edits come back as change proposals; save each run's proposed files for side-by-side viewing. Never applied.
+    for (const [i, run] of runs.entries()) {
+      if (!run.proposalId) continue;
+      const proposal = await (await fetch(`${servers[i].url}/api/proposals/${run.proposalId}`)).json();
+      for (const change of proposal.changes || []) {
+        if (change.after == null) continue;
+        const out = path.resolve(dir, stamp, run.name, change.path);
+        if (!out.startsWith(path.resolve(dir, stamp, run.name) + path.sep)) continue;
+        await mkdir(path.dirname(out), { recursive: true });
+        await writeFile(out, change.after);
+        run.files.push(path.relative(dir, out).replaceAll("\\", "/"));
+      }
+    }
     await mkdir(dir, { recursive: true });
-    const file = path.join(dir, `compare-${new Date().toISOString().replace(/[:.]/g, "-")}.md`);
+    const file = path.join(dir, `${stamp}.md`);
     await writeFile(file, report(prompt, mode, project, runs));
     console.log(`\nReport: ${file}`);
   } finally {

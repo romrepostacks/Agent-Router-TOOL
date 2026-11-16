@@ -46,12 +46,18 @@ test("missing or failed Ruflo never falls back to the original backend", async (
   }), /did not complete Ruflo/);
 });
 
-test("read-only Ruflo runs finish with routing alone; edits still need a swarm", async () => {
-  const routeOnly = async (command, args, cwd, env, cb) => {
+test("Ruflo needs a swarm only when work fans out to several agents", async () => {
+  const routed = (agentCount) => async (command, args, cwd, env, cb) => {
     cb.onTool("mcp__ruflo__hooks_route", {}, "r"); cb.onToolResult("r", '{"agent":"coder"}', false);
+    for (let i = 0; i < agentCount; i++) cb.onTool("Agent", { subagent_type: "coder" }, `a${i}`);
     return "answer";
   };
-  assert.equal(await runRufloTask("claude", "q", { path: "/p" }, {}, { readOnly: true }, { check: async () => {}, run: routeOnly }), "answer");
-  await assert.rejects(runRufloTask("claude", "q", { path: "/p" }, {}, {}, { check: async () => {}, run: routeOnly }), /swarm setup/);
-  await assert.rejects(runRufloTask("claude", "q", { path: "/p" }, {}, { readOnly: true }, { check: async () => {}, run: async () => "x" }), /did not complete Ruflo routing\./);
+  const deps = (run) => ({ check: async () => {}, run });
+  for (const count of [0, 1]) {
+    const decisions = [];
+    assert.equal(await runRufloTask("claude", "q", { path: "/p" }, {}, { rufloDecisions: decisions }, deps(routed(count))), "answer");
+    assert.ok(decisions.some((text) => text.startsWith("No swarm")));
+  }
+  await assert.rejects(runRufloTask("claude", "q", { path: "/p" }, {}, {}, deps(routed(2))), /swarm setup for 2 agents/);
+  await assert.rejects(runRufloTask("claude", "q", { path: "/p" }, {}, {}, deps(async () => "x")), /did not complete Ruflo routing\./);
 });

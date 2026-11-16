@@ -1757,7 +1757,7 @@ async function runRoute(route, messages, project, skillText = "", localSkillText
       ? await implementWithRole("ruflo", task, project, skillText, rufloOptions)
       : { content: await runRufloTask(CLI.claude,
         `Thread access: read-only. Do not edit files or run project scripts. ${route === "route" ? "Plan only; do not execute the plan." : "Answer the request using Ruflo coordination."}\n${skillText}\n${messages.map((item) => `${item.role}: ${item.content}`).join("\n\n")}`,
-        project, cleanClaudeEnvironment(), { ...rufloOptions, permissionMode: "plan", readOnly: true }) };
+        project, cleanClaudeEnvironment(), { ...rufloOptions, permissionMode: "plan" }) };
     return { ...result, route: "Ruflo swarm", delegated: ["Ruflo", ...decisions], backend: "ruflo" };
   }
   if (route === "chain") return runChain(task, project, skillText, options);

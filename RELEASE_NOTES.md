@@ -3,7 +3,9 @@
 - Added `node scripts/compare-backends.mjs` to send the same prompt to the original and Ruflo versions and write a side-by-side report.
 - The Android APK now builds on GitHub Actions (`android-debug` workflow), alongside the iOS IPA.
 - Ruflo's `.claude-flow/` project state is git-ignored.
-- Read-only Ruflo runs finish after Ruflo's routing step; they no longer fail for not starting a swarm.
+- Ruflo runs need a swarm only when work fans out to more than one agent. Answers and small single-agent edits finish after Ruflo's routing step; Activity notes "No swarm" when none started.
+- Fixed: approval prompts from Claude Code subagents failed with "Stream closed" once the main turn ended. Subagents now run in the foreground (`CLAUDE_CODE_DISABLE_BACKGROUND_TASKS`), so every write they ask for reaches an approval card.
+- The comparison script saves each version's proposed files from staged edits under `.agent-router/compare/<run>/<version>/` (never applied).
 
 # v0.32.0
 

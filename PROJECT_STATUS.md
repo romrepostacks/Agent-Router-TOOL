@@ -1,4 +1,11 @@
-# Current change (v0.36.0): pass-through MCP servers, free API providers
+# Current change (v0.36.0): phone app version follows the desktop version
+
+- `mobile/package.json` was stuck at 0.34.1, so the v0.36.0 release carried `AgentRouter-0.34.1-*` files. The Android and iOS workflows now set the mobile version from the root `package.json` before building (`npm pkg set version=...`) and also run when the root `package.json` changes.
+- `mobile/scripts/build.mjs` derives the build number from the version (0.36.0 -> 3600) and writes it as Android `versionCode` and iOS `CURRENT_PROJECT_VERSION`; before, `versionCode` stayed 1, so Android couldn't install a newer APK over an older one.
+- Mobile-only, so the root version stays 0.36.0 (the desktop installer is unchanged); the APK/IPA on the v0.36.0 release were replaced with 0.36.0-named builds.
+- Next: install the 0.36.0 APK over the old one and check Settings shows 0.36.0.
+
+# Previous change (v0.36.0): pass-through MCP servers, free API providers
 
 - MCP: new `mcp-servers.mjs` validates the user's list (`normalizeMcpServers`: name, stdio command + args or http URL, no `ruflo` name, max 30) and formats it per CLI: Claude Code `--mcp-config`, Copilot `--additional-mcp-config`, Codex `-c mcp_servers.<name>.*`. `runProviderCall` adds them to every Claude/Codex/Copilot run; `rufloArgs()` merges them next to Ruflo's own server (Ruflo's entry always wins). Stored in settings as `mcpServers`; `GET/POST /api/mcp` is local-only (remote devices get 403, since a command entry runs on the server PC). Settings → MCP servers tab adds/removes entries. No env vars or HTTP headers yet. Chat providers get no MCP.
 - Free providers: `API_PROVIDERS` now carries `baseUrl`, `keyUrl`, a `/models` filter and `free`. Added Groq, Cerebras, Google Gemini (OpenAI-compatible endpoint), OpenRouter (`:free` models only), Mistral, SambaNova, NVIDIA NIM and Hugging Face router, all through the existing OpenAI-compatible path (`max_completion_tokens` sent only to OpenAI). They join `ROLE_PREFERENCES` after the paid APIs, and right after the local model for Quick. Setup's key step, model catalog, settings validation and the status tooltip build from the list (`apiProviders`, `providerNames`). GitHub Models and Cloudflare Workers AI were left out (no standard `/models`, or an account id in the URL).

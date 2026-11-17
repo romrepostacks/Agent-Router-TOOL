@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths: ["mobile/**", ".github/workflows/ios-unsigned.yml"]
+    paths: ["mobile/**", "package.json", ".github/workflows/ios-unsigned.yml"]
 
 permissions:
   contents: read
@@ -27,6 +27,8 @@ jobs:
           cache: npm
           cache-dependency-path: mobile/package-lock.json
       - run: npm ci
+      # The phone app carries the desktop release version (root package.json), so the two never drift apart.
+      - run: npm pkg set version="$(node -p "require('../package.json').version")"
       - run: node scripts/build.mjs ios
         env:
           AR_IOS_UNSIGNED: "1"

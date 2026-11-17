@@ -12,6 +12,8 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const platform = process.argv[2];
 const version = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8")).version;
+const [major, minor, patch] = version.split(".").map(Number);
+const versionCode = major * 10000 + minor * 100 + patch; // ponytail: assumes minor and patch stay below 100
 const win = process.platform === "win32";
 
 function fail(message) {
@@ -44,9 +46,11 @@ if (platform === "android") {
   const manifest = path.join(root, "android", "app", "src", "main", "AndroidManifest.xml");
   const xml = readFileSync(manifest, "utf8");
   if (!xml.includes("usesCleartextTraffic")) writeFileSync(manifest, xml.replace("<application", '<application android:usesCleartextTraffic="true"'));
-  // The app shows its own version in Settings; keep it equal to package.json.
+  // The app shows its own version in Settings; keep it equal to package.json. versionCode must rise with every
+  // release for Android to install over the old app: 0.36.0 -> 3600.
   const gradle = path.join(root, "android", "app", "build.gradle");
-  writeFileSync(gradle, readFileSync(gradle, "utf8").replace(/versionName "[^"]*"/, `versionName "${version}"`));
+  writeFileSync(gradle, readFileSync(gradle, "utf8").replace(/versionName "[^"]*"/, `versionName "${version}"`)
+    .replace(/versionCode \d+/, `versionCode ${versionCode}`));
   run("npx", ["cap", "sync", "android"]);
   // Full path: cmd.exe skips the current folder when NoDefaultCurrentDirectoryInExePath is set, so a bare "gradlew.bat" fails.
   run(win ? `"${path.join(root, "android", "gradlew.bat")}"` : "./gradlew", ["assembleDebug"], path.join(root, "android"));
@@ -76,7 +80,8 @@ if (platform === "ios") {
     writeFileSync(plist, `${text.slice(0, at)}\t<key>NSAppTransportSecurity</key>\n\t<dict>\n\t\t<key>NSAllowsArbitraryLoads</key>\n\t\t<true/>\n\t</dict>\n${text.slice(at)}`);
   }
   const pbx = path.join(root, "ios", "App", "App.xcodeproj", "project.pbxproj");
-  writeFileSync(pbx, readFileSync(pbx, "utf8").replace(/MARKETING_VERSION = [^;]*;/g, `MARKETING_VERSION = ${version};`));
+  writeFileSync(pbx, readFileSync(pbx, "utf8").replace(/MARKETING_VERSION = [^;]*;/g, `MARKETING_VERSION = ${version};`)
+    .replace(/CURRENT_PROJECT_VERSION = [^;]*;/g, `CURRENT_PROJECT_VERSION = ${versionCode};`));
   run("npx", ["cap", "sync", "ios"]);
   const build = path.join(root, "dist", "ios");
   mkdirSync(build, { recursive: true });

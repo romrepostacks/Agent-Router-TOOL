@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths: ["mobile/**", ".github/workflows/android-debug.yml"]
+    paths: ["mobile/**", "package.json", ".github/workflows/android-debug.yml"]
 
 permissions:
   contents: read
@@ -30,6 +30,8 @@ jobs:
           distribution: temurin
           java-version: 21
       - run: npm ci
+      # The phone app carries the desktop release version (root package.json), so the two never drift apart.
+      - run: npm pkg set version="$(node -p "require('../package.json').version")"
       - run: node scripts/build.mjs android
       - uses: actions/upload-artifact@v4
         with:

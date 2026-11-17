@@ -1,6 +1,6 @@
 # Ruflo backend (0.33.0)
 
-[Ruflo](https://github.com/ruvnet/ruflo#start-here) coordinates every task through its MCP interface; signed-in Claude Code hosts tool execution. Install the pinned runtime once, from this project folder (Node.js and Claude Code must be on PATH), then start the app as usual:
+[Ruflo](https://github.com/ruvnet/ruflo#start-here) coordinates every task through its MCP interface; signed-in Claude Code hosts tool execution. The Windows installer includes the pinned runtime (`resources\ruflo`). In a development copy, install it once from this project folder (Node.js and Claude Code must be on PATH), then start the app as usual:
 
 ```powershell
 npm install --prefix .tools/ruflo --no-save ruflo@3.77.1
@@ -9,7 +9,7 @@ npm start
 
 Route menu choices constrain the request; Ruflo chooses the agent workflow. Activity shows Ruflo tool requests, returned decisions and host agent requests; a requested agent is not proof of completed work. Read-only workflows use Claude Code Plan mode. Provider approval cards, Stop, thread access, project edit locks and reviewed staged copies still apply. Thread instructions and staging are not an OS sandbox.
 
-The built-in router (route planner, provider preferences, fallback, task chains) still runs when Ruflo can't: **Local models only** is on, no single project folder is selected, the thread has no project access, Ruflo isn't installed, or Claude Code isn't set up. The status line says which. If Ruflo's Claude Code host reaches a usage limit, the request switches visibly to the built-in router with another ready provider. Other Ruflo coordination failures report an error. Set `AGENT_ROUTER_RUFLO=0` to turn Ruflo off (the tests do). The Windows installer doesn't include the Ruflo runtime yet.
+The built-in router (route planner, provider preferences, fallback, task chains) still runs when Ruflo can't: **Local models only** is on, no single project folder is selected, the thread has no project access, Ruflo or Node.js isn't installed, or Claude Code isn't set up. The status line says which. If Ruflo's Claude Code host reaches a usage limit, the request switches visibly to the built-in router with another ready provider. Other Ruflo coordination failures report an error. Set `AGENT_ROUTER_RUFLO=0` to turn Ruflo off (the tests do).
 
 # Local Agent Router
 
@@ -20,7 +20,7 @@ A Windows desktop app that sends each request to the AI tool best suited for it:
 
 ## Install (for anyone, starting from nothing)
 
-1. Run `LocalAgentRouter-Setup-<version>.exe` (in `release/` after a build). Windows may show a SmartScreen warning until the installer is code-signed: choose **More info → Run anyway**. The setup wizard first asks **Server or Client** (see [Server and Client](#server-and-client) below; pick **Server** if this is your only PC). A Server then gets an optional **AI tools** page: tick Claude Code, Codex and/or GitHub Copilot and setup installs them after the app, in a PowerShell window (Node.js is installed first if Codex or Copilot need it; tools already installed are skipped). Next it asks whether to install for you only or for everyone on the PC, then lets you pick the install folder. Updating keeps the earlier choice selected. Windows **Settings → Apps** shows the version with the choice, for example `0.18.0 server`. If Local Agent Router is already installed, setup says so and updates it in place; installs from 0.15.0 and earlier (the old one-click installer) are removed after the new version is in. Your settings, sessions and skills in `%LOCALAPPDATA%LocalAgentRouterData` are always kept. Setup adds Start-menu and desktop shortcuts and can open the app when it finishes. Uninstall from **Settings → Apps**.
+1. Run `LocalAgentRouter-Setup-<version>.exe` (in `release/` after a build). Windows may show a SmartScreen warning until the installer is code-signed: choose **More info → Run anyway**. The setup wizard first asks **Server or Client** (see [Server and Client](#server-and-client) below; pick **Server** if this is your only PC). A Server then shows the required **AI tools**: Node.js, Claude Code, Codex and GitHub Copilot are installed after the app, in a PowerShell window (tools already installed are skipped). They need an internet connection. If one fails, the window offers to try again or to skip; skipped tools show as missing in **Settings → AI tools**. The Ruflo backend runtime is part of the app itself. Next it asks whether to install for you only or for everyone on the PC, then lets you pick the install folder. Updating keeps the earlier choice selected. Windows **Settings → Apps** shows the version with the choice, for example `0.18.0 server`. If Local Agent Router is already installed, setup says so and updates it in place; installs from 0.15.0 and earlier (the old one-click installer) are removed after the new version is in. Your settings, sessions and skills in `%LOCALAPPDATA%LocalAgentRouterData` are always kept. Setup adds Start-menu and desktop shortcuts and can open the app when it finishes. Uninstall from **Settings → Apps**.
 2. A setup guide walks through:
    - **Projects folder** – created for you if it doesn't exist.
    - **Local model (optional)** – one-click addresses for Ollama, LM Studio and Colibri, a Connect test, and a model picker.
@@ -46,7 +46,7 @@ Each device has its own token. Remove a device on the server to cut it off at on
 
 A Client or phone with a token can run tasks on the server with the server's provider settings, so treat a token like a password and remove devices you no longer use.
 
-Silent installs: `LocalAgentRouter-Setup-<version>.exe /S /ROLE=client` (or `/ROLE=server`). Add `/TOOLS=claude,codex,copilot` (any of them) to a Server install to install those AI tools too; without a silent install it preselects them on the AI tools page.
+Silent installs: `LocalAgentRouter-Setup-<version>.exe /S /ROLE=client` (or `/ROLE=server`). A silent Server install also installs the required AI tools, without prompting; any that fail show as missing in **Settings → AI tools**.
 
 ### Remote API (for the phone apps)
 

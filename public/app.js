@@ -82,11 +82,12 @@ function renderInspector() {
   for (const item of skillNames) { const li = document.createElement("li"); li.textContent = item; skills.append(li); }
 }
 
+const PROVIDER_NAMES = { colibri: "Local model", claude: "Claude Code", codex: "Codex", copilot: "Copilot", openai: "OpenAI API", anthropic: "Anthropic API" };
+
 function readableChoice(key) {
   const choice = state.modelPrefs[key] || "Provider default";
   const [provider, model] = choice.split("::");
-  const providerNames = { colibri: "Local model", claude: "Claude Code", codex: "Codex", copilot: "Copilot", openai: "OpenAI API", anthropic: "Anthropic API" };
-  return state.modelCatalog?.all?.find((entry) => entry.id === choice)?.name || (providerNames[provider] ? `${providerNames[provider]}${model ? ` — ${model}` : ""}` : choice);
+  return state.modelCatalog?.all?.find((entry) => entry.id === choice)?.name || (PROVIDER_NAMES[provider] ? `${PROVIDER_NAMES[provider]}${model ? ` — ${model}` : ""}` : choice);
 }
 
 // Route picker: a ChatGPT-style menu over the hidden #mode select, which stays the source of truth.
@@ -1863,7 +1864,9 @@ function fillModelSelect(id, choices, selected, emptyLabel, preserveMissing = tr
   if (selected && ![...select.options].some((option) => option.value === selected) && preserveMissing) {
     const option = document.createElement("option");
     option.value = selected;
-    option.textContent = `${selected} (saved; not currently listed)`;
+    // "codex::" (what first-run setup saves) means the provider's own default model, not a missing one.
+    const defaultOf = /^(\w+)::$/.exec(selected)?.[1];
+    option.textContent = PROVIDER_NAMES[defaultOf] ? `${PROVIDER_NAMES[defaultOf]} — default model` : `${selected} (saved; not currently listed)`;
     select.append(option);
   }
   select.value = selected || "";
@@ -2282,7 +2285,7 @@ const SETUP_STEPS = [
   { title: "Welcome to Local Agent Router", subtitle: "Let's get you set up. This takes a few minutes." },
   { title: "Where are your projects?", subtitle: "Each folder inside this one shows up as a project." },
   { title: "Local model (optional)", subtitle: "Run a model on this PC for private quick questions. Skip if you don't have one." },
-  { title: "API keys (optional)", subtitle: "Use an OpenAI or Anthropic API key instead of, or alongside, the tools above." },
+  { title: "API keys (optional)", subtitle: "Use an OpenAI or Anthropic API key instead of, or alongside, the command-line tools." },
   { title: "Review and finish", subtitle: "Here's which tool will handle each kind of work. You can change any of these later in Settings." },
 ];
 const ROLE_LABELS = { routePlanning: "Route Planning", longTermPlanning: "Long Term Project planning", coding: "Coding", review: "Reviewing", security: "Security audit", ui: "UI Designer", art: "Art Asset generation", github: "GitHub requests", quick: "Quick questions" };
@@ -2319,7 +2322,7 @@ function toolStatus(tool) {
   return ["Installed", "ready"];
 }
 
-// Settings → AI tools: install or sign in to the command-line tools. The installer offers the same installs.
+// Settings → AI tools: install or sign in to the command-line tools. The installer installs the same tools.
 async function openSetupTerminal(tool, action) {
   try {
     const result = await setupPost("/api/setup/terminal", { tool, action });
@@ -2370,7 +2373,7 @@ function renderSetup() {
       el("p", {}, "Local Agent Router sends each request to the AI tool that's best at it: planning, coding, reviews, security audits, design, GitHub and quick questions."),
       el("p", {}, "You'll choose your projects folder, then optionally connect a local model or API keys. Every step can be skipped and changed later in Settings."),
       el("ul", { class: "setup-list" },
-        el("li", {}, "Command-line tools (Claude Code, Codex, GitHub Copilot): offered by the installer, and in Settings → AI tools"),
+        el("li", {}, "Required command-line tools (Node.js, Claude Code, Codex, GitHub Copilot): installed by the installer; Settings → AI tools installs any that are missing"),
         el("li", {}, "A local model app such as Ollama or LM Studio (optional)"),
         el("li", {}, "OpenAI or Anthropic API keys (optional)")));
   } else if (setup.step === 1) {
@@ -2412,7 +2415,7 @@ function renderSetup() {
     body.append(
       none ? el("p", { class: "setup-warning" }, "No AI tool is set up yet. Finish now, then install one in Settings → AI tools.") : null,
       el("table", { class: "setup-table" }, el("tbody", {}, rows)),
-      el("p", { class: "settings-help" }, "If a tool stops working or isn't installed, the app automatically uses the next one that is."));
+      el("p", { class: "settings-help" }, "Project tasks run on the Ruflo backend with Claude Code. This table is used when Ruflo can't run a request; if a tool stops working or isn't installed, the app automatically uses the next one that is."));
   }
 }
 

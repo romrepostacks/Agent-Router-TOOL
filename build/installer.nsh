@@ -1,6 +1,7 @@
 ; Extra steps for the NSIS installer (electron-builder includes this file).
-; - First page: Server or Client. Then, for a Server, optional AI tools (Claude Code, Codex, Copilot), installed
-;   after the app by resources\install-clis.ps1. Then electron-builder's own pages (install for me / everyone, folder).
+; - First page: Server or Client. Then, for a Server, the required AI tools (Node.js, Claude Code, Codex, Copilot),
+;   installed after the app by resources\install-clis.ps1. The Ruflo runtime ships in resources\ruflo.
+;   Then electron-builder's own pages (install for me / everyone, folder).
 ; - The role is saved in resources\install-role for desktop.cjs and shown in Windows Settings -> Apps as
 ;   "<version> server" or "<version> client". Silent installs take /ROLE=server or /ROLE=client.
 ; - electron-builder reuses an earlier install's folder and removes the old version before copying the new one.
@@ -21,93 +22,40 @@ Var RouterOldInstall
 Var RouterServerRadio
 Var RouterClientRadio
 
-Var RouterTools
-Var RouterClaudeBox
-Var RouterCodexBox
-Var RouterCopilotBox
-
 !macro customWelcomePage
   Page custom RouterRolePage RouterRoleLeave
-  Page custom RouterToolsPage RouterToolsLeave
+  Page custom RouterToolsPage
 !macroend
 
-; Optional command-line AI tools, installed after the app by resources\install-clis.ps1. Server installs only.
+; Required command-line AI tools, installed after the app by resources\install-clis.ps1. Server installs only.
 Function RouterToolsPage
   ${If} $RouterRole == "client"
     Abort
   ${EndIf}
   GetDlgItem $0 $HWNDPARENT 1037
-  SendMessage $0 ${WM_SETTEXT} 0 "STR:AI tools (optional)"
+  SendMessage $0 ${WM_SETTEXT} 0 "STR:AI tools"
   GetDlgItem $0 $HWNDPARENT 1038
-  SendMessage $0 ${WM_SETTEXT} 0 "STR:Install the command-line tools you have subscriptions for."
+  SendMessage $0 ${WM_SETTEXT} 0 "STR:These command-line tools are required and are installed with the app."
   nsDialogs::Create 1018
   Pop $0
   ${If} $0 == error
     Abort
   ${EndIf}
-  ${NSD_CreateLabel} 0 0 100% 24u "Ticked tools are downloaded and installed after Local Agent Router, in a PowerShell window. Tools already installed are skipped. You can also install them later in Settings -> AI tools."
+  ${NSD_CreateLabel} 0 0 100% 24u "After Local Agent Router is copied, a PowerShell window installs these tools. Tools already installed are skipped."
   Pop $0
-  ${NSD_CreateCheckbox} 10u 32u 100% 12u "Claude Code - coding and UI work with a Claude subscription"
-  Pop $RouterClaudeBox
-  ${NSD_CreateCheckbox} 10u 48u 100% 12u "Codex - planning and reviews with a ChatGPT plan (installs Node.js if needed)"
-  Pop $RouterCodexBox
-  ${NSD_CreateCheckbox} 10u 64u 100% 12u "GitHub Copilot CLI - security audits and GitHub requests (installs Node.js if needed)"
-  Pop $RouterCopilotBox
-  ClearErrors
-  ${WordFind} "$RouterTools" "claude" "E+1{" $0
-  ${IfNot} ${Errors}
-    ${NSD_Check} $RouterClaudeBox
-  ${EndIf}
-  ClearErrors
-  ${WordFind} "$RouterTools" "codex" "E+1{" $0
-  ${IfNot} ${Errors}
-    ${NSD_Check} $RouterCodexBox
-  ${EndIf}
-  ClearErrors
-  ${WordFind} "$RouterTools" "copilot" "E+1{" $0
-  ${IfNot} ${Errors}
-    ${NSD_Check} $RouterCopilotBox
-  ${EndIf}
-  ${NSD_CreateLabel} 0 86u 100% 24u "Sign in to each tool afterwards from Settings -> AI tools."
+  ${NSD_CreateLabel} 10u 30u 100% 12u "- Ruflo - the backend that plans and coordinates agents (included)"
+  Pop $0
+  ${NSD_CreateLabel} 10u 44u 100% 12u "- Node.js - runs Ruflo, Codex and Copilot"
+  Pop $0
+  ${NSD_CreateLabel} 10u 58u 100% 12u "- Claude Code - Ruflo's execution host, with a Claude subscription"
+  Pop $0
+  ${NSD_CreateLabel} 10u 72u 100% 12u "- Codex - planning and reviews with a ChatGPT plan"
+  Pop $0
+  ${NSD_CreateLabel} 10u 86u 100% 12u "- GitHub Copilot CLI - security audits and GitHub requests"
+  Pop $0
+  ${NSD_CreateLabel} 0 106u 100% 24u "An internet connection is needed. Sign in to each tool afterwards from Settings -> AI tools."
   Pop $0
   nsDialogs::Show
-FunctionEnd
-
-; Keeps only known tool names in $RouterTools, so nothing else reaches the PowerShell command line.
-Function RouterCleanTools
-  StrCpy $1 ""
-  ClearErrors
-  ${WordFind} "$RouterTools" "claude" "E+1{" $0
-  ${IfNot} ${Errors}
-    StrCpy $1 "$1,claude"
-  ${EndIf}
-  ClearErrors
-  ${WordFind} "$RouterTools" "codex" "E+1{" $0
-  ${IfNot} ${Errors}
-    StrCpy $1 "$1,codex"
-  ${EndIf}
-  ClearErrors
-  ${WordFind} "$RouterTools" "copilot" "E+1{" $0
-  ${IfNot} ${Errors}
-    StrCpy $1 "$1,copilot"
-  ${EndIf}
-  StrCpy $RouterTools $1
-FunctionEnd
-
-Function RouterToolsLeave
-  StrCpy $RouterTools ""
-  ${NSD_GetState} $RouterClaudeBox $0
-  ${If} $0 == ${BST_CHECKED}
-    StrCpy $RouterTools "$RouterTools,claude"
-  ${EndIf}
-  ${NSD_GetState} $RouterCodexBox $0
-  ${If} $0 == ${BST_CHECKED}
-    StrCpy $RouterTools "$RouterTools,codex"
-  ${EndIf}
-  ${NSD_GetState} $RouterCopilotBox $0
-  ${If} $0 == ${BST_CHECKED}
-    StrCpy $RouterTools "$RouterTools,copilot"
-  ${EndIf}
 FunctionEnd
 
 Function RouterRolePage
@@ -175,14 +123,6 @@ FunctionEnd
       StrCpy $RouterRole $1
     ${EndIf}
   ${EndIf}
-  ; /TOOLS=claude,codex,copilot preselects the AI tools page, and is what a silent install installs.
-  StrCpy $RouterTools ""
-  ClearErrors
-  ${GetOptions} $0 "/TOOLS=" $1
-  ${IfNot} ${Errors}
-    StrCpy $RouterTools ",$1"
-    Call RouterCleanTools
-  ${EndIf}
 
   IfSilent initDone
   StrCmp $RouterOldInstall "" checkSquirrel
@@ -204,16 +144,19 @@ FunctionEnd
   WriteRegStr SHCTX "${UNINSTALL_REGISTRY_KEY}" "DisplayVersion" "${VERSION} $RouterRole"
   CreateShortCut "$SMPROGRAMS\Uninstall Local Agent Router.lnk" "$INSTDIR\${UNINSTALL_FILENAME}"
 
-  ; AI tools ticked on the AI tools page (or /TOOLS=). Failures don't fail Setup; the script says to retry in Settings.
+  ; Required AI tools on every Server install, silent ones included. The script retries failures until they install
+  ; or the user skips them; skipped tools stay listed as missing in Settings -> AI tools.
   ${If} $RouterRole == "server"
-  ${AndIf} $RouterTools != ""
-    DetailPrint "Installing AI tools: $RouterTools"
+    DetailPrint "Installing AI tools: Node.js, Claude Code, Codex, GitHub Copilot"
     ; Setup is a 32-bit program, so plain powershell.exe would be the 32-bit one, and Claude Code's installer
     ; refuses that ("doesn't support 32-bit Windows"). sysnative is the 64-bit System32 as seen from 32-bit code.
     StrCpy $1 "$WINDIR\sysnative\WindowsPowerShell\v1.0\powershell.exe"
     IfFileExists "$1" +2
       StrCpy $1 "powershell.exe"
-    ExecWait '"$1" -NoProfile -ExecutionPolicy Bypass -File "$INSTDIR\resources\install-clis.ps1" -Tools "$RouterTools"'
+    StrCpy $2 ""
+    IfSilent 0 +2
+      StrCpy $2 "-Silent"
+    ExecWait '"$1" -NoProfile -ExecutionPolicy Bypass -File "$INSTDIR\resources\install-clis.ps1" $2'
   ${EndIf}
 
   ; Remove the old Squirrel install. User data lives in LocalAgentRouterData and is not touched.

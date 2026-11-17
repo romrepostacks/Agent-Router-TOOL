@@ -10,13 +10,25 @@ module.exports = {
   files: [
     "**/*",
     // mobile/ holds the phone apps; they are built and installed separately.
-    "!{out,release,build,test,skills,mobile,feedback-relay,.agent-router}{,/**}",
+    // .tools/ruflo ships as an extra resource below; obsolete/ and replica/ are local-only folders.
+    "!{out,release,build,test,skills,mobile,feedback-relay,.agent-router,.tools,obsolete,replica,.claude-flow}{,/**}",
     "!skills.md",
     "!**/*.exe",
     "!*.cmd",
   ],
-  // Run by the installer's AI tools page (build/installer.nsh).
-  extraResources: [{ from: "build/install-clis.ps1", to: "install-clis.ps1" }],
+  extraResources: [
+    // Run by the installer's AI tools page (build/installer.nsh).
+    { from: "build/install-clis.ps1", to: "install-clis.ps1" },
+    // Ruflo backend runtime (ruflo-runner.mjs). Outside app.asar because system Node runs it as an MCP server.
+    // Fill it first with: npm install --prefix .tools/ruflo --no-save ruflo@3.77.1
+    // The installer is Windows x64 only: macOS, Linux and Windows ARM binaries and source maps are left out (~400 MB).
+    { from: ".tools/ruflo/node_modules", to: "ruflo/node_modules", filter: [
+      "**/*", "!**/*.map",
+      "!onnxruntime-node/bin/*/{darwin,linux}{,/**}", "!onnxruntime-node/bin/*/win32/arm64{,/**}",
+      "!@anthropic-ai/claude-agent-sdk/vendor/ripgrep/*-{darwin,linux}{,/**}",
+      "!**/prebuilds/{darwin,linux,android}-*{,/**}", "!@ruvector/*/npm/{darwin,linux}-*{,/**}",
+    ] },
+  ],
   win: {
     target: [{ target: "nsis", arch: ["x64"] }],
     icon: "assets/icon.ico",

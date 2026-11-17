@@ -1,4 +1,5 @@
 import path from "node:path";
+import { existsSync } from "node:fs";
 import { access } from "node:fs/promises";
 import { runClaudeStream, isUsageLimitError } from "./cli-runner.mjs";
 
@@ -16,12 +17,16 @@ export function describeRufloTool(name, input = {}) {
   return null;
 }
 
-const RUFLO_ENTRY = path.join(import.meta.dirname, ".tools", "ruflo", "node_modules", "ruflo", "bin", "ruflo.js");
+// Installed app: the installer ships the runtime in resources\ruflo (electron-builder extraResources), outside
+// app.asar so system Node can run it. Development: .tools\ruflo in the project folder.
+const RUFLO_HOME = process.resourcesPath && existsSync(path.join(process.resourcesPath, "ruflo"))
+  ? path.join(process.resourcesPath, "ruflo") : path.join(import.meta.dirname, ".tools", "ruflo");
+const RUFLO_ENTRY = path.join(RUFLO_HOME, "node_modules", "ruflo", "bin", "ruflo.js");
 export const rufloInstalled = () => access(RUFLO_ENTRY).then(() => true, () => false);
 
 export async function runRufloTask(command, prompt, project, env, options = {}, { run = runClaudeStream, check = access } = {}) {
   const entry = RUFLO_ENTRY;
-  try { await check(entry); } catch { throw new Error("Ruflo is not installed. From the app folder run: npm install --prefix .tools/ruflo --no-save ruflo@3.77.1"); }
+  try { await check(entry); } catch { throw new Error("Ruflo is not installed. Reinstall Local Agent Router, or in a development copy run from the app folder: npm install --prefix .tools/ruflo --no-save ruflo@3.77.1"); }
   const decisions = options.rufloDecisions || [];
   let routed = false;
   let swarm = false;

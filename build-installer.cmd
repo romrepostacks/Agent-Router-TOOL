@@ -12,6 +12,10 @@ if exist "%BUILT%" (
 if not exist "node_modules\.bin\electron-builder.cmd" (
   call npm install || goto :fail
 )
+rem The Ruflo backend runtime ships inside the installer (electron-builder.config.cjs extraResources).
+if not exist ".tools\ruflo\node_modules\ruflo\bin\ruflo.js" (
+  call npm install --prefix .tools/ruflo --no-save ruflo@3.77.1 || goto :fail
+)
 call npm run make || goto :fail
 copy /y "%BUILT%" "LocalAgentRouter-Setup.exe" >nul || goto :fail
 echo Installer ready for version %VER%: %~dp0LocalAgentRouter-Setup.exe

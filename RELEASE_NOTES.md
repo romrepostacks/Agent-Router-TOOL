@@ -1,3 +1,8 @@
+# v0.33.0 installer and UI
+
+- The installer includes the Ruflo backend runtime, and installs Node.js, Claude Code, Codex and GitHub Copilot on every Server install (no longer optional; failed installs can be retried or skipped).
+- Fixed: oversized primary buttons in setup and Settings, truncated session titles, "not currently listed" provider-default models after setup, token counts joined to output text, overlapping sidebar in narrow windows, faint dialog backdrop.
+
 # v0.33.0 Ruflo backend
 
 - Ruflo is the backend of the normal app. The separate Ruflo version (`--ruflo`, its own data folder, ports and profile) and the backend comparison script are removed.

@@ -1406,7 +1406,8 @@ async function runProviderTask(choice, prompt, project, kind, options = {}) {
   try { return await runProviderCall(choice, prompt, project, kind, { ...options, onUsage: (counted) => { usage = counted; } }); }
   finally {
     options.onUsage?.({ provider, model, ...(usage || {}) });
-    if (usage) options.onActivity?.(`· ${tokenSummary(usage)}\n`);
+    // Own line: provider text before it often has no trailing newline.
+    if (usage) options.onActivity?.(`\n· ${tokenSummary(usage)}\n`);
   }
 }
 
@@ -2053,12 +2054,14 @@ async function handleChat(data, options = {}) {
   }
 
   // Ruflo is the backend. It needs one project folder, project access, a Claude Code host and its runtime;
-  // Local models only, all-projects/no-project threads and missing Ruflo use the built-in router instead.
+  // Local models only, all-projects/no-project threads and missing Ruflo or Node.js (runs Ruflo's MCP server) use the
+  // built-in router instead.
   const rufloBlocked = process.env.AGENT_ROUTER_RUFLO === "0" ? "AGENT_ROUTER_RUFLO=0 turns it off"
     : (await readSettings()).localOnly ? "Local models only is on"
     : !project || project.scope === "all" ? "no single project folder is selected"
     : options.accessLimit === "none" ? "this thread has no project access"
     : !(await rufloInstalled()) ? "Ruflo isn't installed"
+    : !(await cliAvailable("node")) ? "Node.js isn't installed"
     : !(await providerReady("claude")) ? "Claude Code isn't set up" : "";
   if (rufloBlocked) options.onStatus?.(`Ruflo can't run this request (${rufloBlocked}); using the built-in router…`);
   else {
@@ -2111,9 +2114,9 @@ const NODE_INSTALL = "if (Get-Command winget -ErrorAction SilentlyContinue) { wi
 
 // What the setup screen offers for each command-line tool. Commands are fixed here; nothing from the page is run.
 const SETUP_TOOLS = {
-  node: { name: "Node.js", why: "Needed to install Codex and Copilot.", install: NODE_INSTALL, guide: "https://nodejs.org/en/download" },
+  node: { name: "Node.js", why: "Runs the Ruflo backend, Codex and Copilot.", install: NODE_INSTALL, guide: "https://nodejs.org/en/download" },
   claude: { name: "Claude Code", why: "Coding and UI work with your Claude subscription.", install: "irm https://claude.ai/install.ps1 | iex", login: "claude", loginHint: "Type /login if it doesn't ask you to sign in, then close the window.", guide: "https://docs.claude.com/en/docs/claude-code/setup" },
-  codex: { name: "Codex", why: "Route planning, reviews and planning with your ChatGPT plan.", install: "npm install -g @openai/codex", login: "codex login", needsNode: true, guide: "https://github.com/openai/codex" },
+  codex: { name: "Codex", why: "Route planning, long-term planning and reviews with your ChatGPT plan.", install: "npm install -g @openai/codex", login: "codex login", needsNode: true, guide: "https://github.com/openai/codex" },
   copilot: { name: "GitHub Copilot", why: "Security audits and GitHub requests with your Copilot plan.", install: "npm install -g @github/copilot", login: "copilot", loginHint: "Type /login and follow the steps, then close the window.", needsNode: true, guide: "https://docs.github.com/copilot/how-tos/set-up/install-copilot-cli" },
 };
 const LOCAL_PRESETS = [

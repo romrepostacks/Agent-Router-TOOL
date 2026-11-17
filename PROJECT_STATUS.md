@@ -1,3 +1,11 @@
+# Current change (v0.33.0): Ruflo in the installer, required AI tools, UI fixes
+
+- The Windows installer ships the Ruflo runtime in `resources\ruflo` (electron-builder `extraResources`, outside app.asar so system Node runs its MCP server). `ruflo-runner.mjs` uses it in installed copies and `.tools\ruflo` in development. macOS/Linux/Windows-ARM binaries and source maps are left out: about 800 MB unpacked instead of 1.16 GB. `build-installer.cmd` installs the pinned runtime first if `.tools\ruflo` is empty. Checked with an unpacked build: the packaged app finds Ruflo and `ruflo mcp start` runs from it.
+- Node.js, Claude Code, Codex and GitHub Copilot are now required on Server installs: the AI tools page lists them (no checkboxes, `/TOOLS=` removed) and `install-clis.ps1` installs all of them, retrying until they install or the user skips. Silent installs pass `-Silent` and never prompt. Ruflo also needs Node.js; without it the built-in router runs and the status line says so.
+- UI fixes from a live bot walkthrough (isolated data folder, port 8799): text primary buttons (Next, Get started, Save settings, Sign in, Create project, Apply changes) overflowed as the 34 px send arrow; session titles were cut to a few letters by invisible hover buttons; first-run routing showed `codex:: (saved; not currently listed)` for provider-default models; token counts ran onto the previous output line; the narrow-window sidebar overlapped Settings and the session search; dialogs barely dimmed the page; the greeting icon sat beside a wrapped heading; stale "optional tools" and "tools above" copy.
+- Syntax checks pass; `npm test` 111/111. Not yet done: building the installer itself, and an install on a clean PC.
+- Next: build the 0.33.0 installer and install it on a clean PC; run a live Ruflo task in the installed app.
+
 # Current change (v0.33.0): Ruflo is the backend
 
 - Ruflo now coordinates every request in the normal app (`npm start`, port 8765, `LocalAgentRouterData`). The `--ruflo` second version, its separate data folder, ports 8775/8776, Electron profile and `start:ruflo` script are gone.

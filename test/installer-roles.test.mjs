@@ -22,7 +22,7 @@ test("the installer keeps finding earlier installs and updates them in place", (
 
 test("Server or Client is asked first, before the folder page", () => {
   // electron-builder inserts customWelcomePage ahead of the install-mode and MUI_PAGE_DIRECTORY pages.
-  assert.match(nsh, /!macro customWelcomePage\s+Page custom RouterRolePage RouterRoleLeave\s+Page custom RouterToolsPage RouterToolsLeave\s+!macroend/);
+  assert.match(nsh, /!macro customWelcomePage\s+Page custom RouterRolePage RouterRoleLeave\s+Page custom RouterToolsPage\s+!macroend/);
   assert.match(nsh, /NSD_CreateRadioButton[^\n]+&Server/);
   assert.match(nsh, /NSD_CreateRadioButton[^\n]+&Client/);
   assert.match(nsh, /\$\{GetOptions\} \$0 "\/ROLE=" \$1/);
@@ -44,13 +44,16 @@ test("the chosen role is saved for the app and shown in the version", () => {
   assert.match(version, /^\d+\.\d+\.\d+$/);
 });
 
-test("a Server install can install the AI tools, only known names reach PowerShell", async () => {
+test("a Server install always installs the required AI tools and ships Ruflo", async () => {
   const page = nsh.slice(nsh.indexOf("Function RouterToolsPage"), nsh.indexOf("FunctionEnd", nsh.indexOf("Function RouterToolsPage")));
   assert.match(page, /\$\{If\} \$RouterRole == "client"\s+Abort/, "Clients skip the page");
-  for (const name of ["Claude Code", "Codex", "GitHub Copilot"]) assert.match(page, new RegExp(`NSD_CreateCheckbox[^\\n]+${name}`));
-  assert.match(nsh, /\$\{GetOptions\} \$0 "\/TOOLS=" \$1[\s\S]*Call RouterCleanTools/);
-  assert.match(nsh, /\$\{If\} \$RouterRole == "server"\s+\$\{AndIf\} \$RouterTools != ""[\s\S]*install-clis\.ps1" -Tools "\$RouterTools"/);
-  assert.deepEqual(config.extraResources, [{ from: "build/install-clis.ps1", to: "install-clis.ps1" }]);
+  for (const name of ["Ruflo", "Node.js", "Claude Code", "Codex", "GitHub Copilot"]) assert.match(page, new RegExp(`NSD_CreateLabel[^\n]+${name}`));
+  assert.doesNotMatch(nsh, /NSD_CreateCheckbox|\/TOOLS=/, "the tools are not optional");
+  assert.match(nsh, /\$\{If\} \$RouterRole == "server"\s+DetailPrint[\s\S]*IfSilent 0 \+2\s+StrCpy \$2 "-Silent"\s+ExecWait '[^']*install-clis\.ps1" \$2'/);
+  assert.deepEqual(config.extraResources.map((r) => [r.from, r.to]), [["build/install-clis.ps1", "install-clis.ps1"], [".tools/ruflo/node_modules", "ruflo/node_modules"]]);
+  // ruflo-runner.mjs looks for the runtime in resources\ruflo, outside app.asar, and the app files skip .tools.
+  assert.match(await readFile(new URL("../ruflo-runner.mjs", import.meta.url), "utf8"), /path\.join\(process\.resourcesPath, "ruflo"\)/);
+  assert.ok(config.files.some((pattern) => /^!\{[^}]*\.tools\b/.test(pattern)));
   // The script's install commands match the Settings → AI tools ones (SETUP_TOOLS in server.mjs).
   const script = await readFile(new URL("../build/install-clis.ps1", import.meta.url), "utf8");
   const server = await readFile(new URL("../server.mjs", import.meta.url), "utf8");

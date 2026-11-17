@@ -5,9 +5,10 @@ import { runClaudeStream, isUsageLimitError } from "./cli-runner.mjs";
 
 // Ruflo supplies coordination through MCP; Claude Code is its execution host.
 // Never launch hive-mind --claude: that path can skip provider permissions.
-export function rufloArgs(entry, permissionMode = "default") {
+// extraServers: the user's pass-through MCP servers (mcp-servers.mjs), in Claude Code's --mcp-config shape.
+export function rufloArgs(entry, permissionMode = "default", extraServers = {}) {
   return ["-p", "--permission-mode", permissionMode, "--strict-mcp-config", "--mcp-config",
-    JSON.stringify({ mcpServers: { ruflo: { command: "node", args: [entry, "mcp", "start"] } } }),
+    JSON.stringify({ mcpServers: { ...extraServers, ruflo: { command: "node", args: [entry, "mcp", "start"] } } }),
     "--append-system-prompt", "Ruflo is the sole coordinator. Before project work, discover and call Ruflo's routing tool. When the work needs more than one agent, initialize a Ruflo swarm before delegating; a single-agent plan may run without one. Let Ruflo select agents and models. Use its returned plan to drive execution with the host's Agent tool. Do not substitute your own router or claim queued tasks are completed work. If Ruflo is unavailable, stop and report the error. Respect thread access, staged copies, and provider approvals for every worker. Never launch detached workers or permission-bypassing commands. Report which agents/models actually executed, distinguishing selections from completed work."];
 }
 
@@ -34,7 +35,7 @@ export async function runRufloTask(command, prompt, project, env, options = {}, 
   const pending = new Map();
   options.onStatus?.("Ruflo is planning the swarm (Claude Code execution host)…");
   options.onPrompt?.(prompt.length);
-  const content = await run(command, rufloArgs(entry, options.permissionMode || "default"), project.path, env, {
+  const content = await run(command, rufloArgs(entry, options.permissionMode || "default", options.mcpServers), project.path, env, {
     signal: options.signal, prompt,
     onApproval: (card, extra) => options.onApproval?.({ ...card, ...extra }) ?? "deny",
     onUsage: (usage) => options.onUsage?.({ ...usage, provider: "ruflo", model: "Claude Code host" }),

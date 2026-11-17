@@ -210,6 +210,7 @@
           <button type="button" role="tab" class="settings-tab" data-settings-tab="sessions"><span aria-hidden="true">☰</span>Sessions</button>
           <button type="button" role="tab" class="settings-tab" data-settings-tab="skills"><span aria-hidden="true">✦</span>Shared skills</button>
           <button type="button" role="tab" class="settings-tab" data-settings-tab="add-skills"><span aria-hidden="true">＋</span>Add new skills</button>
+          <button type="button" role="tab" class="settings-tab" data-settings-tab="mcp"><span aria-hidden="true">⧉</span>MCP servers</button>
           <button type="button" role="tab" class="settings-tab" data-settings-tab="remote"><span aria-hidden="true">⇆</span>Remote access</button>
         </nav>
         <div class="settings-scroll">
@@ -218,6 +219,16 @@
             <p class="settings-help">Local Agent Router needs all of these; the installer installs them. Sign in to each one with your subscription: Sign in opens the tool so you can log in. Install (for any that are missing) opens a PowerShell window that runs the command shown.</p>
             <div class="model-catalog-tools"><button id="cli-tools-refresh" type="button" class="context-button">Check again</button><span id="cli-tools-status" class="settings-help" aria-live="polite"></span></div>
             <div id="cli-tools" class="cli-tools"></div>
+          </section>
+          <section class="settings-section settings-page" data-settings-page="mcp" hidden>
+            <h3>Pass-through MCP servers</h3>
+            <p class="settings-help">Added to every Claude Code, Codex, Copilot and Ruflo run, on top of each tool's own MCP settings. Each tool starts the server itself and asks before using its tools, following its own permission settings. Local models and API-key providers don't use MCP. This list can only be changed on this PC.</p>
+            <ul id="mcp-list" class="mcp-list" aria-live="polite"></ul>
+            <label class="settings-field">Name<input id="mcp-name" type="text" maxlength="40" placeholder="memory"></label>
+            <label class="settings-field">Type<select id="mcp-type"><option value="stdio">Command (runs on this PC)</option><option value="http">Address (HTTP)</option></select></label>
+            <label class="settings-field">Command or address<input id="mcp-target" type="text" placeholder="npx  or  https://example.com/mcp"></label>
+            <label class="settings-field">Arguments, one per line (commands only)<textarea id="mcp-args" rows="3" spellcheck="false" placeholder="-y&#10;@modelcontextprotocol/server-memory"></textarea></label>
+            <div class="shortcut-row"><button id="mcp-add" type="button" class="context-button">Add server</button><span id="mcp-status" class="settings-help" aria-live="polite"></span></div>
           </section>
           <section class="settings-section settings-page" data-settings-page="appearance" hidden>
             <h3>Theme</h3>

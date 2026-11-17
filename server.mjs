@@ -2,6 +2,7 @@ import { runCli, runClaudeStream, isUsageLimitError } from "./cli-runner.mjs";
 import { runCodexStream } from "./codex-runner.mjs";
 import { runCopilotStream } from "./copilot-runner.mjs";
 import { runRufloTask, rufloInstalled } from "./ruflo-runner.mjs";
+import { claudeMcpArgs, claudeMcpServers, codexMcpArgs, copilotMcpArgs, normalizeMcpServers } from "./mcp-servers.mjs";
 import { execFile, spawn } from "node:child_process";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { appendFile, copyFile, lstat, mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
@@ -1019,6 +1020,7 @@ async function status() {
   return {
     colibri: { online: models.length > 0, models, baseUrl: COLIBRI_BASE_URL, selectedModel: COLIBRI_MODEL || models[0] || "" },
     apis: Object.fromEntries(await Promise.all(Object.keys(API_PROVIDERS).map(async (id) => [id, Boolean(await apiKey(id))]))),
+    providerNames: PROVIDER_NAMES,
     commands: Object.fromEntries(commands),
     projectsRoot: PROJECTS_ROOT,
   };
@@ -1076,7 +1078,7 @@ async function readSettings() {
 
 async function availableModelCatalog(force = false) {
   if (!force && cachedModelCatalog && Date.now() - modelCatalogCheckedAt.value < 10 * 60_000) return cachedModelCatalog;
-  const catalog = { colibri: [], codex: [], claude: [], copilot: [], openai: [], anthropic: [] };
+  const catalog = { colibri: [], codex: [], claude: [], copilot: [], ...Object.fromEntries(Object.keys(API_PROVIDERS).map((id) => [id, []])) };
   const localModels = fetch(`${COLIBRI_BASE_URL}/models`, { signal: AbortSignal.timeout(2500) })
     .then(async (response) => response.ok ? (await response.json()).data || [] : [])
     .catch(() => []);
@@ -1086,9 +1088,8 @@ async function availableModelCatalog(force = false) {
     const data = JSON.parse(stdout.replace(/^\uFEFF/, ""));
     return (Array.isArray(data.models) ? data.models : []).filter((model) => model.visibility === "list" && typeof model.slug === "string").map((model) => ({ id: model.slug, name: model.display_name || model.slug }));
   }).catch(() => []);
-  const [local, codex, hasClaude, hasCopilot, openai, anthropic] = await Promise.all([localModels, codexModels, cliAvailable(CLI.claude), cliAvailable(CLI.copilot), apiModels("openai").catch(() => []), apiModels("anthropic").catch(() => [])]);
-  catalog.openai = openai;
-  catalog.anthropic = anthropic;
+  const [local, codex, hasClaude, hasCopilot, apis] = await Promise.all([localModels, codexModels, cliAvailable(CLI.claude), cliAvailable(CLI.copilot), Promise.all(Object.keys(API_PROVIDERS).map((id) => apiModels(id).catch(() => [])))]);
+  Object.keys(API_PROVIDERS).forEach((id, index) => { catalog[id] = apis[index]; });
   catalog.colibri = local.filter((model) => typeof model.id === "string").map((model) => ({ id: model.id, name: model.id }));
   for (const model of await colibriModels(await colibriSetup())) {
     if (!catalog.colibri.some((item) => item.id === model.name)) catalog.colibri.push({ id: model.name, name: model.inUse ? `${model.name} (loaded)` : `${model.name} (loads when used)` });
@@ -1190,10 +1191,24 @@ async function queryColibriNow(messages, tools = [], { signal, onDelta, onUsage,
 }
 
 // API-key providers. Keys are encrypted with Windows (Electron safeStorage) before they are saved.
+// Everything except anthropic speaks the OpenAI chat API at baseUrl. `models` filters /models down to chat models.
+// `free`: providers with a rate-limited free tier, from github.com/12britz/awesome-free-models.
+const CHAT_MODELS = /^(?!.*(?:embed|whisper|tts|guard|rerank|audio|image|moderation))/i;
 const API_PROVIDERS = {
-  openai: { name: "OpenAI API", env: "OPENAI_API_KEY", defaultModel: "" },
-  anthropic: { name: "Anthropic API", env: "ANTHROPIC_API_KEY", defaultModel: "claude-opus-5-5" },
+  openai: { name: "OpenAI API", env: "OPENAI_API_KEY", baseUrl: "https://api.openai.com/v1", keyUrl: "https://platform.openai.com/api-keys", defaultModel: "", models: /^(?!.*(?:audio|realtime|transcribe|tts|image|search))(?:gpt-|o\d|chatgpt)/ },
+  anthropic: { name: "Anthropic API", env: "ANTHROPIC_API_KEY", keyUrl: "https://console.anthropic.com/settings/keys", defaultModel: "claude-opus-5-5" },
+  groq: { name: "Groq", env: "GROQ_API_KEY", free: true, baseUrl: "https://api.groq.com/openai/v1", keyUrl: "https://console.groq.com/keys", defaultModel: "llama-3.3-70b-versatile", models: CHAT_MODELS },
+  cerebras: { name: "Cerebras", env: "CEREBRAS_API_KEY", free: true, baseUrl: "https://api.cerebras.ai/v1", keyUrl: "https://cloud.cerebras.ai/", defaultModel: "", models: CHAT_MODELS },
+  gemini: { name: "Google Gemini", env: "GEMINI_API_KEY", free: true, baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai", keyUrl: "https://aistudio.google.com/apikey", defaultModel: "gemini-2.5-flash", models: /^(?!.*(?:embed|tts|image|audio|live))(?:models\/)?gemini/ },
+  openrouter: { name: "OpenRouter", env: "OPENROUTER_API_KEY", free: true, baseUrl: "https://openrouter.ai/api/v1", keyUrl: "https://openrouter.ai/settings/keys", defaultModel: "", models: /:free$/ },
+  mistral: { name: "Mistral", env: "MISTRAL_API_KEY", free: true, baseUrl: "https://api.mistral.ai/v1", keyUrl: "https://console.mistral.ai/api-keys", defaultModel: "mistral-small-latest", models: CHAT_MODELS },
+  sambanova: { name: "SambaNova", env: "SAMBANOVA_API_KEY", free: true, baseUrl: "https://api.sambanova.ai/v1", keyUrl: "https://cloud.sambanova.ai/apis", defaultModel: "", models: CHAT_MODELS },
+  nvidia: { name: "NVIDIA NIM", env: "NVIDIA_API_KEY", free: true, baseUrl: "https://integrate.api.nvidia.com/v1", keyUrl: "https://build.nvidia.com/settings/api-keys", defaultModel: "", models: CHAT_MODELS },
+  huggingface: { name: "Hugging Face", env: "HF_TOKEN", free: true, baseUrl: "https://router.huggingface.co/v1", keyUrl: "https://huggingface.co/settings/tokens", defaultModel: "", models: CHAT_MODELS },
 };
+// Free-tier providers, tried after the paid ones (and first for Quick questions).
+const API_IDS = Object.keys(API_PROVIDERS).filter((id) => API_PROVIDERS[id].free);
+for (const [id, info] of Object.entries(API_PROVIDERS)) PROVIDER_NAMES[id] = info.name;
 const CHAT_PROVIDERS = new Set(["colibri", ...Object.keys(API_PROVIDERS)]);
 
 async function apiKey(provider) {
@@ -1213,10 +1228,12 @@ async function apiModels(provider) {
     for await (const model of client.models.list()) models.push({ id: model.id, name: model.display_name || model.id });
     return models;
   }
-  const response = await fetch("https://api.openai.com/v1/models", { headers: { Authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(10_000) });
+  const info = API_PROVIDERS[provider];
+  const response = await fetch(`${info.baseUrl}/models`, { headers: { Authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(10_000) });
   if (!response.ok) return [];
   const data = await response.json();
-  return (data.data || []).map((model) => model.id).filter((id) => /^(gpt-|o\d|chatgpt)/.test(id) && !/audio|realtime|transcribe|tts|image|search/.test(id)).sort().reverse().map((id) => ({ id, name: id }));
+  const ids = (data.data || []).map((model) => model.id).filter((id) => typeof id === "string" && info.models.test(id)).sort();
+  return (provider === "openai" ? ids.reverse() : ids).map((id) => ({ id, name: id }));
 }
 
 async function queryApiProvider(provider, messages, { signal, onDelta, onUsage, model, maxTokens = 1600 } = {}) {
@@ -1242,21 +1259,23 @@ async function queryApiProvider(provider, messages, { signal, onDelta, onUsage, 
     if (message.stop_reason === "refusal") throw new Error("Anthropic declined this request.");
     return message.content.filter((block) => block.type === "text").map((block) => block.text).join("");
   }
-  const chosen = model || (await apiModels("openai"))[0]?.id;
-  if (!chosen) throw new Error("No OpenAI model is available for this API key.");
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+  const info = API_PROVIDERS[provider];
+  const chosen = model || info.defaultModel || (await apiModels(provider))[0]?.id;
+  if (!chosen) throw new Error(`No ${info.name} model is available for this API key.`);
+  const response = await fetch(`${info.baseUrl}/chat/completions`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
     body: JSON.stringify({
       model: chosen,
-      max_completion_tokens: Math.max(maxTokens, 16_000),
+      // Free tiers cap output per model; they use their own default instead of rejecting 16k.
+      ...(provider === "openai" ? { max_completion_tokens: Math.max(maxTokens, 16_000) } : {}),
       messages: messages.map((message) => message.images?.length
         ? { role: message.role, content: [{ type: "text", text: message.content }, ...message.images.map((image) => ({ type: "image_url", image_url: { url: image.dataUrl } }))] }
         : { role: message.role, content: message.content }),
     }),
     signal: signal || AbortSignal.timeout(600_000),
   });
-  if (!response.ok) throw new Error(`OpenAI request failed (${response.status}): ${(await response.text()).slice(0, 700)}`);
+  if (!response.ok) throw new Error(`${info.name} request failed (${response.status}): ${(await response.text()).slice(0, 700)}`);
   const data = await response.json();
   const counted = openAiUsage(data.usage);
   if (counted) onUsage?.(counted);
@@ -1484,11 +1503,12 @@ async function runProviderCall(choice, prompt, project, kind, options = {}) {
   // which Windows can't use as a working directory, so every CLI spawn there failed.
   const cwd = project?.path || DATA_DIR;
   const toolText = cliToolText(provider);
+  const mcp = await userMcpServers();
   if (provider !== "claude") options.onActivity = (text) => activity(text, toolText(text) || undefined);
   if (provider === "claude") {
     const instruction = "Use the signed-in Claude Code subscription. Do not use an API key or custom API endpoint.";
     const mode = CLAUDE_MODES.includes(options.permissionMode) ? options.permissionMode : await claudeDefaultMode();
-    const args = ["-p", "--permission-mode", mode, ...(project ? ["--add-dir", project.path] : []), ...linked.flatMap((item) => ["--add-dir", item.path]), ...skillDirs, ...(model ? ["--model", model] : []), "--append-system-prompt", instruction];
+    const args = ["-p", "--permission-mode", mode, ...(project ? ["--add-dir", project.path] : []), ...linked.flatMap((item) => ["--add-dir", item.path]), ...skillDirs, ...(model ? ["--model", model] : []), ...claudeMcpArgs(mcp), "--append-system-prompt", instruction];
     // stream-json reports each tool call as it happens, so the details pane can show what Claude Code is doing.
     return runClaudeStream(command, args, cwd, cleanClaudeEnvironment(), {
       ...options,
@@ -1506,10 +1526,10 @@ async function runProviderCall(choice, prompt, project, kind, options = {}) {
   }
   if (provider === "codex") {
     const input = access === "git" ? `${prompt}\n\n${gitNote}` : prompt;
-    return runCodexStream(command, [], cwd, process.env, { ...options, prompt: input, model });
+    return runCodexStream(command, codexMcpArgs(mcp), cwd, process.env, { ...options, prompt: input, model });
   }
   if (provider === "copilot") {
-    const args = [...(model ? ["--model", model] : [])];
+    const args = [...(model ? ["--model", model] : []), ...copilotMcpArgs(mcp)];
     if (project) args.push("--add-dir", project.path);
     for (const item of linked) args.push("--add-dir", item.path);
     args.push(...skillDirs);
@@ -1519,15 +1539,15 @@ async function runProviderCall(choice, prompt, project, kind, options = {}) {
 }
 
 const ROLE_PREFERENCES = {
-  routePlanning: ["codex", "claude", "anthropic", "openai", "copilot", "colibri"],
-  longTermPlanning: ["codex", "claude", "anthropic", "openai", "copilot", "colibri"],
-  coding: ["claude", "codex", "copilot", "anthropic", "openai", "colibri"],
-  review: ["codex", "claude", "copilot", "anthropic", "openai", "colibri"],
-  security: ["copilot", "claude", "codex", "anthropic", "openai", "colibri"],
-  ui: ["claude", "codex", "copilot", "anthropic", "openai", "colibri"],
-  art: ["codex", "claude", "copilot", "anthropic", "openai", "colibri"],
-  github: ["copilot", "claude", "codex", "anthropic", "openai", "colibri"],
-  quick: ["colibri", "anthropic", "openai", "codex", "claude", "copilot"],
+  routePlanning: ["codex", "claude", "anthropic", "openai", "copilot", ...API_IDS, "colibri"],
+  longTermPlanning: ["codex", "claude", "anthropic", "openai", "copilot", ...API_IDS, "colibri"],
+  coding: ["claude", "codex", "copilot", "anthropic", "openai", ...API_IDS, "colibri"],
+  review: ["codex", "claude", "copilot", "anthropic", "openai", ...API_IDS, "colibri"],
+  security: ["copilot", "claude", "codex", "anthropic", "openai", ...API_IDS, "colibri"],
+  ui: ["claude", "codex", "copilot", "anthropic", "openai", ...API_IDS, "colibri"],
+  art: ["codex", "claude", "copilot", "anthropic", "openai", ...API_IDS, "colibri"],
+  github: ["copilot", "claude", "codex", "anthropic", "openai", ...API_IDS, "colibri"],
+  quick: ["colibri", ...API_IDS, "anthropic", "openai", "codex", "claude", "copilot"],
 };
 
 async function providerReady(provider) {
@@ -1647,7 +1667,7 @@ async function implementWithRole(role, task, project, skillText, options, { plan
     const prompt = `${kind === "ui" ? "Act as a UI designer and frontend engineer. Inspect the existing interface and implement the requested visual and interaction changes, matching the project's conventions." : kind === "art" ? "Create or update the requested visual assets in the project. Prefer editable SVG or existing project asset formats; if this provider cannot render raster images, create a usable vector asset or a clear asset brief rather than claiming a raster was generated." : "Inspect the project and implement the requested changes."} ${where} You may run the project's syntax checks and tests (node --check, node --test, npm test). Follow existing conventions and shared project instructions. Do not access credentials, API keys, environment variables, or secret files. Finish with what you changed in a few lines.${NEXT_STEPS_RULE}${skillText}\n\nTask:\n${task}${plan ? `\n\nPlan:\n${plan}` : ""}${options.chained ? "" : sharedHandoffSection(await readHandoff(project))}`;
     options.onStatus?.(staged ? `${role} is working in a private project copy…` : `${role} is editing the project folder…`);
     const content = role === "ruflo"
-      ? await runRufloTask(CLI.claude, prompt, workingProject, cleanClaudeEnvironment(), { ...options, permissionMode: options.permissionMode || await claudeDefaultMode() })
+      ? await runRufloTask(CLI.claude, prompt, workingProject, cleanClaudeEnvironment(), { ...options, mcpServers: claudeMcpServers(await userMcpServers()), permissionMode: options.permissionMode || await claudeDefaultMode() })
       : await runRoleTask(role, role === "art" ? "codex::" : "claude::opus", prompt, workingProject, kind, { ...options, stagedCopy: staged || options.stagedCopy });
     if (!staged && options.chained) return { content, route: role, proposal: null };
     if (!staged) {
@@ -1800,7 +1820,7 @@ async function runRoute(route, messages, project, skillText = "", localSkillText
         ? await implementWithRole("ruflo", task, project, skillText, rufloOptions)
         : { content: await runRufloTask(CLI.claude,
           `Thread access: read-only. Do not edit files or run project scripts. ${route === "route" ? "Plan only; do not execute the plan." : "Answer the request using Ruflo coordination."}\n${skillText}\n${messages.map((item) => `${item.role}: ${item.content}`).join("\n\n")}`,
-          project, cleanClaudeEnvironment(), { ...rufloOptions, permissionMode: "plan" }) };
+          project, cleanClaudeEnvironment(), { ...rufloOptions, mcpServers: claudeMcpServers(await userMcpServers()), permissionMode: "plan" }) };
       return { ...result, route: "Ruflo swarm", delegated: ["Ruflo", ...decisions], backend: "ruflo" };
     } catch (error) {
       if (options.signal?.aborted || !isUsageLimitError(error)) throw error;
@@ -2156,6 +2176,11 @@ async function rawSettings() {
   try { return JSON.parse(await readFile(SETTINGS_FILE, "utf8")); } catch { return {}; }
 }
 
+// Pass-through MCP servers (Settings → MCP servers), validated by normalizeMcpServers when saved.
+async function userMcpServers() {
+  try { return normalizeMcpServers((await rawSettings()).mcpServers || []); } catch { return []; }
+}
+
 async function writeSettings(changes) {
   await mkdir(DATA_DIR, { recursive: true });
   const next = { ...(await rawSettings()), ...changes };
@@ -2228,6 +2253,7 @@ async function setupState() {
     tools,
     local: { baseUrl: COLIBRI_BASE_URL, online: Boolean(local), models: local || [], model: COLIBRI_MODEL, presets: LOCAL_PRESETS },
     apiKeys: Object.fromEntries(keys),
+    apiProviders: Object.entries(API_PROVIDERS).map(([id, info]) => ({ id, name: info.name, keyUrl: info.keyUrl, free: Boolean(info.free) })),
     canStoreKeys: Boolean(globalThis.routerEncrypt),
     assignment: Object.fromEntries(roles.map((role) => {
       const current = saved[`${role}Primary`];
@@ -2292,7 +2318,7 @@ async function handleSetup(req, res, url) {
 // Tokens are shown once when a device is added; settings keep only their SHA-256.
 const REMOTE_DEFAULT_PORT = 8766;
 // Things that act on the server PC's own desktop or secrets; remote devices get 403.
-const LOCAL_ONLY_PATHS = /^\/api\/(?:remote(?:\/|$)|setup\/(?:terminal|keys)$|sessions\/teleport$|projects\/linked\/pick$)/;
+const LOCAL_ONLY_PATHS = /^\/api\/(?:remote(?:\/|$)|setup\/(?:terminal|keys)$|mcp$|sessions\/teleport$|projects\/linked\/pick$)/;
 const remote = { server: null, address: "", port: 0, error: "", lastSeen: new Map() };
 const tokenHash = (token) => createHash("sha256").update(token).digest("hex");
 
@@ -2536,6 +2562,13 @@ async function handleRequest(req, res, fromRemote = false) {
       } catch { return json(res, 502, { error: "Couldn't reach the feedback service. Check your internet connection." }); }
     }
     if (req.method === "GET" && url.pathname === "/api/models") return json(res, 200, { models: await availableModelCatalog(url.searchParams.get("refresh") === "1"), checkedAt: modelCatalogCheckedAt.value });
+    if (req.method === "GET" && url.pathname === "/api/mcp") return json(res, 200, { servers: await userMcpServers() });
+    if (req.method === "POST" && url.pathname === "/api/mcp") {
+      let servers;
+      try { servers = normalizeMcpServers((await bodyJson(req)).servers); } catch (error) { return json(res, 400, { error: error.message }); }
+      await writeSettings({ mcpServers: servers });
+      return json(res, 200, { servers });
+    }
     if (req.method === "GET" && url.pathname === "/api/rules") {
       return json(res, 200, { text: await readFile(RULES_FILE, "utf8").catch(() => ""), sent: RULES_SENT, path: RULES_FILE });
     }
@@ -2578,7 +2611,7 @@ async function handleRequest(req, res, fromRemote = false) {
       if (!Number.isSafeInteger(skillsLimit) || skillsLimit < -1) return json(res, 400, { error: "Skill limit must be −1, zero, or a positive whole number." });
       const modelKeys = ["routePlanningPrimary", "routePlanningFallback", "longTermPlanningPrimary", "longTermPlanningFallback", "codingPrimary", "codingFallback", "reviewPrimary", "reviewFallback", "securityPrimary", "securityFallback", "uiPrimary", "uiFallback", "artPrimary", "artFallback", "githubPrimary", "githubFallback", "quickPrimary", "quickFallback"];
       const models = Object.fromEntries(modelKeys.map((key) => [key, String(data[key] ?? previous[key] ?? (key === "claudeModel" ? "opus" : "")).trim()]));
-      if (Object.values(models).some((value) => value.length > 200 || !/^(?:(?:colibri|codex|claude|copilot|openai|anthropic)::[\w ./:-]*)?$/.test(value))) return json(res, 400, { error: "Choose a provider and model from the available list." });
+      if (Object.values(models).some((value) => value.length > 200 || !new RegExp(`^(?:(?:${Object.keys(PROVIDER_NAMES).join("|")})::[\\w ./:-]*)?$`).test(value))) return json(res, 400, { error: "Choose a provider and model from the available list." });
       const shortcut = data.shortcut === undefined ? (previous.shortcut ?? "Control+Shift+Space") : String(data.shortcut);
       if (shortcut && !/^(?:(?:CommandOrControl|Command|Control|Ctrl|Alt|Option|Shift|Super|Meta)\+)+(?:[A-Z0-9]|F(?:[1-9]|1[0-2])|Space|Tab|Escape|Backspace|Delete|Insert|Home|End|PageUp|PageDown|Up|Down|Left|Right)$/.test(shortcut)) return json(res, 400, { error: "Choose a valid keyboard shortcut with at least one modifier." });
       const requestedSkills = data.preapprovedSkillIds === undefined ? previous.preapprovedSkillIds || [] : data.preapprovedSkillIds;

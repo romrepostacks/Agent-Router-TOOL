@@ -82,6 +82,7 @@ function renderInspector() {
   for (const item of skillNames) { const li = document.createElement("li"); li.textContent = item; skills.append(li); }
 }
 
+// The server adds every API provider's name (free tiers included) from /api/status.
 const PROVIDER_NAMES = { colibri: "Local model", claude: "Claude Code", codex: "Codex", copilot: "Copilot", openai: "OpenAI API", anthropic: "Anthropic API" };
 
 function readableChoice(key) {
@@ -1522,7 +1523,8 @@ async function refreshStatus() {
     colibri.replaceChildren(dot, document.createTextNode(result.colibri.online ? "Local model" : "Local offline"));
     colibri.title = result.colibri.online ? `Local model · ${result.colibri.selectedModel || "ready"}` : "Local model offline";
     const labels = { claude: "Claude Code", codex: "Codex", copilot: "Copilot" };
-    const apis = Object.entries({ openai: "OpenAI API", anthropic: "Anthropic API" }).filter(([id]) => result.apis?.[id]).map(([, name]) => `${name}: key saved`);
+    Object.assign(PROVIDER_NAMES, result.providerNames);
+    const apis = Object.keys(result.apis || {}).filter((id) => result.apis[id]).map((id) => `${PROVIDER_NAMES[id] || id}: key saved`);
     const installed = Object.keys(labels).filter((id) => result.commands[id]?.available).map((id) => labels[id]);
     const cliDot = document.createElement("i");
     cliDot.className = `status-dot ${installed.length || apis.length ? "online" : "offline"}`;
@@ -1901,6 +1903,33 @@ async function openSettings() {
   await loadModelChoices(settings);
 }
 
+// Settings → MCP servers: the pass-through list (mcp-servers.mjs). The whole list is saved on every add or remove.
+let mcpServers = [];
+function renderMcp() {
+  $("mcp-list").replaceChildren(...(mcpServers.length
+    ? mcpServers.map((server, index) => el("li", {},
+      el("span", {}, el("strong", {}, server.name), ` ${server.type === "http" ? server.url : [server.command, ...server.args].join(" ")}`),
+      el("button", { type: "button", class: "context-button", onclick: () => saveMcp(mcpServers.filter((_, other) => other !== index)) }, "Remove")))
+    : [el("li", { class: "settings-help" }, "No pass-through MCP servers yet.")]));
+}
+async function saveMcp(servers) {
+  $("mcp-status").textContent = "Saving…";
+  try {
+    mcpServers = (await request("/api/mcp", { method: "POST", body: JSON.stringify({ servers }) })).servers;
+    $("mcp-status").textContent = "Saved. New runs use this list.";
+    renderMcp();
+    return true;
+  } catch (error) { $("mcp-status").textContent = error.message; return false; }
+}
+async function loadMcp() {
+  try { mcpServers = (await request("/api/mcp")).servers; renderMcp(); } catch (error) { $("mcp-status").textContent = error.message; }
+}
+$("mcp-add").addEventListener("click", async () => {
+  const name = $("mcp-name").value.trim(), type = $("mcp-type").value, target = $("mcp-target").value.trim();
+  const server = type === "http" ? { name, type, url: target } : { name, type, command: target, args: $("mcp-args").value.split("\n").map((arg) => arg.trim()).filter(Boolean) };
+  if (await saveMcp([...mcpServers, server])) for (const id of ["mcp-name", "mcp-target", "mcp-args"]) $(id).value = "";
+});
+
 // rules.md: sent with every request. Saved on its own button so a half-typed rule never goes out.
 let rulesSent = 4000;
 function refreshRulesCount() {
@@ -2016,6 +2045,7 @@ function selectSettingsTab(name) {
   document.querySelectorAll("[data-settings-page]").forEach((page) => { page.hidden = page.dataset.settingsPage !== name; });
   if (name === "remote") loadRemote();
   if (name === "tools") loadCliTools();
+  if (name === "mcp") loadMcp();
 }
 
 // Settings → Remote access: GET/POST /api/remote, POST /api/remote/devices (token shown once), DELETE …/devices/<id>.
@@ -2498,7 +2528,7 @@ function renderSetup() {
       el("ul", { class: "setup-list" },
         el("li", {}, "Required command-line tools (Node.js, Claude Code, Codex, GitHub Copilot): installed by the installer; Settings → AI tools installs any that are missing"),
         el("li", {}, "A local model app such as Ollama or LM Studio (optional)"),
-        el("li", {}, "OpenAI or Anthropic API keys (optional)")));
+        el("li", {}, "API keys: OpenAI, Anthropic, or free tiers such as Groq, Google Gemini and OpenRouter (optional)")));
   } else if (setup.step === 1) {
     body.append(
       el("label", { class: "settings-field" }, "Projects folder", el("input", { id: "setup-root", type: "text", value: setup.root ?? data.projectsRoot, oninput: (event) => { setup.root = event.target.value; } })),
@@ -2522,11 +2552,11 @@ function renderSetup() {
       el("p", { class: "settings-help" }, "Don't have one? Ollama is the easiest: ", el("a", { href: "https://ollama.com/download", target: "_blank", rel: "noopener" }, "download Ollama"), ", run ", el("code", {}, "ollama pull llama3.2"), ", then press Ollama and Connect."));
   } else if (setup.step === 3) {
     if (!data.canStoreKeys) body.append(el("p", { class: "settings-help" }, "API keys can only be saved in the installed desktop app."));
-    for (const [id, name, hint] of [["openai", "OpenAI API key", "https://platform.openai.com/api-keys"], ["anthropic", "Anthropic API key", "https://console.anthropic.com/settings/keys"]]) {
-      body.append(el("label", { class: "settings-field" }, `${name} ${data.apiKeys[id] ? "(saved)" : ""}`, el("input", { id: `setup-key-${id}`, type: "password", autocomplete: "off", placeholder: data.apiKeys[id] ? "Saved. Paste a new key to replace it." : "Paste your key" })),
-        el("p", { class: "settings-help" }, el("a", { href: hint, target: "_blank", rel: "noopener" }, `Get an ${name}`)));
+    for (const { id, name, keyUrl, free } of data.apiProviders) {
+      body.append(el("label", { class: "settings-field" }, `${name} key${free ? " (free tier)" : ""} ${data.apiKeys[id] ? "(saved)" : ""}`, el("input", { id: `setup-key-${id}`, type: "password", autocomplete: "off", placeholder: data.apiKeys[id] ? "Saved. Paste a new key to replace it." : "Paste your key" })),
+        el("p", { class: "settings-help" }, el("a", { href: keyUrl, target: "_blank", rel: "noopener" }, `Get a ${name} key`)));
     }
-    body.append(el("p", { class: "settings-help" }, "Keys are encrypted by Windows and stored only on this PC. API use is billed by the provider."));
+    body.append(el("p", { class: "settings-help" }, "Keys are encrypted by Windows and stored only on this PC. Paid APIs bill per use; free tiers are rate-limited and may use your prompts for training, so check each provider's terms before sending private code."));
   } else {
     const names = data.providerNames;
     const rows = Object.entries(ROLE_LABELS).map(([role, label]) => {
@@ -2548,7 +2578,7 @@ async function setupNext() {
   try {
     if (setup.step === 1) setup.createFolder = $("setup-create").checked;
     if (setup.step === 3) {
-      const keys = Object.fromEntries(["openai", "anthropic"].map((id) => [id, $(`setup-key-${id}`).value.trim()]).filter(([, value]) => value));
+      const keys = Object.fromEntries(setup.data.apiProviders.map(({ id }) => [id, $(`setup-key-${id}`).value.trim()]).filter(([, value]) => value));
       if (Object.keys(keys).length) setup.data = await setupPost("/api/setup/keys", keys);
       else setup.data = await request("/api/setup");
     }

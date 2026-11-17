@@ -1,4 +1,13 @@
-# Current change (v0.35.0): 0.33.0 polish backlog
+# Current change (v0.36.0): pass-through MCP servers, free API providers
+
+- MCP: new `mcp-servers.mjs` validates the user's list (`normalizeMcpServers`: name, stdio command + args or http URL, no `ruflo` name, max 30) and formats it per CLI: Claude Code `--mcp-config`, Copilot `--additional-mcp-config`, Codex `-c mcp_servers.<name>.*`. `runProviderCall` adds them to every Claude/Codex/Copilot run; `rufloArgs()` merges them next to Ruflo's own server (Ruflo's entry always wins). Stored in settings as `mcpServers`; `GET/POST /api/mcp` is local-only (remote devices get 403, since a command entry runs on the server PC). Settings → MCP servers tab adds/removes entries. No env vars or HTTP headers yet. Chat providers get no MCP.
+- Free providers: `API_PROVIDERS` now carries `baseUrl`, `keyUrl`, a `/models` filter and `free`. Added Groq, Cerebras, Google Gemini (OpenAI-compatible endpoint), OpenRouter (`:free` models only), Mistral, SambaNova, NVIDIA NIM and Hugging Face router, all through the existing OpenAI-compatible path (`max_completion_tokens` sent only to OpenAI). They join `ROLE_PREFERENCES` after the paid APIs, and right after the local model for Quick. Setup's key step, model catalog, settings validation and the status tooltip build from the list (`apiProviders`, `providerNames`). GitHub Models and Cloudflare Workers AI were left out (no standard `/models`, or an account id in the URL).
+- The source list (github.com/12britz/awesome-free-models) couldn't be fetched (blocked by a local hook); providers were chosen from known OpenAI-compatible free tiers.
+- Ruflo routing picked one agent (weak "swarm-task" match); no swarm ran.
+- `npm test` passes (125, new `test/mcp-servers.test.mjs`). Not checked by eye in the running app; not tried against live provider keys.
+- Next: open Settings → MCP servers and add one; try a free key (Groq) on a Quick question; push so Actions builds the APK/IPA.
+
+# Previous change (v0.35.0): 0.33.0 polish backlog
 
 - Codex activity: `describeCodexItem()` in `codex-runner.mjs` turns app-server `item/started` events into one readable line (`$ command`, `Edit files`, `Tool server: name`, `Search query`) instead of raw JSON with escaped `\r\n`; message and reasoning items add no line.
 - Import: sessions whose first user message starts with `ROUTE_PROMPT_START` (`route-rules.mjs`) are skipped in `toSession()`, so the router's own route-planning runs (Codex app-server isn't `codex_exec`) aren't imported. Test fixture added.

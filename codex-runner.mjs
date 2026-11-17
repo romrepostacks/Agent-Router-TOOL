@@ -1,5 +1,19 @@
 import { runCli } from "./cli-runner.mjs";
 
+// One readable line for the output panel per app-server item, instead of its raw JSON.
+// Messages and reasoning stream as text already, so they add no line.
+export function describeCodexItem(item = {}) {
+  const oneLine = (value) => String(value ?? "").replace(/\s*\r?\n\s*/g, " ⏎ ").trim();
+  switch (item.type) {
+    case "agentMessage": case "reasoning": case "userMessage": return "";
+    case "commandExecution": return `$ ${oneLine(Array.isArray(item.command) ? item.command.join(" ") : item.command)}`;
+    case "fileChange": return `Edit ${(item.changes || []).map((change) => change.path).filter(Boolean).join(", ") || "files"}`;
+    case "mcpToolCall": return `Tool ${[item.server, item.tool].filter(Boolean).join(": ")}`;
+    case "webSearch": return `Search ${oneLine(item.query)}`;
+    default: return item.type ? oneLine(item.type) : "";
+  }
+}
+
 // One app-server connection per run keeps approvals and cancellation isolated.
 export async function runCodexStream(command, args, cwd, env, { prompt, model, onApproval, onDelta, onActivity, onUsage, ...options } = {}) {
   let io, buffer = "", text = "", failure, completed = false;
@@ -23,7 +37,7 @@ export async function runCodexStream(command, args, cwd, env, { prompt, model, o
     for (const line of lines) {
       if (!line.trim()) continue;
       let event;
-      try { event = JSON.parse(line); } catch { onActivity?.(`${line}\n`); continue; }
+      try { event = JSON.parse(line); } catch { onActivity?.(`${line.replace(/\r$/, "")}\n`); continue; }
       if (event.method && event.id !== undefined) { void approve(event); continue; }
       if (event.error) { failure = new Error(event.error.message || "Codex request failed."); io.end(); continue; }
       if (event.id === "initialize") {
@@ -32,7 +46,10 @@ export async function runCodexStream(command, args, cwd, env, { prompt, model, o
       }
       if (event.id === "thread") request("turn", "turn/start", { threadId: event.result.thread.id, input: [{ type: "text", text: prompt }] });
       if (event.method === "item/agentMessage/delta") { text += event.params.delta; onDelta?.(event.params.delta); }
-      if (event.method === "item/started") onActivity?.(`${JSON.stringify(event.params.item)}\n`);
+      if (event.method === "item/started") {
+        const line = describeCodexItem(event.params.item);
+        if (line) onActivity?.(`${line}\n`);
+      }
       if (event.method === "thread/tokenUsage/updated") {
         const usage = event.params.tokenUsage?.total;
         if (usage) onUsage?.({ input: usage.inputTokens || 0, cached: usage.cachedInputTokens || 0, output: usage.outputTokens || 0 });

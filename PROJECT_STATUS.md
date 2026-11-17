@@ -1,4 +1,15 @@
-# Current change (v0.34.1): family hidden by a same-named member
+# Current change (v0.35.0): 0.33.0 polish backlog
+
+- Codex activity: `describeCodexItem()` in `codex-runner.mjs` turns app-server `item/started` events into one readable line (`$ command`, `Edit files`, `Tool server: name`, `Search query`) instead of raw JSON with escaped `\r\n`; message and reasoning items add no line.
+- Import: sessions whose first user message starts with `ROUTE_PROMPT_START` (`route-rules.mjs`) are skipped in `toSession()`, so the router's own route-planning runs (Codex app-server isn't `codex_exec`) aren't imported. Test fixture added.
+- Sidebar: the Sessions section fills the remaining sidebar height (narrow layout unchanged).
+- Send stays disabled until the message box has text (`refreshFollowupButtons()`).
+- Settings → AI tools always shows Node.js and a Ruflo card (installed / missing / off) from `/api/setup` `ruflo`.
+- All Projects threads: the access picker's default reads "Read-only (all projects)" and "Review edits first" is disabled, matching the read-only footer.
+- Swarm: Ruflo routing chose one `coder` agent; no swarm ran.
+- Next: start the app and check the four UI items by eye; build the 0.35.0 installer.
+
+# Previous change (v0.34.1): family hidden by a same-named member
 
 - `skillFamilies()` folded members by id, so a member listed on its own with the family's name in the family's category (same id) hid the family too (caveman, comfy in the live catalog). Members are now dropped by entry, and no self-mapping goes into `familyOf`. Test added in `test/skill-families.test.mjs`.
 - Next: push so Actions builds the 0.34.1 APK/IPA; check the 0.34.0 runs passed (`gh run list`); answer a live question card.

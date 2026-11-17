@@ -458,6 +458,8 @@ function questionCard(card, ui, answer) {
 
 function refreshFollowupButtons() {
   const empty = !$("prompt").value.trim();
+  // sendMessage needs text (attachments ride along with it), so Send waits for text too.
+  $("send").disabled = empty || !state.project;
   $("queue").disabled = empty;
   $("steer").disabled = empty;
 }
@@ -467,7 +469,6 @@ function refreshRunControls() {
   state.busy = busy;
   for (const id of ["queue", "steer", "stop"]) $(id).hidden = !busy;
   $("send").hidden = busy;
-  $("send").disabled = !state.project;
   refreshFollowupButtons();
   $("new-session").disabled = !state.project;
   $("choose-context").disabled = !state.project;
@@ -774,6 +775,10 @@ async function moveSession(id, projectId) {
 }
 
 function renderMessages() {
+  // All Projects threads are always read-only, so the picker's top choice says so instead of "Full access".
+  const allProjects = state.project?.scope === "all";
+  $("thread-access").querySelector('option[value=""]').textContent = allProjects ? "Read-only (all projects)" : "Full access";
+  $("thread-access").querySelector('option[value="staged"]').disabled = allProjects;
   $("thread-access").value = state.session?.accessLimit || "";
   $("permission-mode").value = state.session?.permissionMode || state.claudeDefaultMode || "default";
   const list = $("messages");
@@ -802,7 +807,7 @@ function renderMessages() {
       const button = document.createElement("button");
       button.type = "button";
       button.textContent = prompt.startsWith("Explain") ? "Explain this project" : prompt.startsWith("Review") ? "Review current changes" : "Debug an issue";
-      button.addEventListener("click", () => { $("prompt").value = prompt; $("prompt").focus(); });
+      button.addEventListener("click", () => { $("prompt").value = prompt; refreshFollowupButtons(); $("prompt").focus(); });
       suggestions.append(button);
     }
     empty.append(greeting, description, suggestions);
@@ -1599,6 +1604,7 @@ async function submitRequest(requestData) {
   state.attachments = [];
   $("attachment-files").value = "";
   renderContextControls();
+  refreshFollowupButtons();
   await followRun({
     sessionId,
     projectName: state.project.name,
@@ -2346,7 +2352,7 @@ $("install-skill").addEventListener("click", installScannedSkill);
 $("reject-skill").addEventListener("click", () => { $("skill-url").value = ""; resetSkillScan("Not installed."); $("skill-url").focus(); });
 $("refresh-projects").addEventListener("click", () => loadProjects().catch((error) => { $("projects").textContent = error.message; }));
 for (const button of document.querySelectorAll(".suggestions button")) {
-  button.addEventListener("click", () => { $("prompt").value = button.dataset.prompt || ""; $("prompt").focus(); });
+  button.addEventListener("click", () => { $("prompt").value = button.dataset.prompt || ""; refreshFollowupButtons(); $("prompt").focus(); });
 }
 
 $("plus-button").addEventListener("click", () => setPlusMenu($("plus-menu").hidden));
@@ -2449,13 +2455,25 @@ function cliToolCard(tool, nodeInstalled, isNode = false) {
     tool.install && !tool.installed ? el("code", { class: "setup-command" }, tool.install) : null);
 }
 
+// Ruflo ships inside the app, so its card has no Install or Sign in button.
+function rufloCard(ruflo, nodeInstalled) {
+  const [label, tone] = !ruflo.installed ? ["Missing", "missing"] : ruflo.off ? ["Off", "missing"] : ["Installed", "ready"];
+  return el("div", { class: "setup-card" },
+    el("div", { class: "setup-card-head" }, el("strong", {}, ruflo.name), el("span", { class: `setup-pill ${tone}` }, label)),
+    el("p", {}, ruflo.why),
+    el("div", { class: "setup-card-actions" },
+      el("a", { href: ruflo.guide, target: "_blank", rel: "noopener", class: "context-button" }, "About Ruflo"),
+      !ruflo.installed ? el("span", { class: "setup-note" }, "Reinstall Local Agent Router to restore it.")
+        : ruflo.off ? el("span", { class: "setup-note" }, ruflo.off)
+        : !nodeInstalled ? el("span", { class: "setup-note" }, "Install Node.js first.") : null));
+}
+
 async function loadCliTools(message = "Checking this PC…") {
   const list = $("cli-tools");
   $("cli-tools-status").textContent = message;
   try {
     const data = await request("/api/setup");
-    const needNode = !data.node.installed && data.tools.some((tool) => tool.needsNode && !tool.installed);
-    list.replaceChildren(...(needNode ? [cliToolCard(data.node, false, true)] : []), ...data.tools.map((tool) => cliToolCard(tool, data.node.installed)));
+    list.replaceChildren(cliToolCard(data.node, data.node.installed, true), ...(data.ruflo ? [rufloCard(data.ruflo, data.node.installed)] : []), ...data.tools.map((tool) => cliToolCard(tool, data.node.installed)));
     $("cli-tools-status").textContent = "";
   } catch (error) { $("cli-tools-status").textContent = error.message; }
 }

@@ -5,6 +5,7 @@ import { readFile, readdir, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
+import { ROUTE_PROMPT_START } from "./route-rules.mjs";
 
 const execFileAsync = promisify(execFile);
 export const MAX_MESSAGES = 400;
@@ -75,6 +76,8 @@ async function jsonlFiles(dir, depth) {
 function toSession(source, parsed, file, mtime) {
   if (!parsed.id || !parsed.messages.some((message) => message.role === "user")) return null;
   const firstUser = parsed.messages.find((message) => message.role === "user").content;
+  // The router's own route-planning calls (any provider, any CLI mode) aren't user sessions.
+  if (firstUser.trimStart().startsWith(ROUTE_PROMPT_START)) return null;
   const messages = parsed.messages.slice(-MAX_MESSAGES).map((message) => ({ ...message, ...(message.role === "assistant" ? { route: source === "claude" ? "Claude Code" : "Codex" } : {}) }));
   return {
     source, sourceId: parsed.id, cwd: parsed.cwd, file,

@@ -2207,8 +2207,9 @@ function openTerminal(title, command) {
 async function setupState() {
   await refreshWindowsPath();
   cachedModelCatalog = null;
-  const [node, tools, local, keys, ready, saved] = await Promise.all([
+  const [node, ruflo, tools, local, keys, ready, saved] = await Promise.all([
     cliAvailable("node"),
+    rufloInstalled(),
     Promise.all(Object.keys(CLI).map(async (id) => {
       const location = await cliAvailable(CLI[id]);
       return { id, ...SETUP_TOOLS[id], installed: Boolean(location), signIn: location ? await signInState(id, CLI[id]) : "missing" };
@@ -2222,6 +2223,8 @@ async function setupState() {
   return {
     projectsRoot: PROJECTS_ROOT,
     node: { ...SETUP_TOOLS.node, installed: Boolean(node) },
+    // Ruflo ships with the app (no install command); off = AGENT_ROUTER_RUFLO=0 or Local models only.
+    ruflo: { name: "Ruflo", why: "The backend that plans and runs project tasks through Claude Code. Needs Node.js and Claude Code.", guide: "https://github.com/ruvnet/ruflo", installed: ruflo, off: process.env.AGENT_ROUTER_RUFLO === "0" ? "Turned off (AGENT_ROUTER_RUFLO=0)" : saved.localOnly ? "Off: Local models only is on" : "" },
     tools,
     local: { baseUrl: COLIBRI_BASE_URL, online: Boolean(local), models: local || [], model: COLIBRI_MODEL, presets: LOCAL_PRESETS },
     apiKeys: Object.fromEntries(keys),

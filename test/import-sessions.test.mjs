@@ -34,6 +34,11 @@ await writeFile(path.join(codexDir, "rollout-x.jsonl"), jsonl([
   { timestamp: "2026-01-02T09:00:02Z", type: "response_item", payload: { type: "message", role: "user", content: [{ type: "input_text", text: "Add tests for login" }] } },
   { timestamp: "2026-01-02T09:00:03Z", type: "response_item", payload: { type: "message", role: "assistant", content: [{ type: "output_text", text: "Added." }] } },
 ]));
+// The router's own route-planning call through Codex app-server (not `codex exec`): must be skipped.
+await writeFile(path.join(codexDir, "rollout-route.jsonl"), jsonl([
+  { type: "session_meta", payload: { id: "x3", cwd: path.join(projects, "alpha"), originator: "codex_app_server" } },
+  { timestamp: "2026-01-02T10:00:00Z", type: "response_item", payload: { type: "message", role: "user", content: [{ type: "input_text", text: "You are the route selector for a local multi-provider assistant. Do not inspect files." }] } },
+]));
 await writeFile(path.join(codexDir, "rollout-elsewhere.jsonl"), jsonl([
   { type: "session_meta", payload: { id: "x2", cwd: path.join(root, "elsewhere") } },
   { timestamp: "2026-01-03T09:00:00Z", type: "response_item", payload: { type: "message", role: "user", content: [{ type: "input_text", text: "Unrelated" }] } },

@@ -1,8 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { runCodexStream } from "../codex-runner.mjs";
+import { describeCodexItem, runCodexStream } from "../codex-runner.mjs";
 import { runCopilotStream } from "../copilot-runner.mjs";
 import { runCli } from "../cli-runner.mjs";
+
+test("Codex activity shows readable lines, not raw JSON with \\r\\n", () => {
+  assert.equal(describeCodexItem({ type: "commandExecution", command: "npm test\r\nnpm run lint" }), "$ npm test ⏎ npm run lint");
+  assert.equal(describeCodexItem({ type: "fileChange", changes: [{ path: "a.js" }, { path: "b.js" }] }), "Edit a.js, b.js");
+  assert.equal(describeCodexItem({ type: "agentMessage", text: "hi" }), "");
+  assert.equal(describeCodexItem({ type: "webSearch", query: "x" }), "Search x");
+});
 
 test("provider activity cannot restart the timer during an approval wait", async () => {
   const result = await runCli(process.execPath, ["-e", 'const t=setInterval(()=>process.stdout.write("waiting\\n"),50); process.stdin.once("data",()=>{clearInterval(t); process.exit(0)});'], process.cwd(), undefined, {

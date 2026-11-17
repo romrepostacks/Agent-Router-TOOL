@@ -46,14 +46,14 @@ General goals from the old list (secure links between components, Tailscale comp
 
 ## Polish backlog (found by the UI test bot, 0.33.0, 2026-11-16)
 
-Not started. Pick these up after the 0.33.0 installer is built and tested.
+Done in 0.35.0 (2026-11-16).
 
-- [ ] The output panel shows raw Codex messages with visible `\r\n`. Show only the readable text.
-- [ ] The router's own Codex route-planning calls are imported back as sessions ("You are the route s…"). Skip them on import (`import-sessions.mjs`).
-- [ ] The session list stops at 40% of the sidebar height. Let it fill the sidebar.
-- [ ] Send is enabled while the message box is empty. Disable it until there is text or an attachment.
-- [ ] Settings → AI tools doesn't show Ruflo or Node.js. Show their status there.
-- [ ] An All Projects thread shows "Full access" next to the "read-only" footer. Explain why, or make the two agree.
+- [x] The output panel shows raw Codex messages with visible `\r\n`. Show only the readable text.
+- [x] The router's own Codex route-planning calls are imported back as sessions ("You are the route s…"). Skip them on import (`import-sessions.mjs`).
+- [x] The session list stops at 40% of the sidebar height. Let it fill the sidebar.
+- [x] Send is enabled while the message box is empty. Disable it until there is text. (A message is required even with attachments; attachments alone never sent.)
+- [x] Settings → AI tools doesn't show Ruflo or Node.js. Show their status there.
+- [x] An All Projects thread shows "Full access" next to the "read-only" footer. Explain why, or make the two agree.
 
 ## Remaining acceptance
 

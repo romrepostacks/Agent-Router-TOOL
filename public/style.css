@@ -155,7 +155,9 @@ body.inspector-hidden .inspector-panel { display: none; }
 @keyframes run-pulse { 50% { opacity: .35; } }
 @media (prefers-reduced-motion: reduce) { .session-button.running .session-date::before, .run-dot { animation: none; } }
 .muted { padding: 7px 8px; color: var(--muted); font-size: 12px; }
-.sessions-section { min-height: 0; }
+/* Sessions take whatever height the sidebar has left, down to the footer. */
+.sessions-section { display: flex; flex: 1 1 0; flex-direction: column; min-height: 120px; margin-bottom: 10px; }
+.sessions-section > .session-list { flex: 1 1 0; min-height: 0; max-height: none; align-content: start; }
 .sidebar-footer { display: flex; align-items: center; gap: 6px; margin-top: auto; border-top: 1px solid var(--line); padding: 8px 0 0; }
 .app-version { flex: none; padding-right: 8px; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
 .sidebar-settings { display: flex; flex: 1; min-width: 0; align-items: center; gap: 9px; border: 0; border-radius: 8px; padding: 8px; color: var(--ink-2); background: transparent; font-size: 13px; text-align: left; }
@@ -442,6 +444,7 @@ html[data-theme="dark"] .setup-missing { background: none; }
   .brand { padding-bottom: 12px; }
   .side-section { margin-bottom: 10px; }
   .project-list, .session-list { display: flex; max-height: none; overflow-x: auto; }
+  .sessions-section, .sessions-section > .session-list { flex: none; min-height: 0; }
   .project-button, .session-button { width: auto; min-width: max-content; }
   .active-run { max-width: 220px; min-width: 0; }
   .main-panel { min-height: 0; }

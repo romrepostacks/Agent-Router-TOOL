@@ -1,3 +1,12 @@
+# v0.35.0 polish
+
+- Settings → AI tools shows Node.js and Ruflo with their status.
+- The output panel shows readable Codex steps (commands, edited files) instead of raw messages.
+- The session list fills the sidebar.
+- Send stays off until you type a message.
+- All Projects threads say "Read-only (all projects)" in the access picker instead of "Full access".
+- Fixed: the router's own route-planning runs were imported as sessions.
+
 # v0.34.1 skill family fix
 
 - Fixed: a skill family disappeared from Shared skills when one of its members, listed on its own, had the same name in the same category.

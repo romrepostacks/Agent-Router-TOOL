@@ -1,6 +1,7 @@
 # v0.36.0 MCP servers and free providers
 
 - Settings → MCP servers: add your own MCP servers (a command or an HTTP address). Claude Code, Codex, Copilot and Ruflo runs get them on top of their own MCP settings, and still ask before using their tools.
+- Ruflo runs now load all of Claude Code's own MCP servers too (including plugin servers), not only Ruflo and your list.
 - Free-tier API providers in setup: Groq, Cerebras, Google Gemini, OpenRouter (free models), Mistral, SambaNova, NVIDIA NIM and Hugging Face. Free tiers have rate limits and some use prompts for training.
 
 # v0.35.0 polish

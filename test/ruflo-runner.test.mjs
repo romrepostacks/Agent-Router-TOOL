@@ -7,7 +7,7 @@ test("Ruflo has one MCP backend and preserves provider permissions", () => {
   const config = JSON.parse(args[args.indexOf("--mcp-config") + 1]);
   assert.deepEqual(Object.keys(config.mcpServers), ["ruflo"]);
   assert.deepEqual(config.mcpServers.ruflo.args, ["C:/app with spaces/ruflo.js", "mcp", "start"]);
-  assert.ok(args.includes("--strict-mcp-config"));
+  assert.ok(!args.includes("--strict-mcp-config"));
   assert.equal(args[args.indexOf("--permission-mode") + 1], "plan");
   assert.ok(!args.join(" ").includes("dangerously-skip"));
   assert.match(describeRufloTool("Agent", { subagent_type: "reviewer", model: "sonnet" }), /reviewer; model: sonnet/);

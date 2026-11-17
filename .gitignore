@@ -16,3 +16,4 @@ error.log
 
 # Ruflo runtime state written into the project by its MCP server
 .claude-flow/
+.swarm/

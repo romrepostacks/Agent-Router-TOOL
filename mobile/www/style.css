@@ -258,6 +258,11 @@ input[role="switch"]:checked::after { transform: translateX(20px); }
 .approval h3 { margin: 0 0 4px; font-size: 17px; }
 .approval p { margin: 0 0 8px; color: var(--muted); font-size: 14px; }
 .approval pre { margin: 0 0 12px; max-height: 140px; overflow: auto; padding: 10px; border-radius: 12px; font: 13px/1.4 ui-monospace, Menlo, monospace; white-space: pre-wrap; overflow-wrap: anywhere; background: color-mix(in srgb, var(--text) 7%, transparent); }
+.approval-question { margin: 0 0 12px; border: 0; padding: 0; font-size: 15px; }
+.approval-question legend { margin-bottom: 6px; font-weight: 600; }
+.approval-option { display: flex; gap: 10px; align-items: flex-start; min-height: 44px; padding: 6px 0; }
+.approval-option small { color: var(--muted); }
+.approval-question input[type="text"] { width: 100%; min-height: 44px; margin-top: 4px; border: 1px solid var(--hairline); border-radius: 12px; padding: 8px 12px; font: inherit; background: var(--surface); color: inherit; }
 .approval-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .approval-actions .primary-button { margin: 0; }
 /* Always allow spans the row above Deny | Allow, so the safest-to-reverse choices sit under the thumb */

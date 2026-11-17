@@ -587,8 +587,20 @@ function rerenderApprovals() {
 
 // Kept identical in public/app.js; test/approval-ui.test.mjs checks both copies.
 // Always allow sends no `allow` flag, so a server that doesn't know `decision` rejects it instead of allowing once.
-function approvalBody(decision) {
-  return decision === "always" ? { decision } : { decision, allow: decision === "allow" };
+function approvalBody(decision, answers) {
+  return decision === "always" ? { decision } : { decision, allow: decision === "allow", ...(answers ? { answers } : {}) };
+}
+// Question cards (Claude's AskUserQuestion): picks = { [question]: { labels: [], other: "" } } -> { [question]: text },
+// or null while a question is unanswered. Several picks (multiSelect) are joined with ", ".
+function questionAnswers(questions, picks) {
+  const answers = {};
+  for (const { question } of questions) {
+    const pick = picks[question] || {};
+    const chosen = [...(pick.labels || []), ...(pick.other?.trim() ? [pick.other.trim()] : [])];
+    if (!chosen.length) return null;
+    answers[question] = chosen.join(", ");
+  }
+  return answers;
 }
 function approvalResult(decision, status, data = {}) {
   if (status >= 200 && status < 300 && (decision !== "always" || data.decision === "always")) {
@@ -600,14 +612,15 @@ function approvalResult(decision, status, data = {}) {
   return { error: true, message: data.error || `Couldn't send your answer (${status}).` };
 }
 
-async function answerApproval(sessionId, card, decision) {
+async function answerApproval(sessionId, card, decision, answers) {
   approvalUi.set(card.id, { ...approvalUi.get(card.id), busy: decision, error: false, message: "" });
   rerenderApprovals();
   try {
-    const response = await stream(`/api/runs/${encodeURIComponent(sessionId)}/approvals/${encodeURIComponent(card.id)}`, { method: "POST", body: JSON.stringify(approvalBody(decision)) });
+    const response = await stream(`/api/runs/${encodeURIComponent(sessionId)}/approvals/${encodeURIComponent(card.id)}`, { method: "POST", body: JSON.stringify(approvalBody(decision, answers)) });
     const data = await response.json().catch(() => ({}));
     if (response.status === 401 || response.status === 403) return lostConnection(new Error(data.error || "The server didn't accept this access code."));
     const result = approvalResult(decision, response.status, data);
+    if (result.done && card.questions) result.message = decision === "deny" ? "Skipped." : "Answer sent.";
     approvalUi.set(card.id, { ...(result.unsupported ? {} : approvalUi.get(card.id)), ...result, busy: "" });
     if (result.done) navigator.vibrate?.(15);
   } catch (error) {
@@ -616,7 +629,42 @@ async function answerApproval(sessionId, card, decision) {
   rerenderApprovals();
 }
 
+// Claude asked the user something (AskUserQuestion): options as choices plus an Other answer, like the desktop card.
+function questionCard(sessionId, card) {
+  if (!approvalUi.has(card.id)) approvalUi.set(card.id, {});
+  const ui = approvalUi.get(card.id);
+  const picks = ui.picks ||= {};
+  const send = el("button", { type: "button", class: "primary-button", onclick: () => { const answers = questionAnswers(card.questions, picks); if (answers) answerApproval(sessionId, card, "allow", answers); } }, ui.busy === "allow" ? "Sending…" : "Send answers");
+  const refresh = () => { send.disabled = Boolean(ui.busy) || !questionAnswers(card.questions, picks); };
+  const fields = card.questions.map((q, index) => {
+    const pick = picks[q.question] ||= { labels: [], other: "" };
+    const inputs = [];
+    const other = el("input", { type: "text", placeholder: "Other answer", "aria-label": `Other answer to: ${q.question}`, value: pick.other, disabled: Boolean(ui.busy), oninput: () => {
+      pick.other = other.value;
+      if (!q.multiSelect && other.value.trim()) { pick.labels = []; for (const input of inputs) input.checked = false; }
+      refresh();
+    } });
+    const options = q.options.map((option) => {
+      const input = el("input", { type: q.multiSelect ? "checkbox" : "radio", name: `question-${card.id}-${index}`, checked: pick.labels.includes(option.label), disabled: Boolean(ui.busy), onchange: () => {
+        pick.labels = q.multiSelect ? (input.checked ? [...pick.labels, option.label] : pick.labels.filter((l) => l !== option.label)) : [option.label];
+        if (!q.multiSelect) { pick.other = ""; other.value = ""; }
+        refresh();
+      } });
+      inputs.push(input);
+      return el("label", { class: "approval-option" }, input, el("span", {}, option.label, option.description ? [el("br"), el("small", {}, option.description)] : null));
+    });
+    return el("fieldset", { class: "approval-question" }, el("legend", {}, q.header ? [el("span", { class: "tag" }, q.header), " "] : null, q.question), ...options, other);
+  });
+  refresh();
+  const skip = el("button", { type: "button", class: "secondary-button deny", disabled: Boolean(ui.busy), onclick: () => answerApproval(sessionId, card, "deny") }, ui.busy === "deny" ? "Skipping…" : "Skip");
+  return el("article", { class: "approval glass", "aria-busy": String(Boolean(ui.busy)), "aria-labelledby": `approval-title-${card.id}` },
+    el("h3", { id: `approval-title-${card.id}` }, card.title || "Claude has a question"),
+    ...fields, el("div", { class: "approval-actions" }, skip, send),
+    el("p", { class: `approval-note${ui.error ? " error" : ""}`, role: ui.error ? "alert" : "status" }, ui.message || ""));
+}
+
 function approvalCard(sessionId, card) {
+  if (card.questions?.length) return questionCard(sessionId, card);
   const ui = approvalUi.get(card.id) || {};
   const alwaysBlocked = card.canAlwaysAllow === false || ui.unsupported;
   const actions = el("div", { class: "approval-actions three" }, ...APPROVAL_CHOICES.map((choice) => el("button", {
@@ -729,6 +777,11 @@ function skillUsage(skill) {
   return parts.join(" · ");
 }
 
+// A family is one skill that bundles several (server.mjs skillFamilies); same line as public/app.js.
+function skillFamilyLine(skill) {
+  return `Family · ${skill.members.length} skill${skill.members.length === 1 ? "" : "s"}: ${skill.members.join(", ")}`;
+}
+
 // Only skills added in the app (`own`, under skills/user-created) can be deleted; usage counts are kept.
 async function deleteSkill(skill, rerender) {
   if (!confirm(`Delete the skill "${skill.name}"? Its file is removed; its usage counts are kept.`)) return;
@@ -757,7 +810,7 @@ $("skills-chip").addEventListener("click", () => {
           refreshComposer();
         } });
         const remove = skill.own ? el("button", { type: "button", class: "row-action", "aria-label": `Delete ${skill.name}`, onclick: (event) => { event.preventDefault(); deleteSkill(skill, render); } }, "×") : null;
-        return el("label", { class: "row" }, el("span", { class: "row-text" }, el("span", { class: "row-title" }, skill.name), el("span", { class: "row-sub" }, always ? "Pre-approved" : skill.description || ""), el("span", { class: "row-sub" }, skillUsage(skill))), box, remove);
+        return el("label", { class: "row" }, el("span", { class: "row-text" }, el("span", { class: "row-title" }, skill.name), el("span", { class: "row-sub" }, always ? "Pre-approved" : skill.description || ""), skill.members?.length ? el("span", { class: "row-sub" }, skillFamilyLine(skill)) : null, el("span", { class: "row-sub" }, skillUsage(skill))), box, remove);
       })))));
   };
   openSheet("Shared skills", "skills");

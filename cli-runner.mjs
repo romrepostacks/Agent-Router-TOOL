@@ -87,12 +87,14 @@ export async function runClaudeStream(command, args, cwd, env, { prompt, onText,
     const input = request.input && typeof request.input === "object" ? request.input : {};
     const saved = savedPermissionSuggestions(request);
     let decision = "deny";
+    let answers = null; // AskUserQuestion: { [question]: answer } from the card, passed back as the tool's input
     try {
-      const reply = onApproval && await io.hold(onApproval({ tool: String(request.tool_name || "tool"), input, reason: String(request.decision_reason || request.blocked_path || "") }, { canAlwaysAllow: saved.length > 0 }));
+      let reply = onApproval && await io.hold(onApproval({ tool: String(request.tool_name || "tool"), input, reason: String(request.decision_reason || request.blocked_path || "") }, { canAlwaysAllow: saved.length > 0 }));
+      if (reply && typeof reply === "object") ({ decision: reply, answers = null } = reply);
       decision = reply === true ? "allow" : reply === "allow" || (reply === "always" && saved.length) ? reply : "deny";
     } catch {}
     send({ type: "control_response", response: { subtype: "success", request_id: id, response: decision !== "deny"
-      ? { behavior: "allow", updatedInput: input, toolUseID: request.tool_use_id, ...(decision === "always" ? { updatedPermissions: saved } : {}) }
+      ? { behavior: "allow", updatedInput: answers ? { ...input, answers } : input, toolUseID: request.tool_use_id, ...(decision === "always" ? { updatedPermissions: saved } : {}) }
       : { behavior: "deny", message: "The user declined this in Local Agent Router.", toolUseID: request.tool_use_id } } });
   };
   const read = (chunk) => {

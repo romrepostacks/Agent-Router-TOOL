@@ -295,8 +295,20 @@ const approvalUi = new Map(); // card id -> { busy: decision | "", message, erro
 
 // Kept identical in mobile/www/app.js; test/approval-ui.test.mjs checks both copies.
 // Always allow sends no `allow` flag, so a server that doesn't know `decision` rejects it instead of allowing once.
-function approvalBody(decision) {
-  return decision === "always" ? { decision } : { decision, allow: decision === "allow" };
+function approvalBody(decision, answers) {
+  return decision === "always" ? { decision } : { decision, allow: decision === "allow", ...(answers ? { answers } : {}) };
+}
+// Question cards (Claude's AskUserQuestion): picks = { [question]: { labels: [], other: "" } } -> { [question]: text },
+// or null while a question is unanswered. Several picks (multiSelect) are joined with ", ".
+function questionAnswers(questions, picks) {
+  const answers = {};
+  for (const { question } of questions) {
+    const pick = picks[question] || {};
+    const chosen = [...(pick.labels || []), ...(pick.other?.trim() ? [pick.other.trim()] : [])];
+    if (!chosen.length) return null;
+    answers[question] = chosen.join(", ");
+  }
+  return answers;
 }
 function approvalResult(decision, status, data = {}) {
   if (status >= 200 && status < 300 && (decision !== "always" || data.decision === "always")) {
@@ -308,14 +320,15 @@ function approvalResult(decision, status, data = {}) {
   return { error: true, message: data.error || `Couldn't send your answer (${status}).` };
 }
 
-async function answerApproval(run, card, decision) {
+async function answerApproval(run, card, decision, answers) {
   approvalUi.set(card.id, { ...approvalUi.get(card.id), busy: decision, error: false, message: "" });
   renderApprovals();
   try {
     const response = await fetch(`/api/runs/${encodeURIComponent(run.sessionId)}/approvals/${encodeURIComponent(card.id)}`, {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(approvalBody(decision)),
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(approvalBody(decision, answers)),
     });
     const result = approvalResult(decision, response.status, await response.json().catch(() => ({})));
+    if (result.done && card.questions) result.message = decision === "deny" ? "Skipped." : "Answer sent.";
     approvalUi.set(card.id, { ...(result.unsupported ? {} : approvalUi.get(card.id)), ...result, busy: "" });
   } catch (error) {
     approvalUi.set(card.id, { ...approvalUi.get(card.id), busy: "", error: true, message: `Couldn't reach the router: ${error.message}` });
@@ -340,6 +353,10 @@ function renderApprovals() {
     const title = document.createElement("h3");
     title.id = titleId;
     title.textContent = card.title || `Allow ${card.tool}?`;
+    if (card.questions?.length) {
+      item.append(title, ...questionCard(card, ui, (decision, answers) => answerApproval(run, card, decision, answers)));
+      return item;
+    }
     const reason = document.createElement("p");
     reason.textContent = card.reason || "The provider's settings ask before this tool runs.";
     const detail = document.createElement("pre");
@@ -367,6 +384,76 @@ function renderApprovals() {
     item.append(title, reason, detail, actions, note);
     return item;
   }));
+}
+
+// Claude asked the user something (AskUserQuestion): each question with its options as choices, plus an Other
+// answer; Send answers returns them to Claude, Skip declines. Picks live in approvalUi so re-renders keep them.
+function questionCard(card, ui, answer) {
+  if (!approvalUi.has(card.id)) approvalUi.set(card.id, ui);
+  const picks = ui.picks ||= {};
+  const send = document.createElement("button");
+  const refresh = () => { send.disabled = Boolean(ui.busy) || !questionAnswers(card.questions, picks); };
+  const fields = card.questions.map((q, index) => {
+    const pick = picks[q.question] ||= { labels: [], other: "" };
+    const set = document.createElement("fieldset");
+    set.className = "approval-question";
+    const legend = document.createElement("legend");
+    legend.textContent = q.question;
+    if (q.header) { const tag = document.createElement("span"); tag.className = "tag"; tag.textContent = q.header; legend.prepend(tag, " "); }
+    set.append(legend);
+    const inputs = q.options.map((option) => {
+      const label = document.createElement("label");
+      label.className = "approval-option";
+      const input = document.createElement("input");
+      input.type = q.multiSelect ? "checkbox" : "radio";
+      input.name = `question-${card.id}-${index}`;
+      input.checked = pick.labels.includes(option.label);
+      input.disabled = Boolean(ui.busy);
+      input.addEventListener("change", () => {
+        pick.labels = q.multiSelect ? (input.checked ? [...pick.labels, option.label] : pick.labels.filter((l) => l !== option.label)) : [option.label];
+        if (!q.multiSelect) { pick.other = ""; other.value = ""; }
+        refresh();
+      });
+      const text = document.createElement("span");
+      text.textContent = option.label;
+      if (option.description) { const small = document.createElement("small"); small.textContent = option.description; text.append(document.createElement("br"), small); }
+      label.append(input, text);
+      return { label, input };
+    });
+    const other = document.createElement("input");
+    other.type = "text";
+    other.placeholder = "Other answer";
+    other.setAttribute("aria-label", `Other answer to: ${q.question}`);
+    other.value = pick.other;
+    other.disabled = Boolean(ui.busy);
+    other.addEventListener("input", () => {
+      pick.other = other.value;
+      if (!q.multiSelect && other.value.trim()) { pick.labels = []; for (const { input } of inputs) input.checked = false; }
+      refresh();
+    });
+    set.append(...inputs.map(({ label }) => label), other);
+    return set;
+  });
+  const actions = document.createElement("div");
+  actions.className = "approval-actions";
+  send.type = "button";
+  send.className = "approve";
+  send.textContent = ui.busy === "allow" ? "Sending…" : "Send answers";
+  send.addEventListener("click", () => { const answers = questionAnswers(card.questions, picks); if (answers) answer("allow", answers); });
+  const skip = document.createElement("button");
+  skip.type = "button";
+  skip.className = "decline";
+  skip.textContent = ui.busy === "deny" ? "Skipping…" : "Skip";
+  skip.title = "Don't answer; Claude continues without your answers.";
+  skip.disabled = Boolean(ui.busy);
+  skip.addEventListener("click", () => answer("deny"));
+  refresh();
+  actions.append(send, skip);
+  const note = document.createElement("p");
+  note.className = "approval-status" + (ui.error ? " error" : "");
+  note.setAttribute("role", ui.error ? "alert" : "status");
+  note.textContent = ui.message || "";
+  return [...fields, actions, note];
 }
 
 function refreshFollowupButtons() {
@@ -892,6 +979,12 @@ function renderSkills() {
       });
       const text = document.createElement("span");
       text.textContent = skill.name + (always ? " · Pre-approved" : skill.description ? " — " + skill.description : "");
+      if (skill.members?.length) {
+        const family = document.createElement("small");
+        family.className = "skill-usage";
+        family.textContent = skillFamilyLine(skill);
+        text.append(document.createElement("br"), family);
+      }
       label.append(checkbox, text);
       list.append(label);
     }
@@ -963,11 +1056,16 @@ function skillUsage(skill) {
   return parts.join(" · ");
 }
 
+// A family is one skill that bundles several (server.mjs skillFamilies); same line as mobile/www/app.js.
+function skillFamilyLine(skill) {
+  return `Family · ${skill.members.length} skill${skill.members.length === 1 ? "" : "s"}: ${skill.members.join(", ")}`;
+}
+
 function renderApprovedSkills() {
   const list = $("approved-skills");
   list.replaceChildren();
   const query = $("approved-skill-search").value.trim().toLowerCase();
-  const matches = state.skills.filter((skill) => `${skill.category} ${skill.name} ${skill.description}`.toLowerCase().includes(query));
+  const matches = state.skills.filter((skill) => `${skill.category} ${skill.name} ${skill.description} ${(skill.members || []).join(" ")}`.toLowerCase().includes(query));
   if (!matches.length) { list.textContent = "No matching shared skills."; return; }
   for (const category of state.categories) {
     const skills = matches.filter((skill) => skill.category === category);
@@ -992,6 +1090,12 @@ function renderApprovedSkills() {
       const usage = document.createElement("small");
       usage.className = "skill-usage";
       usage.textContent = skillUsage(skill);
+      if (skill.members?.length) {
+        const family = document.createElement("small");
+        family.className = "skill-usage";
+        family.textContent = skillFamilyLine(skill);
+        description.append(document.createElement("br"), family);
+      }
       description.append(document.createElement("br"), usage);
       label.append(checkbox, description);
       if (skill.own) {

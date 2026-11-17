@@ -431,15 +431,46 @@ async function readSkillsMarkdown() {
   }
 }
 
-async function listSkills() {
+// A skill family is one catalog entry whose file lists its members under "## Child guidance" as
+// "- [name](relative/path.md)". The family is the one skill the catalog shows and sends; a member that is also
+// listed on its own is folded into it, and its id (selected or pre-approved) means the family.
+export function skillFamilies(skills, resolve = (file) => path.resolve(path.dirname(SKILLS_FILE), file)) {
+  const familyOfFile = new Map();
+  const families = skills.map((skill) => {
+    const at = skill.file ? (skill.instructions || "").search(/^##\s+Child guidance\s*$/m) : -1;
+    if (at < 0) return skill;
+    const base = path.dirname(resolve(skill.file));
+    const members = [...skill.instructions.slice(at).matchAll(/^\s*-\s+\[([^\]]+)\]\(([^)]+)\)/gm)].map((match) => {
+      const file = path.resolve(base, match[2]);
+      familyOfFile.set(file.toLowerCase(), skill.id);
+      return { name: match[1].trim(), file };
+    });
+    return { ...skill, members };
+  });
+  const familyOf = new Map();
+  for (const skill of families) {
+    const family = !skill.members && skill.file && familyOfFile.get(resolve(skill.file).toLowerCase());
+    if (family) familyOf.set(skill.id, family);
+  }
+  return { skills: families.filter((skill) => !familyOf.has(skill.id)), familyOf };
+}
+const foldSkillIds = (ids, familyOf) => [...new Set(ids.map((id) => familyOf.get(id) || id))];
+
+async function skillCatalog() {
   const parsed = parseSkills(await readSkillsMarkdown());
-  const skills = await Promise.all(parsed.map(async (skill) => ({ ...skill, instructions: await readSkillInstructions(skill) })));
+  return skillFamilies(await Promise.all(parsed.map(async (skill) => ({ ...skill, instructions: await readSkillInstructions(skill) }))));
+}
+
+async function listSkills() {
+  const { skills } = await skillCatalog();
   const stats = await skillStats();
   return {
     categories: [...new Set([...SKILL_CATEGORIES, ...skills.map((skill) => skill.category)])],
-    skills: skills.map(({ id, category, name, description, instructions, file }) => ({
+    skills: skills.map(({ id, category, name, description, instructions, file, members }) => ({
       id, category, name, size: instructions.length, ...(stats[id] ? { stats: stats[id] } : {}),
-      ...(file && path.resolve(path.dirname(SKILLS_FILE), file).startsWith(USER_SKILLS_DIR + path.sep) ? { own: true } : {}),
+      ...(members ? { members: members.map((member) => member.name) } : {}),
+      // A family isn't deleted from here: that would drop all its members from the catalog.
+      ...(!members && file && path.resolve(path.dirname(SKILLS_FILE), file).startsWith(USER_SKILLS_DIR + path.sep) ? { own: true } : {}),
       description: description || instructions.split(/\r?\n/).find((line) => line.trim() && !line.startsWith("---") && !line.startsWith("name:"))?.replace(/^>\s*/, "").replace(/^#+\s*/, "").slice(0, 160) || "",
     })),
   };
@@ -522,9 +553,10 @@ async function selectedSkills(ids) {
   const settings = await readSettings();
   const limit = Number.isSafeInteger(settings.skillsLimit) ? settings.skillsLimit : -1;
   if (limit === 0) return [];
-  const requested = [...new Set([...(Array.isArray(settings.preapprovedSkillIds) ? settings.preapprovedSkillIds : []), ...(Array.isArray(ids) ? ids : [])].filter((id) => typeof id === "string"))];
+  const { skills, familyOf } = await skillCatalog();
+  const requested = foldSkillIds([...(Array.isArray(settings.preapprovedSkillIds) ? settings.preapprovedSkillIds : []), ...(Array.isArray(ids) ? ids : [])].filter((id) => typeof id === "string"), familyOf);
   const selected = new Set(limit === -1 ? requested : requested.slice(0, limit));
-  return selected.size ? parseSkills(await readSkillsMarkdown()).filter((skill) => selected.has(skill.id)) : [];
+  return selected.size ? skills.filter((skill) => selected.has(skill.id)) : [];
 }
 
 // Per-skill usage (%LOCALAPPDATA%\LocalAgentRouterData\skill-use.json). A skill counts as used when the provider
@@ -597,7 +629,8 @@ async function tokenUse() {
 // ponytail: path match on printed tool calls; misses a CLI that reads a skill without printing its path.
 export function skillUseWatcher(skills) {
   const norm = (text) => String(text).toLowerCase().replace(/\\+/g, "/");
-  const targets = skills.filter((skill) => skill.file).map((skill) => {
+  // A family counts as used when its own file or any member's file is opened.
+  const targets = skills.flatMap((skill) => [skill.file, ...(skill.memberFiles || [])].filter(Boolean).map((file) => ({ id: skill.id, file }))).map((skill) => {
     const file = norm(skill.file);
     const match = /\/skill\.md$/.test(file) ? file.slice(0, -"skill.md".length) : file;
     return { id: skill.id, match, indexLine: new RegExp(`— ${match.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[^\\n]*`, "g") };
@@ -607,7 +640,7 @@ export function skillUseWatcher(skills) {
   return {
     used,
     see(text) {
-      if (used.size === targets.length) return;
+      if (used.size === skills.length) return;
       let window = tail + norm(text);
       for (const target of targets) window = window.replace(target.indexLine, "");
       tail = window.slice(-600); // a path split across two chunks still matches
@@ -1887,47 +1920,78 @@ function emitRun(run, event, value) {
 // Cards read like Claude desktop's prompts: the plan, command or file instead of the tool's raw JSON input.
 export function approvalTitle(tool, input = {}) {
   if (tool === "ExitPlanMode") return "Approve this plan?";
+  if (approvalQuestions(tool, input)) return "Claude has a question";
   if (/^(Bash|PowerShell)$/.test(tool)) return `Run this ${tool === "Bash" ? "command" : "PowerShell command"}?`;
   if (/^(Write|Edit|MultiEdit|NotebookEdit)$/.test(tool) && (input.file_path || input.notebook_path)) return `${tool === "Write" ? "Write" : "Edit"} ${String(input.file_path || input.notebook_path).split(/[\\/]/).pop()}?`;
   return `Allow ${tool || "this tool"}?`;
 }
 export function approvalDetail(tool, input = {}) {
+  const questions = approvalQuestions(tool, input);
   const text = tool === "ExitPlanMode" && typeof input.plan === "string" ? input.plan
+    : questions ? questions.map((q) => [q.question, ...q.options.map((o) => `- ${o.label}${o.description ? `: ${o.description}` : ""}`)].join("\n")).join("\n\n")
     : typeof input.command === "string" ? [input.command, input.description].filter(Boolean).join("\n\n")
     : input.file_path || input.notebook_path ? [input.file_path || input.notebook_path, input.content ?? input.new_string ?? input.new_source ?? ""].join("\n\n")
     : JSON.stringify(input, null, 2);
   return String(text).slice(0, 4000);
 }
 
+// Claude Code's AskUserQuestion arrives as a tool approval. Its questions go on the card so the user answers them;
+// the answers return as the tool's `answers` input ({ [question]: "label" or "label, label" or free text}).
+export function approvalQuestions(tool, input = {}) {
+  if (tool !== "AskUserQuestion" || !Array.isArray(input.questions)) return null;
+  const questions = input.questions.filter((q) => q && typeof q.question === "string" && q.question.trim()).slice(0, 8).map((q) => ({
+    question: q.question.slice(0, 1000), header: typeof q.header === "string" ? q.header.slice(0, 40) : "", multiSelect: q.multiSelect === true,
+    options: (Array.isArray(q.options) ? q.options : []).filter((o) => o && typeof o.label === "string").slice(0, 8)
+      .map((o) => ({ label: o.label.slice(0, 200), ...(typeof o.description === "string" && o.description ? { description: o.description.slice(0, 500) } : {}) })),
+  }));
+  return questions.length ? questions : null;
+}
+
 // A provider asked to use a tool. The card goes to every page following the run; POST /api/runs/<id>/approvals/<card>
-// answers it with "always", "allow" or "deny". Stopping the run denies it. Resolves to the decision.
+// answers it with "always", "allow" or "deny". Stopping the run denies it. Resolves to the decision, or to
+// { decision: "allow", answers } for a question card.
 // canAlwaysAllow is true only when the provider offered a rule it saves in its own settings.
 function askApproval(run, { tool, input, reason, canAlwaysAllow = false }) {
   if (run.controller.signal.aborted) return Promise.resolve("deny");
-  const card = { id: randomUUID(), tool, title: approvalTitle(tool, input), reason, canAlwaysAllow: Boolean(canAlwaysAllow), detail: approvalDetail(tool, input), askedAt: new Date().toISOString() };
+  const questions = approvalQuestions(tool, input);
+  const card = { id: randomUUID(), tool, title: approvalTitle(tool, input), reason, canAlwaysAllow: Boolean(canAlwaysAllow) && !questions, detail: approvalDetail(tool, input), ...(questions ? { questions } : {}), askedAt: new Date().toISOString() };
   return new Promise((resolve) => {
     const decline = () => settle("deny");
-    const settle = (decision) => {
+    const settle = (decision, answers) => {
       if (!run.approvals.delete(card.id)) return;
       run.controller.signal.removeEventListener("abort", decline);
       emitRun(run, "approved", { id: card.id, decision, allow: decision !== "deny" });
-      resolve(decision);
+      resolve(answers ? { decision, answers } : decision);
     };
     run.approvals.set(card.id, { card, settle });
     run.controller.signal.addEventListener("abort", decline, { once: true });
     emitRun(run, "approval", card);
-    notify(run, "approval", `${tool || "A tool"} is waiting for Always allow, Allow or Deny.`, card.id);
+    notify(run, "approval", questions ? `Claude has a question: ${questions[0].question}` : `${tool || "A tool"} is waiting for Always allow, Allow or Deny.`, card.id);
   });
 }
 
 // Body: { decision: "always" | "allow" | "deny" }; { allow: true | false } still works for older clients.
 // "always" on a card the provider can't save a rule for is refused (409) and the card stays open.
+// A question card needs { decision: "allow", answers: { [question]: text } } with every question answered;
+// "deny" skips the questions.
 export function answerApproval(pending, data) {
   if (!pending) return { status: 404, body: { error: "That approval was already answered or the run ended." } };
   const decision = typeof data?.decision === "string" ? data.decision : typeof data?.allow === "boolean" ? (data.allow ? "allow" : "deny") : "";
   if (!["always", "allow", "deny"].includes(decision)) return { status: 400, body: { error: 'Send decision: "always", "allow" or "deny".' } };
   if (decision === "always" && !pending.card.canAlwaysAllow) {
     return { status: 409, body: { error: "This provider can't save a rule for this request. Choose Allow or Deny.", unsupported: true } };
+  }
+  const questions = pending.card.questions;
+  if (questions && decision !== "deny") {
+    const given = data?.answers && typeof data.answers === "object" ? data.answers : {};
+    const answers = {};
+    for (const { question } of questions) {
+      const text = typeof given[question] === "string" ? given[question].trim().slice(0, 2000) : "";
+      if (!text) return { status: 400, body: { error: "Answer every question, or choose Skip." } };
+      answers[question] = text;
+    }
+    pending.settle(decision, answers);
+    return { status: 200, body: { id: pending.card.id, decision, allow: true, answered: true } };
   }
   pending.settle(decision);
   return { status: 200, body: { id: pending.card.id, decision, allow: decision !== "deny" } };
@@ -2035,7 +2099,8 @@ async function handleChat(data, options = {}) {
   // For per-skill stats: which skills went out, and where their files are (skillUseWatcher spots them being read).
   data.sentSkills = (await selectedSkills(data.skillIds)).map((skill) => {
     const file = skill.file && path.resolve(path.dirname(SKILLS_FILE), skill.file);
-    return { id: skill.id, file: file && file.startsWith(SKILLS_DIR + path.sep) ? file : "" };
+    const inside = (target) => target && target.startsWith(SKILLS_DIR + path.sep);
+    return { id: skill.id, file: inside(file) ? file : "", memberFiles: (skill.members || []).map((member) => member.file).filter(inside) };
   });
   data.sentSkillIds = data.sentSkills.map((skill) => skill.id);
   const localSkillText = skillText;
@@ -2486,7 +2551,7 @@ async function handleRequest(req, res, fromRemote = false) {
           [`${role}Fallback`, saved[`${role}Fallback`] || (oldFallback ? `${fallbackProvider}::${oldFallback}` : "")],
         ];
       }));
-      return json(res, 200, { projectsRoot: PROJECTS_ROOT, colibriModel: saved.colibriModel || COLIBRI_MODEL, localBaseUrl: COLIBRI_BASE_URL, configured: Boolean(saved.configured), setupComplete: Boolean(saved.setupComplete || saved.configured), theme: saved.theme || "system", palette: saved.palette || "harbor", skillsLimit, shortcut: saved.shortcut ?? "Control+Shift+Space", autoMergeImports: Boolean(saved.autoMergeImports), localOnly: Boolean(saved.localOnly), claudeDefaultMode: await claudeDefaultMode(), ...routing, preapprovedSkillIds: Array.isArray(saved.preapprovedSkillIds) ? saved.preapprovedSkillIds : [] });
+      return json(res, 200, { projectsRoot: PROJECTS_ROOT, colibriModel: saved.colibriModel || COLIBRI_MODEL, localBaseUrl: COLIBRI_BASE_URL, configured: Boolean(saved.configured), setupComplete: Boolean(saved.setupComplete || saved.configured), theme: saved.theme || "system", palette: saved.palette || "harbor", skillsLimit, shortcut: saved.shortcut ?? "Control+Shift+Space", autoMergeImports: Boolean(saved.autoMergeImports), localOnly: Boolean(saved.localOnly), claudeDefaultMode: await claudeDefaultMode(), ...routing, preapprovedSkillIds: Array.isArray(saved.preapprovedSkillIds) ? foldSkillIds(saved.preapprovedSkillIds, (await skillCatalog()).familyOf) : [] });
     }
     if (req.method === "POST" && url.pathname === "/api/settings") {
       const data = await bodyJson(req);
@@ -2508,8 +2573,9 @@ async function handleRequest(req, res, fromRemote = false) {
       if (shortcut && !/^(?:(?:CommandOrControl|Command|Control|Ctrl|Alt|Option|Shift|Super|Meta)\+)+(?:[A-Z0-9]|F(?:[1-9]|1[0-2])|Space|Tab|Escape|Backspace|Delete|Insert|Home|End|PageUp|PageDown|Up|Down|Left|Right)$/.test(shortcut)) return json(res, 400, { error: "Choose a valid keyboard shortcut with at least one modifier." });
       const requestedSkills = data.preapprovedSkillIds === undefined ? previous.preapprovedSkillIds || [] : data.preapprovedSkillIds;
       if (!Array.isArray(requestedSkills) || requestedSkills.some((id) => typeof id !== "string")) return json(res, 400, { error: "Choose valid shared skills." });
-      const availableSkills = new Set((await listSkills()).skills.map((skill) => skill.id));
-      const preapprovedSkillIds = [...new Set(requestedSkills)].filter((id) => availableSkills.has(id));
+      const catalog = await skillCatalog();
+      const availableSkills = new Set(catalog.skills.map((skill) => skill.id));
+      const preapprovedSkillIds = foldSkillIds(requestedSkills, catalog.familyOf).filter((id) => availableSkills.has(id));
       if (globalThis.setRouterShortcut && !globalThis.setRouterShortcut(shortcut)) return json(res, 409, { error: "Windows could not register that shortcut. Choose a different key combination." });
       PROJECTS_ROOT = root;
       COLIBRI_MODEL = model;

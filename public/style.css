@@ -485,6 +485,11 @@ html[data-theme="dark"] .setup-missing { background: none; }
 .approval-actions button:disabled { opacity: .55; cursor: not-allowed; }
 .approval-card[aria-busy="true"] .approval-actions button:disabled { cursor: progress; }
 .approval-actions button:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+.approval-question { margin: 0 0 8px; border: 0; padding: 0; font-size: 12px; }
+.approval-question legend { margin-bottom: 4px; font-weight: 650; }
+.approval-option { display: flex; gap: 6px; align-items: flex-start; margin: 2px 0; cursor: pointer; }
+.approval-option small { color: var(--muted); }
+.approval-question input[type="text"] { width: 100%; margin-top: 4px; border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; font: inherit; background: var(--surface); color: inherit; }
 .approval-status { min-height: 0; margin: 6px 0 0 !important; }
 .approval-status:empty { display: none; }
 .approval-status.error { color: var(--red) !important; }

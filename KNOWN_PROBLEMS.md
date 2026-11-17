@@ -44,6 +44,17 @@ Numbers match the old `UPGRADE_LIST.md`, which earlier `PROJECT_STATUS.md` entri
 
 General goals from the old list (secure links between components, Tailscale compatibility, phone performance, error handling and logging, room to grow) apply to every item above.
 
+## Polish backlog (found by the UI test bot, 0.33.0, 2026-11-16)
+
+Not started. Pick these up after the 0.33.0 installer is built and tested.
+
+- [ ] The output panel shows raw Codex messages with visible `\r\n`. Show only the readable text.
+- [ ] The router's own Codex route-planning calls are imported back as sessions ("You are the route s…"). Skip them on import (`import-sessions.mjs`).
+- [ ] The session list stops at 40% of the sidebar height. Let it fill the sidebar.
+- [ ] Send is enabled while the message box is empty. Disable it until there is text or an attachment.
+- [ ] Settings → AI tools doesn't show Ruflo or Node.js. Show their status there.
+- [ ] An All Projects thread shows "Full access" next to the "read-only" footer. Explain why, or make the two agree.
+
 ## Remaining acceptance
 
 - [ ] Automatic server discovery over the supported remote network.

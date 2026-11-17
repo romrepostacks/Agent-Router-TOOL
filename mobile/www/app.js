@@ -761,7 +761,8 @@ async function loadSkills() {
   state.claudeDefaultMode = settings.claudeDefaultMode || "default";
   state.preapproved = (settings.preapprovedSkillIds || []).filter((id) => available.has(id));
   const saved = JSON.parse(localStorage.getItem("ar-skills") || "[]");
-  state.selectedSkills = (Array.isArray(saved) ? saved : []).filter((id) => available.has(id) && !state.preapproved.includes(id));
+  // A saved member of a skill family means the family (server.mjs skillFamilies).
+  state.selectedSkills = [...new Set((Array.isArray(saved) ? saved : []).map((id) => result.familyOf?.[id] || id))].filter((id) => available.has(id) && !state.preapproved.includes(id));
 }
 const k = (n) => n >= 1000 ? `${(n / 1000).toFixed(n >= 10_000 ? 0 : 1)}k` : String(n);
 
@@ -917,7 +918,7 @@ async function followRun({ sessionId, projectId, title, requestData, attachmentN
       }
       if (event === "approval") {
         run.approvals = [...run.approvals, value];
-        notify({ kind: "approval", sessionId, title: `Allow ${value.tool}?`, body: title, card: value });
+        notify({ kind: "approval", sessionId, title: value.title || `Allow ${value.tool}?`, body: title, card: value });
       }
       if (event === "approved") {
         run.approvals = run.approvals.filter((card) => card.id !== value.id);

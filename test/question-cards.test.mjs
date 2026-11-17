@@ -28,6 +28,11 @@ test("an AskUserQuestion card carries its questions and options", () => {
   assert.match(approvalDetail("AskUserQuestion", INPUT), /Which database\?\n- Postgres: Managed\n- SQLite/);
 });
 
+test("a long question keeps its full text, since Claude reads the answer back by it", () => {
+  const question = `${"x".repeat(1500)}?`;
+  assert.equal(approvalQuestions("AskUserQuestion", { questions: [{ question, options: [] }] })[0].question, question);
+});
+
 test("a question card needs every answer, or Skip", () => {
   const settled = [];
   const pending = { card: { id: "q1", canAlwaysAllow: false, questions: approvalQuestions("AskUserQuestion", INPUT) }, settle: (...args) => settled.push(args) };

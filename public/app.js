@@ -1004,7 +1004,8 @@ async function loadSkills() {
   state.pendingSkillsLimit = state.skillsLimit;
   state.preapprovedSkillIds = settings.preapprovedSkillIds.filter((id) => available.has(id));
   state.pendingPreapprovedSkillIds = [...state.preapprovedSkillIds];
-  state.selectedSkills = state.selectedSkills.filter((id) => available.has(id) && !state.preapprovedSkillIds.includes(id)).slice(0, taskSkillSlots());
+  // A saved member of a skill family means the family (server.mjs skillFamilies).
+  state.selectedSkills = [...new Set(state.selectedSkills.map((id) => result.familyOf?.[id] || id))].filter((id) => available.has(id) && !state.preapprovedSkillIds.includes(id)).slice(0, taskSkillSlots());
   state.theme = settings.theme || "system";
   state.palette = settings.palette || "harbor";
   state.settingsRoot = settings.projectsRoot;

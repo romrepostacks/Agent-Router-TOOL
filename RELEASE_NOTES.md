@@ -2,6 +2,7 @@
 
 - When Claude asks you something (its AskUserQuestion tool, including under Ruflo), the card now shows each question with its answer choices and an Other answer, on the desktop and the phone. Your answers go back to Claude; before, the card only offered Always allow / Allow / Deny and Claude never got an answer.
 - Skill families: a skill whose file lists members under `## Child guidance` is one skill in Shared skills, with its member names shown under it and included in search. Members also listed on their own fold into the family, including saved selections and approvals. Using any member counts as using the family.
+- Fixed: answers to very long questions, "Denied" shown for answered questions, the phone's question notification title, saved skill picks of family members being dropped, and families being deletable through the API.
 
 # v0.33.0 installer and UI
 

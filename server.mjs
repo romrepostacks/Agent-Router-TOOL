@@ -462,9 +462,11 @@ async function skillCatalog() {
 }
 
 async function listSkills() {
-  const { skills } = await skillCatalog();
+  const { skills, familyOf } = await skillCatalog();
   const stats = await skillStats();
   return {
+    // Member id → family id, so a phone or window can carry a saved member selection over to its family.
+    familyOf: Object.fromEntries(familyOf),
     categories: [...new Set([...SKILL_CATEGORIES, ...skills.map((skill) => skill.category)])],
     skills: skills.map(({ id, category, name, description, instructions, file, members }) => ({
       id, category, name, size: instructions.length, ...(stats[id] ? { stats: stats[id] } : {}),
@@ -517,6 +519,7 @@ async function removeSkill(id) {
   const skill = parseSkills(await readSkillsMarkdown()).find((entry) => entry.id === id);
   const file = skill?.file && path.resolve(path.dirname(SKILLS_FILE), skill.file);
   if (!file || !file.startsWith(USER_SKILLS_DIR + path.sep)) return { status: 404, body: { error: "Only skills you added in the app can be deleted here." } };
+  if ((await skillCatalog()).skills.some((entry) => entry.id === id && entry.members)) return { status: 400, body: { error: "Skill families can't be deleted here." } };
   let category = "";
   const lines = (await readSkillsMarkdown()).replace(/\r\n/g, "\n").split("\n").filter((line) => {
     if (/^##\s+/.test(line) && !/^###\s+/.test(line)) category = line.replace(/^##\s+/, "").trim();
@@ -1492,7 +1495,7 @@ async function runProviderCall(choice, prompt, project, kind, options = {}) {
       onApproval: async (card, extra) => {
         activity(`? ${card.tool} needs approval\n`);
         const decision = options.onApproval ? await options.onApproval({ ...card, ...extra }) : "deny";
-        activity(`${{ always: "✓ Always allowed (saved in Claude Code's settings)", allow: "✓ Allowed once" }[decision] || "✕ Denied"}: ${card.tool}\n`);
+        activity(`${decision?.answers ? "✓ Answered" : { always: "✓ Always allowed (saved in Claude Code's settings)", allow: "✓ Allowed once" }[decision] || "✕ Denied"}: ${card.tool}\n`);
         return decision;
       },
     });
@@ -1940,7 +1943,7 @@ export function approvalDetail(tool, input = {}) {
 export function approvalQuestions(tool, input = {}) {
   if (tool !== "AskUserQuestion" || !Array.isArray(input.questions)) return null;
   const questions = input.questions.filter((q) => q && typeof q.question === "string" && q.question.trim()).slice(0, 8).map((q) => ({
-    question: q.question.slice(0, 1000), header: typeof q.header === "string" ? q.header.slice(0, 40) : "", multiSelect: q.multiSelect === true,
+    question: q.question /* untruncated: Claude reads the answer back by this exact text */, header: typeof q.header === "string" ? q.header.slice(0, 40) : "", multiSelect: q.multiSelect === true,
     options: (Array.isArray(q.options) ? q.options : []).filter((o) => o && typeof o.label === "string").slice(0, 8)
       .map((o) => ({ label: o.label.slice(0, 200), ...(typeof o.description === "string" && o.description ? { description: o.description.slice(0, 500) } : {}) })),
   }));

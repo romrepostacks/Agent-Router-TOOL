@@ -1,3 +1,7 @@
+# v0.34.1 skill family fix
+
+- Fixed: a skill family disappeared from Shared skills when one of its members, listed on its own, had the same name in the same category.
+
 # v0.34.0 question cards and skill families
 
 - When Claude asks you something (its AskUserQuestion tool, including under Ruflo), the card now shows each question with its answer choices and an Other answer, on the desktop and the phone. Your answers go back to Claude; before, the card only offered Always allow / Allow / Deny and Claude never got an answer.

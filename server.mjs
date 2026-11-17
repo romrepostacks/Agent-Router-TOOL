@@ -447,12 +447,16 @@ export function skillFamilies(skills, resolve = (file) => path.resolve(path.dirn
     });
     return { ...skill, members };
   });
+  // Folded members are dropped by entry, not id: a member can share its family's id (same name, same category).
   const familyOf = new Map();
+  const folded = new Set();
   for (const skill of families) {
     const family = !skill.members && skill.file && familyOfFile.get(resolve(skill.file).toLowerCase());
-    if (family) familyOf.set(skill.id, family);
+    if (!family) continue;
+    folded.add(skill);
+    if (family !== skill.id) familyOf.set(skill.id, family);
   }
-  return { skills: families.filter((skill) => !familyOf.has(skill.id)), familyOf };
+  return { skills: families.filter((skill) => !folded.has(skill)), familyOf };
 }
 const foldSkillIds = (ids, familyOf) => [...new Set(ids.map((id) => familyOf.get(id) || id))];
 

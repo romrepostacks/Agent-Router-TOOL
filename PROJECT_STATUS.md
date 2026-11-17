@@ -1,4 +1,9 @@
-# Current change (v0.34.0): question cards, skill families
+# Current change (v0.34.1): family hidden by a same-named member
+
+- `skillFamilies()` folded members by id, so a member listed on its own with the family's name in the family's category (same id) hid the family too (caveman, comfy in the live catalog). Members are now dropped by entry, and no self-mapping goes into `familyOf`. Test added in `test/skill-families.test.mjs`.
+- Next: push so Actions builds the 0.34.1 APK/IPA; check the 0.34.0 runs passed (`gh run list`); answer a live question card.
+
+# Previous change (v0.34.0): question cards, skill families
 
 - Question cards: Claude Code's `AskUserQuestion` arrived as a plain "Allow AskUserQuestion?" card with raw JSON, and Allow passed the input back unchanged, so Claude (direct or under Ruflo) never got an answer. Now `approvalQuestions()` in `server.mjs` puts the questions on the card (`card.questions`), `answerApproval()` requires an answer per question (`answers`) or `deny` (Skip), and `runClaudeStream` returns them as `updatedInput.answers`. Desktop and phone render options (radio or checkbox), an Other answer, Send answers and Skip (`questionCard()`, `questionAnswers()` in both app.js copies).
 - Skill families: `skillFamilies()` treats a skill whose file has `## Child guidance` links as one family skill with `members`; standalone catalog entries for its members are folded in (`foldSkillIds()` for selections, pre-approvals, settings load/save). Families show member names in Shared skills (desktop and phone) and search; Delete is hidden for them. The usage watcher counts a member file being read as family use.

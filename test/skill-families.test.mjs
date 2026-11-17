@@ -34,3 +34,13 @@ test("CRLF files and case-different paths fold into the family", () => {
   assert.deepEqual(skills[0].members.map((member) => member.name), ["a", "b"]);
   assert.equal(familyOf.get("x/a"), "x/fam");
 });
+
+test("a member with the family's own name and category doesn't hide the family", () => {
+  const resolve = (file) => path.resolve(root, file);
+  const family = { id: "x/fam", name: "fam", file: "skills/fam/SKILL.md", instructions: "# fam\n\n## Child guidance\n\n- [fam](../fam.md)\n" };
+  const member = { id: "x/fam", name: "fam", file: "skills/fam.md", instructions: "fam" };
+  const { skills, familyOf } = skillFamilies([family, member], resolve);
+  assert.equal(skills.length, 1);
+  assert.equal(skills[0], skills.find((skill) => skill.members));
+  assert.equal(familyOf.size, 0);
+});

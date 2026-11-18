@@ -1,3 +1,7 @@
+# v0.36.1 MCP servers on Windows
+
+- Fixed: MCP servers started with `npx` (or another `.cmd` command) now start in Claude Code, Codex, Copilot and Ruflo runs on Windows. The router runs them through `cmd /c`.
+
 # v0.36.0 MCP servers and free providers
 
 - Settings → MCP servers: add your own MCP servers (a command or an HTTP address). Claude Code, Codex, Copilot and Ruflo runs get them on top of their own MCP settings, and still ask before using their tools.

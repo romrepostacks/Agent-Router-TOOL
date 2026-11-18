@@ -17,7 +17,7 @@ test("the project's skills.md lists each family once and every member exists", (
     .map(([, name, file]) => ({ id: name, name, file, instructions: readFileSync(resolve(file), "utf8") }));
   const { skills: shown, familyOf } = skillFamilies(skills, resolve);
   const families = shown.filter((skill) => skill.members);
-  assert.deepEqual(families.map((skill) => skill.name).sort(), ["caveman", "comfy", "compliance", "context-mode", "replica", "static-analysis"]);
+  assert.deepEqual(families.map((skill) => skill.name).sort(), ["caveman", "comfy", "compliance", "context-mode", "rea", "replica","static-analysis"]);
   for (const family of families) for (const member of family.members) assert.ok(existsSync(member.file), `${family.name}: ${member.file}`);
   assert.equal(familyOf.size, 0, `listed on their own: ${[...familyOf.keys()]}`);
   // Every imported file belongs to exactly one family or is listed on its own.

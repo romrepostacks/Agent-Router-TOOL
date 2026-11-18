@@ -1,4 +1,12 @@
-# Current change (v0.36.0): phone app version follows the desktop version
+# Current change (v0.36.1): REA MCP server and skill family
+
+- `mcp-servers.mjs`: new `windowsLaunch()`. On Windows, a stdio command with no extension or a `.cmd`/`.bat` one (`npx`, `uvx`) is sent to Claude Code, Codex, Copilot and Ruflo as `cmd /c <command> <args>`. Claude Code's docs require this wrapper for `npx`. `.exe` paths and `cmd` itself are left alone. Args with cmd metacharacters (`& | < > ^ % ! " ( )`) aren't wrapped, because cmd would parse them again. Tests are in `test/mcp-servers.test.mjs`.
+- Project-local catalog (`skills.md`, gitignored): added the `rea` family under Research & Analysis. It uses `skills/imported/rea-agents-6-9-0/reverse-engineer-anything/SKILL.md` from github.com/morluto/rea at tag `rea-agents-6.9.0`, so it matches the pinned server. The file starts with an attribution line and ends with `## Child guidance`, which lists the 8 `references/*.md` files. There are now seven families. REA's maintainer-only skills (`rea-tool-design`, `rea-changelog-update`, `rea-ci-tests-audit`, `rea-analysis-optimization`) were left out.
+- The MCP entry is not saved, because settings are outside the project folder. Add it in Settings → MCP servers: name `rea`, command `npx`, args `-y`, `rea-agents@6.9.0`, `mcp`. REA needs Node 22.23.4+ or 24.22.1+ (this PC has 24.22.1). The live catalog in `%LOCALAPPDATA%\LocalAgentRouterData` was not changed. Copy `skills.md` and `skills/imported/rea-agents-6-9-0/` there.
+- REA was not started here, because `npx` would download and run it. `npm test` passes (126).
+- Next: add the `rea` server in Settings and run one Claude Code task and one Codex task with the `rea` skill selected. Push so Actions builds the APK and IPA.
+
+# Previous change (v0.36.0): phone app version follows the desktop version
 
 - `mobile/package.json` was stuck at 0.34.1, so the v0.36.0 release carried `AgentRouter-0.34.1-*` files. The Android and iOS workflows now set the mobile version from the root `package.json` before building (`npm pkg set version=...`) and also run when the root `package.json` changes.
 - `mobile/scripts/build.mjs` derives the build number from the version (0.36.0 -> 3600) and writes it as Android `versionCode` and iOS `CURRENT_PROJECT_VERSION`; before, `versionCode` stayed 1, so Android couldn't install a newer APK over an older one.

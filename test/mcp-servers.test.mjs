@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { normalizeMcpServers, claudeMcpArgs, codexMcpArgs, copilotMcpArgs } from "../mcp-servers.mjs";
+import { normalizeMcpServers, claudeMcpArgs, codexMcpArgs, copilotMcpArgs, windowsLaunch } from "../mcp-servers.mjs";
 import { rufloArgs } from "../ruflo-runner.mjs";
 
 const servers = normalizeMcpServers([
@@ -16,12 +16,15 @@ test("pass-through MCP servers are validated", () => {
 });
 
 test("each CLI gets the servers in its own format", () => {
+  const memory = process.platform === "win32"
+    ? { command: "cmd", args: ["/c", "npx", "-y", "@modelcontextprotocol/server-memory"] }
+    : { command: "npx", args: ["-y", "@modelcontextprotocol/server-memory"] };
   const claude = JSON.parse(claudeMcpArgs(servers)[1]).mcpServers;
   assert.deepEqual(claude.docs, { type: "http", url: "https://example.com/mcp" });
-  assert.equal(claude.memory.command, "npx");
+  assert.deepEqual(claude.memory, memory);
   const copilot = JSON.parse(copilotMcpArgs(servers)[1]).mcpServers;
-  assert.equal(copilot.memory.type, "local");
-  assert.deepEqual(codexMcpArgs(servers), ["-c", 'mcp_servers.memory.command="npx"', "-c", 'mcp_servers.memory.args=["-y","@modelcontextprotocol/server-memory"]', "-c", 'mcp_servers.docs.url="https://example.com/mcp"']);
+  assert.deepEqual(copilot.memory, { type: "local", ...memory, tools: ["*"] });
+  assert.deepEqual(codexMcpArgs(servers), ["-c", `mcp_servers.memory.command=${JSON.stringify(memory.command)}`, "-c", `mcp_servers.memory.args=${JSON.stringify(memory.args)}`, "-c", 'mcp_servers.docs.url="https://example.com/mcp"']);
   assert.deepEqual([claudeMcpArgs([]), copilotMcpArgs([]), codexMcpArgs([])], [[], [], []]);
 });
 
@@ -30,4 +33,13 @@ test("Ruflo keeps its own server alongside pass-through ones", () => {
   const config = JSON.parse(args[args.indexOf("--mcp-config") + 1]).mcpServers;
   assert.deepEqual(Object.keys(config).sort(), ["memory", "ruflo"]);
   assert.equal(config.ruflo.command, "node");
+});
+
+test("Windows runs npx-style servers through cmd /c", () => {
+  const rea = { command: "npx", args: ["-y", "rea-agents@6.9.0", "mcp"] };
+  assert.deepEqual(windowsLaunch(rea), { command: "cmd", args: ["/c", "npx", "-y", "rea-agents@6.9.0", "mcp"] });
+  assert.deepEqual(windowsLaunch({ command: "C:/tools/uvx.CMD", args: [] }), { command: "cmd", args: ["/c", "C:/tools/uvx.CMD"] });
+  for (const kept of [{ command: "C:/nodejs/node.exe", args: ["rea.mjs", "mcp"] }, { command: "cmd", args: ["/c", "npx"] }, { command: "npx", args: ["https://x.test/?a=1&b=2"] }]) {
+    assert.deepEqual(windowsLaunch(kept), kept);
+  }
 });

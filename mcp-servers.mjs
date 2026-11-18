@@ -27,19 +27,31 @@ export function normalizeMcpServers(list) {
   });
 }
 
+// Windows: npx, npm, uvx and other .cmd shims can't be started directly by Claude Code (its docs require `cmd /c`)
+// or by a plain spawn, so a bare name or .cmd/.bat runs through cmd.exe. Args with cmd metacharacters stay
+// unwrapped, since cmd would re-read them; .exe paths and cmd itself are left alone.
+export function windowsLaunch({ command, args }) {
+  const wrap = !/^cmd(\.exe)?$/i.test(command) && (!/\.[a-z0-9]+$/i.test(command) || /\.(cmd|bat)$/i.test(command))
+    && !args.some((arg) => /[&|<>^%!"()]/.test(arg));
+  return wrap ? { command: "cmd", args: ["/c", command, ...args] } : { command, args };
+}
+const launch = (s) => process.platform === "win32" ? windowsLaunch(s) : { command: s.command, args: s.args };
+
 // Claude Code's --mcp-config shape (also used by Ruflo's host, merged with its own server).
 export function claudeMcpServers(servers = []) {
-  return Object.fromEntries(servers.map((s) => [s.name, s.type === "http" ? { type: "http", url: s.url } : { command: s.command, args: s.args }]));
+  return Object.fromEntries(servers.map((s) => [s.name, s.type === "http" ? { type: "http", url: s.url } : launch(s)]));
 }
 
 export const claudeMcpArgs = (servers = []) => servers.length ? ["--mcp-config", JSON.stringify({ mcpServers: claudeMcpServers(servers) })] : [];
 
 // Copilot CLI: --additional-mcp-config adds to ~/.copilot/mcp-config.json for this run.
 export const copilotMcpArgs = (servers = []) => servers.length ? ["--additional-mcp-config", JSON.stringify({
-  mcpServers: Object.fromEntries(servers.map((s) => [s.name, s.type === "http" ? { type: "http", url: s.url, tools: ["*"] } : { type: "local", command: s.command, args: s.args, tools: ["*"] }])),
+  mcpServers: Object.fromEntries(servers.map((s) => [s.name, s.type === "http" ? { type: "http", url: s.url, tools: ["*"] } : { type: "local", ...launch(s), tools: ["*"] }])),
 })] : [];
 
 // Codex: -c overrides of mcp_servers.<name>. JSON strings and arrays are valid TOML values.
-export const codexMcpArgs = (servers = []) => servers.flatMap((s) => s.type === "http"
-  ? ["-c", `mcp_servers.${s.name}.url=${JSON.stringify(s.url)}`]
-  : ["-c", `mcp_servers.${s.name}.command=${JSON.stringify(s.command)}`, "-c", `mcp_servers.${s.name}.args=${JSON.stringify(s.args)}`]);
+export const codexMcpArgs = (servers = []) => servers.flatMap((s) => {
+  if (s.type === "http") return ["-c", `mcp_servers.${s.name}.url=${JSON.stringify(s.url)}`];
+  const { command, args } = launch(s);
+  return ["-c", `mcp_servers.${s.name}.command=${JSON.stringify(command)}`, "-c", `mcp_servers.${s.name}.args=${JSON.stringify(args)}`];
+});

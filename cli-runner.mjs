@@ -107,6 +107,18 @@ export async function runClaudeStream(command, args, cwd, env, { prompt, onText,
         ? { action: "accept", ...(request.mode === "url" ? {} : { content: elicitationContent(request.requested_schema) }) }
         : { action: "decline" } } });
     }
+    // A dialog Claude Code asks the host to show. The router declares only refusal_fallback_prompt (the model refused;
+    // retry on the fallback model?): Allow retries, Deny or no answer cancels, which is Claude Code's no-dialog behaviour.
+    // Undeclared kinds get no answer, as the protocol requires; Claude Code cancels them itself.
+    if (request.subtype === "request_user_dialog") {
+      if (request.dialog_kind !== "refusal_fallback_prompt") return;
+      const p = request.payload || {};
+      let reply = "deny";
+      try { if (onApproval) reply = await io.hold(Promise.resolve(onApproval({ tool: "Model fallback", input: { originalModel: String(p.originalModel || ""), fallbackModel: String(p.fallbackModel || ""), message: String(p.guidanceText || `${p.originalModel || "The model"} declined this request. Retry it on ${p.fallbackModel || "the fallback model"}?`) }, reason: "" }, { canAlwaysAllow: false }))); } catch {}
+      return send({ type: "control_response", response: { subtype: "success", request_id: id, response: allowed(reply) ? { behavior: "completed", result: "retry_fallback" } : { behavior: "cancelled" } } });
+    }
+    // Only sent to hosts that attached a Remote Control bridge with a work secret; the router never does and holds none.
+    if (request.subtype === "remote_control_work_secret") return send({ type: "control_response", response: { subtype: "error", request_id: id, error: "Local Agent Router does not attach Remote Control and has no work secret to give." } });
     if (request.subtype !== "can_use_tool") return send({ type: "control_response", response: { subtype: "error", request_id: id, error: `Unsupported control request: ${request.subtype}` } });
     const input = request.input && typeof request.input === "object" ? request.input : {};
     const saved = savedPermissionSuggestions(request);
@@ -153,7 +165,7 @@ export async function runClaudeStream(command, args, cwd, env, { prompt, onText,
   // answered ("Stream closed"). Keep subagents in the foreground; parallel Agent calls in one turn still run together.
   const runEnv = { ...(env || process.env), CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1" };
   try {
-    await runCli(command, fullArgs, cwd, runEnv, { ...options, onDelta: read, stdin: (handle) => { io = handle; send({ type: "control_request", request_id: initId, request: { subtype: "initialize" } }); } });
+    await runCli(command, fullArgs, cwd, runEnv, { ...options, onDelta: read, stdin: (handle) => { io = handle; send({ type: "control_request", request_id: initId, request: { subtype: "initialize", supportedDialogKinds: ["refusal_fallback_prompt"] } }); } });
     read("\n");
   } catch (error) {
     read("\n");

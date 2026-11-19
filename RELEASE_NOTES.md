@@ -1,6 +1,8 @@
 # v0.36.2 MCP approval requests
 
 - Fixed: when an MCP server such as computer use asked for your OK to act on the server PC, the request was denied without asking. It now shows an approval card: Allow lets it go ahead and Deny declines. Codex requests for extra file or network access also show a card now, and Allow grants them for the current turn only.
+- When Claude's model declines a request, a card offers to retry it on the fallback model.
+- Codex questions now appear as a question card you can answer, like Claude's.
 
 # v0.36.1 MCP servers on Windows
 

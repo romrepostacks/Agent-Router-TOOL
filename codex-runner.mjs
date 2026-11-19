@@ -34,6 +34,17 @@ export async function runCodexStream(command, args, cwd, env, { prompt, model, o
       const ok = await ask({ tool: "Codex permissions", input: params.permissions || {}, reason: params.reason || "", canAlwaysAllow: false });
       return send({ id: event.id, result: ok ? { permissions: params.permissions || {}, scope: "turn" } : { permissions: {} } });
     }
+    // A question from Codex (request_user_input): its questions go on a question card; Skip sends no answers.
+    if (event.method === "item/tool/requestUserInput") {
+      const questions = Array.isArray(params.questions) ? params.questions : [];
+      // ponytail: the card shows typed text, so secret questions (isSecret) aren't asked; Codex gets no answer for them.
+      const asked = questions.filter((q) => q && q.id && !q.isSecret && typeof q.question === "string" && q.question.trim());
+      let reply;
+      try { if (asked.length) reply = await io.hold(Promise.resolve(onApproval?.({ tool: "Codex question", input: { questions: asked.map((q) => ({ question: q.question, header: q.header, options: q.options || [] })) }, reason: "", canAlwaysAllow: false }))); } catch {}
+      const given = reply?.decision === "allow" && reply.answers ? reply.answers : {};
+      const answers = Object.fromEntries(asked.filter((q) => typeof given[q.question] === "string").map((q) => [q.id, { answers: [given[q.question]] }]));
+      return send({ id: event.id, result: { answers } });
+    }
     if (!["item/commandExecution/requestApproval", "item/fileChange/requestApproval"].includes(event.method)) {
       send({ id: event.id, error: { code: -32601, message: `Unsupported request: ${event.method}` } });
       return;

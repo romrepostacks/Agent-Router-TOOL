@@ -4,8 +4,11 @@
 - `cli-runner.mjs`: new `elicitationCard()` and `elicitationContent()`. `runClaudeStream` turns an `elicitation` request into a normal approval card (tool `mcp__<server>`, showing the server's message and URL). Allow returns `accept` with each field's default, or true for yes/no fields. Deny, no answer, or no page returns `decline`.
 - `codex-runner.mjs`: the same card for `mcpServer/elicitation/request`. `item/permissions/requestApproval` becomes a "Codex permissions" card: Allow grants the requested permissions for this turn only, and Deny grants nothing.
 - `server.mjs`: `approvalTitle`/`approvalDetail` show "<server> is asking for your OK" and the message, instead of raw JSON.
-- Not handled: Claude Code's `request_user_dialog` (only sent for dialog kinds a client declares; the router declares none), `remote_control_work_secret` (a credential the router shouldn't hand out; Claude Code carries on without it), and Codex `item/tool/requestUserInput`.
-- Tests: `test/elicitation.test.mjs` (fake Claude Code and Codex). `npm test` passes (129).
+- Remaining request types (same version, not yet in an installer):
+  - Claude Code `request_user_dialog`: `initialize` now declares `supportedDialogKinds: ["refusal_fallback_prompt"]`. When the model refuses, a "Retry on <fallback model>?" card appears; Allow answers `retry_fallback`, and Deny or no answer sends `cancelled` (Claude Code's no-dialog behaviour). Other kinds aren't declared, so Claude Code doesn't send them; if one arrives it gets no answer, as the protocol requires, and Claude Code cancels it.
+  - Claude Code `remote_control_work_secret`: still refused, now with a clear error. Claude Code only sends it to hosts that attached a Remote Control bridge with a work secret; the router does neither and holds no such credential.
+  - Codex `item/tool/requestUserInput`: becomes a "Codex has a question" card (the AskUserQuestion card UI). Answers go back as `{ answers: { <id>: { answers: [text] } } }`; Skip sends none. Secret questions (`isSecret`) aren't put on the card, since it shows typed text.
+- Tests: `test/elicitation.test.mjs` (fake Claude Code and Codex). `npm test` passes (131).
 - Next: run a Claude Code task that uses computer use and check that the card appears and Allow lets it act.
 
 # Previous change (v0.36.1): REA MCP server and skill family

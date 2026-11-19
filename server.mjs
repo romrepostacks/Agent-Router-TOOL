@@ -1947,7 +1947,8 @@ function emitRun(run, event, value) {
 // Cards read like Claude desktop's prompts: the plan, command or file instead of the tool's raw JSON input.
 export function approvalTitle(tool, input = {}) {
   if (tool === "ExitPlanMode") return "Approve this plan?";
-  if (approvalQuestions(tool, input)) return "Claude has a question";
+  if (tool === "Model fallback") return `Retry on ${input.fallbackModel || "the fallback model"}?`;
+  if (approvalQuestions(tool, input)) return `${tool === "Codex question" ? "Codex" : "Claude"} has a question`;
   if (/^mcp__(?!.*__)/.test(tool) && typeof input.message === "string") return `${tool.slice(5)} is asking for your OK`;
   if (/^(Bash|PowerShell)$/.test(tool)) return `Run this ${tool === "Bash" ? "command" : "PowerShell command"}?`;
   if (/^(Write|Edit|MultiEdit|NotebookEdit)$/.test(tool) && (input.file_path || input.notebook_path)) return `${tool === "Write" ? "Write" : "Edit"} ${String(input.file_path || input.notebook_path).split(/[\\/]/).pop()}?`;
@@ -1959,15 +1960,15 @@ export function approvalDetail(tool, input = {}) {
     : questions ? questions.map((q) => [q.question, ...q.options.map((o) => `- ${o.label}${o.description ? `: ${o.description}` : ""}`)].join("\n")).join("\n\n")
     : typeof input.command === "string" ? [input.command, input.description].filter(Boolean).join("\n\n")
     : input.file_path || input.notebook_path ? [input.file_path || input.notebook_path, input.content ?? input.new_string ?? input.new_source ?? ""].join("\n\n")
-    : /^mcp__(?!.*__)/.test(tool) && typeof input.message === "string" ? [input.message, input.url].filter(Boolean).join("\n\n")
+    : (/^mcp__(?!.*__)/.test(tool) || tool === "Model fallback") && typeof input.message === "string" ? [input.message, input.url].filter(Boolean).join("\n\n")
     : JSON.stringify(input, null, 2);
   return String(text).slice(0, 4000);
 }
 
-// Claude Code's AskUserQuestion arrives as a tool approval. Its questions go on the card so the user answers them;
-// the answers return as the tool's `answers` input ({ [question]: "label" or "label, label" or free text}).
+// Claude Code's AskUserQuestion arrives as a tool approval (Codex's request_user_input as "Codex question"). Its
+// questions go on the card so the user answers them; the answers return as { [question]: "label" or "label, label" or free text}.
 export function approvalQuestions(tool, input = {}) {
-  if (tool !== "AskUserQuestion" || !Array.isArray(input.questions)) return null;
+  if ((tool !== "AskUserQuestion" && tool !== "Codex question") || !Array.isArray(input.questions)) return null;
   const questions = input.questions.filter((q) => q && typeof q.question === "string" && q.question.trim()).slice(0, 8).map((q) => ({
     question: q.question /* untruncated: Claude reads the answer back by this exact text */, header: typeof q.header === "string" ? q.header.slice(0, 40) : "", multiSelect: q.multiSelect === true,
     options: (Array.isArray(q.options) ? q.options : []).filter((o) => o && typeof o.label === "string").slice(0, 8)
@@ -1995,7 +1996,7 @@ function askApproval(run, { tool, input, reason, canAlwaysAllow = false }) {
     run.approvals.set(card.id, { card, settle });
     run.controller.signal.addEventListener("abort", decline, { once: true });
     emitRun(run, "approval", card);
-    notify(run, "approval", questions ? `Claude has a question: ${questions[0].question}` : `${tool || "A tool"} is waiting for Always allow, Allow or Deny.`, card.id);
+    notify(run, "approval", questions ? `${card.title}: ${questions[0].question}` : `${tool || "A tool"} is waiting for Always allow, Allow or Deny.`, card.id);
   });
 }
 

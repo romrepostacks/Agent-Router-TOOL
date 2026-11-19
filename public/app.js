@@ -445,7 +445,7 @@ function questionCard(card, ui, answer) {
   skip.type = "button";
   skip.className = "decline";
   skip.textContent = ui.busy === "deny" ? "Skipping…" : "Skip";
-  skip.title = "Don't answer; Claude continues without your answers.";
+  skip.title = `Don't answer; ${card.tool === "Codex question" ? "Codex" : "Claude"} continues without your answers.`;
   skip.disabled = Boolean(ui.busy);
   skip.addEventListener("click", () => answer("deny"));
   refresh();

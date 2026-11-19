@@ -1,4 +1,4 @@
-import { runCli } from "./cli-runner.mjs";
+import { runCli, elicitationCard, elicitationContent } from "./cli-runner.mjs";
 
 // One readable line for the output panel per app-server item, instead of its raw JSON.
 // Messages and reasoning stream as text already, so they add no line.
@@ -19,16 +19,27 @@ export async function runCodexStream(command, args, cwd, env, { prompt, model, o
   let io, buffer = "", text = "", failure, completed = false;
   const send = (message) => io.write(`${JSON.stringify(message)}\n`);
   const request = (id, method, params) => send({ id, method, params });
+  const ask = async (card) => {
+    try { const reply = await io.hold(Promise.resolve(onApproval?.(card))); return reply === "allow" || reply === true; } catch { return false; }
+  };
   const approve = async (event) => {
+    const params = event.params || {};
+    // An MCP server asking the user (e.g. computer use asking to control an app on this PC).
+    if (event.method === "mcpServer/elicitation/request") {
+      const ok = await ask(elicitationCard(params.serverName, params));
+      return send({ id: event.id, result: ok ? { action: "accept", ...(params.mode === "url" ? {} : { content: elicitationContent(params.requestedSchema) }) } : { action: "decline" } });
+    }
+    // Extra sandbox access (files or network) for this turn; Deny grants nothing.
+    if (event.method === "item/permissions/requestApproval") {
+      const ok = await ask({ tool: "Codex permissions", input: params.permissions || {}, reason: params.reason || "", canAlwaysAllow: false });
+      return send({ id: event.id, result: ok ? { permissions: params.permissions || {}, scope: "turn" } : { permissions: {} } });
+    }
     if (!["item/commandExecution/requestApproval", "item/fileChange/requestApproval"].includes(event.method)) {
       send({ id: event.id, error: { code: -32601, message: `Unsupported request: ${event.method}` } });
       return;
     }
-    let decision = "deny";
-    try {
-      decision = await io.hold(Promise.resolve(onApproval?.({ tool: event.method, input: event.params, reason: event.params?.reason || "", canAlwaysAllow: false })));
-    } catch {}
-    send({ id: event.id, result: { decision: decision === "allow" || decision === true ? "accept" : "decline" } });
+    const ok = await ask({ tool: event.method, input: params, reason: params.reason || "", canAlwaysAllow: false });
+    send({ id: event.id, result: { decision: ok ? "accept" : "decline" } });
   };
   const read = (chunk) => {
     buffer += chunk;

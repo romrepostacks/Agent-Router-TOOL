@@ -75,6 +75,23 @@ export function savedPermissionSuggestions(request) {
   return (Array.isArray(request?.permission_suggestions) ? request.permission_suggestions : [])
     .filter((item) => item && typeof item === "object" && SAVED_DESTINATIONS.has(item.destination) && (item.type !== "addRules" || item.behavior === "allow"));
 }
+// An MCP server asking the user something (elicitation), e.g. computer use asking to control an app on this PC.
+// It becomes an ordinary approval card: the message (and URL, if any) is shown, Allow accepts, Deny declines.
+export function elicitationCard(server, { message, url, requestedSchema } = {}) {
+  return { tool: `mcp__${server || "server"}`, input: { message: String(message || ""), ...(url ? { url: String(url) } : {}), ...(requestedSchema ? { requestedSchema } : {}) }, reason: String(message || ""), canAlwaysAllow: false };
+}
+// Accepted form answers: each field's default, and true for a yes/no field without one.
+// ponytail: fields with no default aren't asked for; add form inputs to the card if an MCP server needs typed answers.
+export function elicitationContent(schema) {
+  const content = {};
+  for (const [key, field] of Object.entries(schema?.properties || {})) {
+    if (field?.default !== undefined && field.default !== null) content[key] = field.default;
+    else if (field?.type === "boolean") content[key] = true;
+  }
+  return content;
+}
+const allowed = (reply) => reply === true || reply === "allow" || reply === "always" || reply?.decision === "allow";
+
 export async function runClaudeStream(command, args, cwd, env, { prompt, onText, onTool, onToolResult, onLine, onApproval, onUsage, ...options } = {}) {
   const initId = `init-${Date.now()}`;
   let io = null;
@@ -83,6 +100,13 @@ export async function runClaudeStream(command, args, cwd, env, { prompt, onText,
   const send = (message) => io?.write(`${JSON.stringify(message)}
 `);
   const answer = async (id, request) => {
+    if (request.subtype === "elicitation") {
+      let reply = "deny";
+      try { if (onApproval) reply = await io.hold(Promise.resolve(onApproval(elicitationCard(request.mcp_server_name, { message: request.message, url: request.url, requestedSchema: request.requested_schema }), { canAlwaysAllow: false }))); } catch {}
+      return send({ type: "control_response", response: { subtype: "success", request_id: id, response: allowed(reply)
+        ? { action: "accept", ...(request.mode === "url" ? {} : { content: elicitationContent(request.requested_schema) }) }
+        : { action: "decline" } } });
+    }
     if (request.subtype !== "can_use_tool") return send({ type: "control_response", response: { subtype: "error", request_id: id, error: `Unsupported control request: ${request.subtype}` } });
     const input = request.input && typeof request.input === "object" ? request.input : {};
     const saved = savedPermissionSuggestions(request);

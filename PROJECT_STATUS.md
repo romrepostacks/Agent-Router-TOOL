@@ -1,4 +1,14 @@
-# Current change (v0.36.1): REA MCP server and skill family
+# Current change (v0.36.2): MCP requests to act on the server PC reach an approval card
+
+- Bug: an MCP server asking the user for an OK, such as computer use asking to control an app on this PC, was refused at once. Claude Code sends these as `elicitation` control requests, and Codex sends `mcpServer/elicitation/request` and `item/permissions/requestApproval`. The runners answered all three with "Unsupported request", which both CLIs treat as cancel or deny, so no card appeared.
+- `cli-runner.mjs`: new `elicitationCard()` and `elicitationContent()`. `runClaudeStream` turns an `elicitation` request into a normal approval card (tool `mcp__<server>`, showing the server's message and URL). Allow returns `accept` with each field's default, or true for yes/no fields. Deny, no answer, or no page returns `decline`.
+- `codex-runner.mjs`: the same card for `mcpServer/elicitation/request`. `item/permissions/requestApproval` becomes a "Codex permissions" card: Allow grants the requested permissions for this turn only, and Deny grants nothing.
+- `server.mjs`: `approvalTitle`/`approvalDetail` show "<server> is asking for your OK" and the message, instead of raw JSON.
+- Not handled: Claude Code's `request_user_dialog` (only sent for dialog kinds a client declares; the router declares none), `remote_control_work_secret` (a credential the router shouldn't hand out; Claude Code carries on without it), and Codex `item/tool/requestUserInput`.
+- Tests: `test/elicitation.test.mjs` (fake Claude Code and Codex). `npm test` passes (129).
+- Next: run a Claude Code task that uses computer use and check that the card appears and Allow lets it act.
+
+# Previous change (v0.36.1): REA MCP server and skill family
 
 - `mcp-servers.mjs`: new `windowsLaunch()`. On Windows, a stdio command with no extension or a `.cmd`/`.bat` one (`npx`, `uvx`) is sent to Claude Code, Codex, Copilot and Ruflo as `cmd /c <command> <args>`. Claude Code's docs require this wrapper for `npx`. `.exe` paths and `cmd` itself are left alone. Args with cmd metacharacters (`& | < > ^ % ! " ( )`) aren't wrapped, because cmd would parse them again. Tests are in `test/mcp-servers.test.mjs`.
 - Project-local catalog (`skills.md`, gitignored): added the `rea` family under Research & Analysis. It uses `skills/imported/rea-agents-6-9-0/reverse-engineer-anything/SKILL.md` from github.com/morluto/rea at tag `rea-agents-6.9.0`, so it matches the pinned server. The file starts with an attribution line and ends with `## Child guidance`, which lists the 8 `references/*.md` files. There are now seven families. REA's maintainer-only skills (`rea-tool-design`, `rea-changelog-update`, `rea-ci-tests-audit`, `rea-analysis-optimization`) were left out.

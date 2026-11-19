@@ -1948,6 +1948,7 @@ function emitRun(run, event, value) {
 export function approvalTitle(tool, input = {}) {
   if (tool === "ExitPlanMode") return "Approve this plan?";
   if (approvalQuestions(tool, input)) return "Claude has a question";
+  if (/^mcp__(?!.*__)/.test(tool) && typeof input.message === "string") return `${tool.slice(5)} is asking for your OK`;
   if (/^(Bash|PowerShell)$/.test(tool)) return `Run this ${tool === "Bash" ? "command" : "PowerShell command"}?`;
   if (/^(Write|Edit|MultiEdit|NotebookEdit)$/.test(tool) && (input.file_path || input.notebook_path)) return `${tool === "Write" ? "Write" : "Edit"} ${String(input.file_path || input.notebook_path).split(/[\\/]/).pop()}?`;
   return `Allow ${tool || "this tool"}?`;
@@ -1958,6 +1959,7 @@ export function approvalDetail(tool, input = {}) {
     : questions ? questions.map((q) => [q.question, ...q.options.map((o) => `- ${o.label}${o.description ? `: ${o.description}` : ""}`)].join("\n")).join("\n\n")
     : typeof input.command === "string" ? [input.command, input.description].filter(Boolean).join("\n\n")
     : input.file_path || input.notebook_path ? [input.file_path || input.notebook_path, input.content ?? input.new_string ?? input.new_source ?? ""].join("\n\n")
+    : /^mcp__(?!.*__)/.test(tool) && typeof input.message === "string" ? [input.message, input.url].filter(Boolean).join("\n\n")
     : JSON.stringify(input, null, 2);
   return String(text).slice(0, 4000);
 }

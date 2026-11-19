@@ -1,3 +1,7 @@
+# v0.36.2 MCP approval requests
+
+- Fixed: when an MCP server such as computer use asked for your OK to act on the server PC, the request was denied without asking. It now shows an approval card: Allow lets it go ahead and Deny declines. Codex requests for extra file or network access also show a card now, and Allow grants them for the current turn only.
+
 # v0.36.1 MCP servers on Windows
 
 - Fixed: MCP servers started with `npx` (or another `.cmd` command) now start in Claude Code, Codex, Copilot and Ruflo runs on Windows. The router runs them through `cmd /c`.

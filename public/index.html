@@ -210,6 +210,7 @@
           <button type="button" role="tab" class="settings-tab" data-settings-tab="sessions"><span aria-hidden="true">☰</span>Sessions</button>
           <button type="button" role="tab" class="settings-tab" data-settings-tab="skills"><span aria-hidden="true">✦</span>Shared skills</button>
           <button type="button" role="tab" class="settings-tab" data-settings-tab="add-skills"><span aria-hidden="true">＋</span>Add new skills</button>
+          <button type="button" role="tab" class="settings-tab" data-settings-tab="marketplace"><span aria-hidden="true">◈</span>Marketplace</button>
           <button type="button" role="tab" class="settings-tab" data-settings-tab="mcp"><span aria-hidden="true">⧉</span>MCP servers</button>
           <button type="button" role="tab" class="settings-tab" data-settings-tab="remote"><span aria-hidden="true">⇆</span>Remote access</button>
         </nav>
@@ -229,6 +230,39 @@
             <label class="settings-field">Command or address<input id="mcp-target" type="text" placeholder="npx  or  https://example.com/mcp"></label>
             <label class="settings-field">Arguments, one per line (commands only)<textarea id="mcp-args" rows="3" spellcheck="false" placeholder="-y&#10;@modelcontextprotocol/server-memory"></textarea></label>
             <div class="shortcut-row"><button id="mcp-add" type="button" class="context-button">Add server</button><span id="mcp-status" class="settings-help" aria-live="polite"></span></div>
+            <h3>Import from another app</h3>
+            <p class="settings-help">Paste an <code>mcp.json</code> or <code>claude_desktop_config.json</code> (Claude desktop, LM Studio, Cursor, VS Code), or an <em>Add to LM Studio</em> / Cursor install link. Environment variables and headers are left out, since they often hold keys. Names already in the list are skipped.</p>
+            <label class="settings-field">Config or install link<textarea id="mcp-import-text" rows="4" spellcheck="false" placeholder='{ "mcpServers": { "memory": { "command": "npx", "args": ["-y", "@modelcontextprotocol/server-memory"] } } }'></textarea></label>
+            <div class="shortcut-row"><button id="mcp-import" type="button" class="context-button">Import</button><span id="mcp-import-status" class="settings-help" aria-live="polite"></span></div>
+          </section>
+          <section class="settings-section settings-page" data-settings-page="marketplace" hidden>
+            <h3>Marketplace</h3>
+            <p class="settings-help">Browse public skill sources from Anthropic, OpenAI and Hermes, and public MCP registries. Review skills before installing their instructions. Manage installed skills under Shared skills and connections under MCP servers.</p>
+            <div class="market-switch" role="tablist" aria-label="Marketplace type">
+              <button type="button" role="tab" id="market-tab-skills" class="market-tab active" aria-selected="true" data-market="skills">Skills</button>
+              <button type="button" role="tab" id="market-tab-mcp" class="market-tab" aria-selected="false" data-market="mcp">MCP servers</button>
+            </div>
+            <div id="market-skills" class="market-pane">
+              <div class="market-controls">
+                <label class="settings-field">Source<select id="market-source"></select></label>
+                <label class="settings-field">Filter<input id="market-skill-filter" type="search" placeholder="Search names and plugins" autocomplete="off"></label>
+              </div>
+              <p id="market-source-from" class="settings-help"></p>
+              <div class="shortcut-row"><button id="market-refresh" type="button" class="context-button">Refresh</button><button id="market-remove-source" type="button" class="context-button" hidden>Remove this source</button><span id="market-skill-status" class="settings-help" aria-live="polite"></span></div>
+              <ul id="market-skill-list" class="market-list" aria-label="Skills in this source"></ul>
+              <form id="market-add-source" class="skill-url-row"><input id="market-source-input" type="text" placeholder="owner/repo or https://github.com/owner/repo" aria-label="Add a skill source" autocomplete="off"><button type="submit" class="context-button">Add source</button></form>
+            </div>
+            <div id="market-mcp" class="market-pane" hidden>
+              <p class="settings-help">Browse public MCP registries below. Claude and ChatGPT manage their signed-in connector directories in their own apps. Review a server before adding it; provider approvals still apply.</p>
+              <div class="market-controls">
+                <label class="settings-field">Registry<select id="market-registry"></select></label>
+                <form id="market-mcp-search" class="settings-field">Search<input id="market-mcp-query" type="search" placeholder="github, memory, browser…" autocomplete="off"></form>
+              </div>
+              <p id="market-registry-from" class="settings-help"></p>
+              <p id="market-mcp-status" class="settings-help" aria-live="polite"></p>
+              <ul id="market-mcp-list" class="market-list" aria-label="MCP servers"></ul>
+              <button id="market-mcp-more" type="button" class="context-button" hidden>Load more</button>
+            </div>
           </section>
           <section class="settings-section settings-page" data-settings-page="appearance" hidden>
             <h3>Theme</h3>

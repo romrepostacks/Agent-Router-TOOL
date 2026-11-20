@@ -516,3 +516,16 @@ html[data-theme="dark"] .setup-missing { background: none; }
 .scan-reviewer.high { border-left-color: var(--red); }
 .scan-reviewer .scan-warnings { margin: 6px 0 0; }
 .feedback-preview { max-height: 220px; overflow: auto; margin: 6px 0 0; padding: 8px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface); color: var(--muted); font-size: 11px; white-space: pre-wrap; }
+/* Settings → Marketplace */
+.market-switch { display: inline-flex; gap: 2px; padding: 2px; margin: 4px 0 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+.market-tab { border: 0; border-radius: 6px; padding: 5px 12px; background: transparent; color: var(--muted); font: inherit; font-size: 11px; cursor: pointer; }
+.market-tab.active { background: var(--hover-surface); color: var(--ink); font-weight: 650; }
+.market-controls { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
+.market-list { list-style: none; margin: 8px 0; padding: 0; display: grid; gap: 6px; max-height: 46vh; overflow-y: auto; contain: content; }
+.market-list li { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 9px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface); }
+.market-text { display: grid; gap: 2px; min-width: 0; font-size: 11px; color: var(--ink-2); }
+.market-text strong { color: var(--ink); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.market-text small { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.market-text .market-needs { color: var(--warn, #b7791f); white-space: normal; }
+.market-badge { flex: none; font-size: 10px; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 2px 8px; }
+.market-list .context-button { flex: none; }

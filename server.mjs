@@ -2,7 +2,8 @@ import { runCli, runClaudeStream, isUsageLimitError } from "./cli-runner.mjs";
 import { runCodexStream } from "./codex-runner.mjs";
 import { runCopilotStream } from "./copilot-runner.mjs";
 import { runRufloTask, rufloInstalled } from "./ruflo-runner.mjs";
-import { claudeMcpArgs, claudeMcpServers, codexMcpArgs, copilotMcpArgs, normalizeMcpServers } from "./mcp-servers.mjs";
+import { claudeMcpArgs, claudeMcpServers, codexMcpArgs, copilotMcpArgs, importMcpConfig, normalizeMcpServers } from "./mcp-servers.mjs";
+import { MCP_REGISTRIES, SKILL_SOURCES, listSourceSkills, parseRepo, searchRegistry } from "./marketplace.mjs";
 import { execFile, spawn } from "node:child_process";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { appendFile, copyFile, lstat, mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
@@ -2372,7 +2373,7 @@ async function handleSetup(req, res, url) {
 // Tokens are shown once when a device is added; settings keep only their SHA-256.
 const REMOTE_DEFAULT_PORT = 8766;
 // Things that act on the server PC's own desktop or secrets; remote devices get 403.
-const LOCAL_ONLY_PATHS = /^\/api\/(?:remote(?:\/|$)|setup\/(?:terminal|keys)$|mcp$|sessions\/teleport$|projects\/linked\/pick$)/;
+const LOCAL_ONLY_PATHS = /^\/api\/(?:remote(?:\/|$)|setup\/(?:terminal|keys)$|mcp(?:\/import)?$|marketplace\/sources$|sessions\/teleport$|projects\/linked\/pick$)/;
 const remote = { server: null, address: "", port: 0, error: "", lastSeen: new Map() };
 const tokenHash = (token) => createHash("sha256").update(token).digest("hex");
 
@@ -2622,6 +2623,47 @@ async function handleRequest(req, res, fromRemote = false) {
       try { servers = normalizeMcpServers((await bodyJson(req)).servers); } catch (error) { return json(res, 400, { error: error.message }); }
       await writeSettings({ mcpServers: servers });
       return json(res, 200, { servers });
+    }
+    if (req.method === "POST" && url.pathname === "/api/mcp/import") {
+      // Merges servers from an mcp.json or install link into the saved list; a name already in use is skipped.
+      try {
+        const { servers: found, notes } = importMcpConfig((await bodyJson(req)).text);
+        const saved = await userMcpServers();
+        const taken = new Set(saved.map((s) => s.name.toLowerCase()));
+        const added = found.filter((s) => !taken.has(String(s.name).toLowerCase()));
+        const skipped = found.filter((s) => taken.has(String(s.name).toLowerCase())).map((s) => s.name);
+        const servers = normalizeMcpServers([...saved, ...added]);
+        await writeSettings({ mcpServers: servers });
+        return json(res, 200, { servers, added: added.map((s) => s.name), skipped, notes });
+      } catch (error) { return json(res, 400, { error: error.message }); }
+    }
+    // Marketplace: skill sources (GitHub repos) and MCP registries. Browsing works from phones too; changing the
+    // source list and adding MCP servers stay on the server PC (LOCAL_ONLY_PATHS).
+    if (req.method === "GET" && url.pathname === "/api/marketplace") {
+      const custom = (await rawSettings()).skillSources;
+      const extra = (Array.isArray(custom) ? custom : []).map(parseRepo).filter(Boolean);
+      return json(res, 200, { skillSources: [...SKILL_SOURCES.map((s) => ({ ...s, builtIn: true })), ...extra.filter((repo) => !SKILL_SOURCES.some((s) => s.repo.toLowerCase() === repo.toLowerCase())).map((repo) => ({ repo, label: repo, from: "Added by you" }))], mcpRegistries: MCP_REGISTRIES.map(({ id, label, from }) => ({ id, label, from })) });
+    }
+    if (url.pathname === "/api/marketplace/sources" && (req.method === "POST" || req.method === "DELETE")) {
+      const repo = parseRepo(req.method === "POST" ? (await bodyJson(req)).repo : url.searchParams.get("repo"));
+      if (!repo) return json(res, 400, { error: "Enter a GitHub repo as owner/repo or its github.com link." });
+      const previous = (await rawSettings()).skillSources;
+      const list = (Array.isArray(previous) ? previous : []).filter((entry) => String(entry).toLowerCase() !== repo.toLowerCase());
+      if (req.method === "POST") {
+        if (list.length >= 30) return json(res, 400, { error: "Add up to 30 skill sources." });
+        try { await listSourceSkills(repo); } catch (error) { return json(res, error.status || 502, { error: error.message }); }
+        list.push(repo);
+      }
+      await writeSettings({ skillSources: list });
+      return json(res, 200, { skillSources: list });
+    }
+    if (req.method === "GET" && url.pathname === "/api/marketplace/skills") {
+      try { return json(res, 200, await listSourceSkills(url.searchParams.get("repo"), { refresh: url.searchParams.get("refresh") === "1" })); }
+      catch (error) { return json(res, error.status || 502, { error: error.status ? error.message : `Could not reach GitHub: ${error.message}` }); }
+    }
+    if (req.method === "GET" && url.pathname === "/api/marketplace/mcp") {
+      try { return json(res, 200, await searchRegistry(url.searchParams.get("registry") || "official", { search: url.searchParams.get("search") || "", cursor: url.searchParams.get("cursor") || "" })); }
+      catch (error) { return json(res, error.status || 502, { error: error.status ? error.message : `Could not reach the registry: ${error.message}` }); }
     }
     if (req.method === "GET" && url.pathname === "/api/rules") {
       return json(res, 200, { text: await readFile(RULES_FILE, "utf8").catch(() => ""), sent: RULES_SENT, path: RULES_FILE });

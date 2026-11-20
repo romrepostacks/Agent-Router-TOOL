@@ -1931,6 +1931,165 @@ $("mcp-add").addEventListener("click", async () => {
   const server = type === "http" ? { name, type, url: target } : { name, type, command: target, args: $("mcp-args").value.split("\n").map((arg) => arg.trim()).filter(Boolean) };
   if (await saveMcp([...mcpServers, server])) for (const id of ["mcp-name", "mcp-target", "mcp-args"]) $(id).value = "";
 });
+$("mcp-import").addEventListener("click", async () => {
+  const status = $("mcp-import-status");
+  status.textContent = "Importing…";
+  try {
+    const result = await request("/api/mcp/import", { method: "POST", body: JSON.stringify({ text: $("mcp-import-text").value }) });
+    mcpServers = result.servers;
+    renderMcp();
+    $("mcp-import-text").value = "";
+    status.textContent = [result.added.length ? `Added ${result.added.join(", ")}.` : "Nothing new to add.", result.skipped.length ? `Already in the list: ${result.skipped.join(", ")}.` : "", ...result.notes].filter(Boolean).join(" ");
+  } catch (error) { status.textContent = error.message; }
+});
+
+// Settings → Marketplace (marketplace.mjs): skill sources are GitHub repos; Review & install hands the skill's link
+// to the Add new skills scan, so nothing skips the review. MCP rows come from MCP registries and join the list above.
+const market = { loaded: false, sources: [], registries: [], skills: [], mcp: [], cursor: "", skillTicket: 0, mcpTicket: 0 };
+function selectMarketTab(kind) {
+  for (const button of document.querySelectorAll("[data-market]")) {
+    const on = button.dataset.market === kind;
+    button.classList.toggle("active", on);
+    button.setAttribute("aria-selected", String(on));
+  }
+  $("market-skills").hidden = kind !== "skills";
+  $("market-mcp").hidden = kind !== "mcp";
+  if (kind === "mcp" && !market.mcp.length) searchMarketMcp();
+}
+document.querySelectorAll("[data-market]").forEach((button) => button.addEventListener("click", () => selectMarketTab(button.dataset.market)));
+
+async function loadMarketplace(selectRepo) {
+  try {
+    const data = await request("/api/marketplace");
+    market.sources = data.skillSources;
+    market.registries = data.mcpRegistries;
+    const keep = selectRepo || $("market-source").value || market.sources[0]?.repo;
+    $("market-source").replaceChildren(...market.sources.map((source) => el("option", { value: source.repo }, `${source.label}${source.label === source.repo ? "" : ` (${source.repo})`}`)));
+    $("market-source").value = market.sources.some((source) => source.repo === keep) ? keep : market.sources[0]?.repo;
+    if (!market.loaded) $("market-registry").replaceChildren(...market.registries.map((registry) => el("option", { value: registry.id }, registry.label)));
+    market.loaded = true;
+    showRegistryFrom();
+    await loadMarketSkills();
+  } catch (error) { $("market-skill-status").textContent = error.message; }
+}
+
+async function loadMarketSkills(refresh = false) {
+  const ticket = ++market.skillTicket;
+  const repo = $("market-source").value;
+  const source = market.sources.find((entry) => entry.repo === repo);
+  $("market-source-from").textContent = source ? `Used by ${source.from} · github.com/${repo}` : "";
+  $("market-remove-source").hidden = !source || source.builtIn;
+  $("market-skill-status").textContent = "Loading…";
+  market.skills = [];
+  renderMarketSkills();
+  try {
+    const data = await request(`/api/marketplace/skills?repo=${encodeURIComponent(repo)}${refresh ? "&refresh=1" : ""}`);
+    if (ticket !== market.skillTicket) return;
+    market.skills = data.skills;
+    $("market-skill-status").textContent = `${data.skills.length} skill${data.skills.length === 1 ? "" : "s"}${data.truncated ? " (GitHub cut the list short)" : ""}.`;
+    renderMarketSkills();
+  } catch (error) { if (ticket === market.skillTicket) $("market-skill-status").textContent = error.message; }
+}
+
+function renderMarketSkills() {
+  const query = $("market-skill-filter").value.trim().toLowerCase();
+  const rows = market.skills.filter((skill) => !query || `${skill.name} ${skill.group}`.toLowerCase().includes(query));
+  const installed = new Set(state.skills.map((skill) => String(skill.name).toLowerCase()));
+  $("market-skill-list").replaceChildren(...rows.slice(0, 300).map((skill) => el("li", {},
+    el("span", { class: "market-text" }, el("strong", {}, skill.name), skill.group ? el("small", {}, skill.group) : null),
+    installed.has(skill.name.toLowerCase()) ? el("span", { class: "market-badge" }, "Installed") : null,
+    el("button", { type: "button", class: "context-button", onclick: () => reviewMarketSkill(skill) }, "Review & install"))));
+  if (!rows.length && market.skills.length) $("market-skill-list").append(el("li", { class: "settings-help" }, "No skills match this filter."));
+  if (rows.length > 300) $("market-skill-list").append(el("li", { class: "settings-help" }, `Showing 300 of ${rows.length}. Filter to narrow the list.`));
+}
+
+function reviewMarketSkill(skill) {
+  selectSettingsTab("add-skills");
+  $("skill-url").value = skill.url;
+  $("skill-scan-form").requestSubmit();
+}
+
+$("market-source").addEventListener("change", () => loadMarketSkills());
+$("market-skill-filter").addEventListener("input", renderMarketSkills);
+$("market-refresh").addEventListener("click", () => loadMarketSkills(true));
+$("market-add-source").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  $("market-skill-status").textContent = "Checking the repo…";
+  try {
+    const { skillSources } = await request("/api/marketplace/sources", { method: "POST", body: JSON.stringify({ repo: $("market-source-input").value }) });
+    $("market-source-input").value = "";
+    await loadMarketplace(skillSources.at(-1));
+  } catch (error) { $("market-skill-status").textContent = error.message; }
+});
+$("market-remove-source").addEventListener("click", async () => {
+  try {
+    await request(`/api/marketplace/sources?repo=${encodeURIComponent($("market-source").value)}`, { method: "DELETE" });
+    await loadMarketplace(market.sources[0]?.repo);
+  } catch (error) { $("market-skill-status").textContent = error.message; }
+});
+
+function showRegistryFrom() {
+  const registry = market.registries.find((entry) => entry.id === $("market-registry").value);
+  $("market-registry-from").textContent = registry ? `Used by ${registry.from}` : "";
+}
+async function searchMarketMcp(more = false) {
+  const ticket = ++market.mcpTicket;
+  const status = $("market-mcp-status");
+  status.textContent = "Searching…";
+  if (!more) { market.mcp = []; market.cursor = ""; renderMarketMcp(); }
+  $("market-mcp-more").hidden = true;
+  try {
+    const query = new URLSearchParams({ registry: $("market-registry").value || "official", search: $("market-mcp-query").value.trim(), cursor: more ? market.cursor : "" });
+    const data = await request(`/api/marketplace/mcp?${query}`);
+    if (ticket !== market.mcpTicket) return;
+    market.mcp = [...market.mcp, ...data.servers.filter((row) => !market.mcp.some((old) => old.id === row.id))];
+    market.cursor = data.nextCursor;
+    status.textContent = market.mcp.length ? "" : "No servers found.";
+    renderMarketMcp();
+  } catch (error) { if (ticket === market.mcpTicket) { status.textContent = error.message; $("market-mcp-more").hidden = !market.cursor; } }
+}
+
+function renderMarketMcp() {
+  const added = new Set(mcpServers.map((server) => server.type === "http" ? server.url : server.args.join(" ")));
+  $("market-mcp-list").replaceChildren(...market.mcp.map((row) => {
+    const already = row.install && added.has(row.install.type === "http" ? row.install.url : row.install.args.join(" "));
+    const action = !row.install ? null : already ? el("span", { class: "market-badge" }, "Added")
+      : el("button", { type: "button", class: "context-button", onclick: () => addMarketMcp(row) }, row.needs.length ? "Set up…" : "Add");
+    return el("li", {},
+      el("span", { class: "market-text" }, el("strong", {}, row.title), el("small", {}, [row.id, row.version && `v${row.version}`].filter(Boolean).join(" · ")),
+        row.description ? el("span", {}, row.description) : null,
+        row.needs.length ? el("small", { class: "market-needs" }, `Needs ${row.needs.join("; ")}`) : null,
+        row.website ? el("a", { href: row.website, target: "_blank", rel: "noreferrer" }, "Website") : null),
+      action);
+  }));
+  $("market-mcp-more").hidden = !market.cursor;
+}
+
+// A server that needs arguments, keys or headers opens prefilled in the MCP servers form instead of being added.
+async function addMarketMcp(row) {
+  const taken = new Set(mcpServers.map((server) => server.name.toLowerCase()));
+  let name = row.install.name;
+  for (let n = 2; taken.has(name.toLowerCase()); n++) name = `${row.install.name.slice(0, 36)}-${n}`;
+  const server = { ...row.install, name };
+  if (row.needs.length) {
+    selectSettingsTab("mcp");
+    $("mcp-name").value = name;
+    $("mcp-type").value = server.type;
+    $("mcp-target").value = server.type === "http" ? server.url : server.command;
+    $("mcp-args").value = server.type === "http" ? "" : server.args.join("\n");
+    $("mcp-status").textContent = `Finish setting up ${row.title}: it needs ${row.needs.join("; ")}.`;
+    $("mcp-args").focus();
+    return;
+  }
+  $("market-mcp-status").textContent = `Adding ${row.title}…`;
+  if (await saveMcp([...mcpServers, server])) $("market-mcp-status").textContent = `Added ${row.title} as "${name}". New Claude Code, Codex, Copilot and Ruflo runs can use it.`;
+  else $("market-mcp-status").textContent = $("mcp-status").textContent;
+  renderMarketMcp();
+}
+
+$("market-registry").addEventListener("change", () => { showRegistryFrom(); searchMarketMcp(); });
+$("market-mcp-search").addEventListener("submit", (event) => { event.preventDefault(); searchMarketMcp(); });
+$("market-mcp-more").addEventListener("click", () => searchMarketMcp(true));
 
 // rules.md: sent with every request. Saved on its own button so a half-typed rule never goes out.
 let rulesSent = 4000;
@@ -2048,6 +2207,7 @@ function selectSettingsTab(name) {
   if (name === "remote") loadRemote();
   if (name === "tools") loadCliTools();
   if (name === "mcp") loadMcp();
+  if (name === "marketplace") { loadMcp(); if (!market.loaded) loadMarketplace(); else { renderMarketSkills(); renderMarketMcp(); } }
 }
 
 // Settings → Remote access: GET/POST /api/remote, POST /api/remote/devices (token shown once), DELETE …/devices/<id>.

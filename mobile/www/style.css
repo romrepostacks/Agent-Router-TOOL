@@ -230,7 +230,7 @@ input[role="switch"]:checked::after { transform: translateX(20px); }
 
 /* ---- Chat ---- */
 .chat-view { height: 100%; max-width: none; display: flex; flex-direction: column; }
-.messages { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding: calc(var(--safe-top) + var(--nav-h) + 8px) 16px 16px; display: flex; flex-direction: column; gap: 14px; }
+.messages { flex: 1; overflow-y: auto; overscroll-behavior: contain; contain: content; padding: calc(var(--safe-top) + var(--nav-h) + 8px) 16px 16px; display: flex; flex-direction: column; gap: 14px; }
 .bubble { display: flex; animation: rise .42s var(--spring); }
 .bubble.user { justify-content: flex-end; }
 @keyframes rise { from { transform: translateY(12px) scale(.98); opacity: 0; } }
@@ -283,7 +283,7 @@ input[role="switch"]:checked::after { transform: translateX(20px); }
 }
 .composer:focus-within { border-color: color-mix(in srgb, var(--accent) 60%, var(--hairline)); }
 .composer-row { display: flex; align-items: center; gap: 8px; }
-.composer textarea { display: block; width: 100%; min-height: var(--tap); max-height: 168px; resize: none; border: 0; background: transparent; padding: 8px 4px; font-size: 17px; line-height: 1.35; outline: none; }
+.composer textarea { display: block; width: 100%; min-height: var(--tap); max-height: 168px; field-sizing: content; resize: none; border: 0; background: transparent; padding: 8px 4px; font-size: 17px; line-height: 1.35; outline: none; }
 .round-button { flex: none; width: var(--tap); height: var(--tap); border-radius: 50%; border: 0; display: grid; place-items: center; font-size: 22px; background: color-mix(in srgb, var(--text) 9%, transparent); transition: transform .3s var(--spring), background .2s; }
 .round-button.send { color: var(--accent-text); background: var(--accent); font-weight: 700; }
 .round-button.send:disabled { opacity: 1; background: var(--hairline); color: var(--muted); }
@@ -367,3 +367,7 @@ body.sheet-open .sheet { transform: none; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition-duration: .01ms !important; }
 }
+/* Marketplace sheets */
+.row-buttons { display: flex; gap: 10px; flex-wrap: wrap; margin: 14px 0; }
+.sheet-body details.card summary { cursor: pointer; padding: 6px 0; font-weight: 600; }
+.sheet-body details.card .live-output { margin-top: 8px; }

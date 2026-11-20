@@ -539,6 +539,24 @@ function renderMessages() {
   list.scrollTop = list.scrollHeight;
 }
 
+// Updates the last (streaming) assistant bubble without touching the others; false when there is none to patch.
+// Keeps the list pinned to the bottom only if the reader was already there.
+function patchStreamingBubble(message) {
+  const list = $("messages");
+  const last = list.lastElementChild;
+  const text = last?.classList.contains("streaming") ? last.querySelector(".bubble-text") : null;
+  if (!text) return false;
+  const previousStatus = last.querySelector(".bubble-status");
+  if (text.textContent === message.content && (previousStatus?.textContent || "") === (message.status || "")) return true;
+  const pinned = list.scrollHeight - list.scrollTop - list.clientHeight < 160;
+  if (text.textContent !== message.content) text.textContent = message.content;
+  let status = last.querySelector(".bubble-status");
+  if (message.status && !status) text.after(status = el("div", { class: "bubble-status" }));
+  if (status && status.textContent !== (message.status || "")) status.textContent = message.status || "";
+  if (pinned) list.scrollTop = list.scrollHeight;
+  return true;
+}
+
 function bubble(message, index) {
   const { role, content, route, status, attachments = [], proposalId, feedback, temporary } = message;
   const assistant = role === "assistant";
@@ -554,7 +572,7 @@ function bubble(message, index) {
     const rate = (key, value, label, symbol) => el("button", { type: "button", class: `rate${feedback?.[key] === value ? " selected" : ""}`, "aria-label": label, "aria-pressed": String(feedback?.[key] === value), disabled: Boolean(run?.active), onclick: () => rateMessage(index, { [key]: value }) }, symbol);
     body.append(el("div", { class: "rating" }, el("span", {}, "Answer"), rate("rating", "good", "Good answer", "👍"), rate("rating", "bad", "Bad answer", "👎"), el("span", {}, `${route}?`), rate("routing", "good", "Right provider", "👍"), rate("routing", "bad", "Wrong provider", "👎")));
   }
-  return el("article", { class: `bubble ${assistant ? "assistant" : "user"}` }, body);
+  return el("article", { class: `bubble ${assistant ? "assistant" : "user"}${temporary ? " streaming" : ""}` }, body);
 }
 
 async function rateMessage(messageIndex, feedback) {
@@ -701,11 +719,18 @@ function refreshComposer() {
   renderNav();
 }
 
+// Resizing reads layout (scrollHeight), so it runs at most once per frame, and not at all where the browser sizes
+// the box itself (CSS field-sizing). Typing used to force a layout of the whole chat on every keystroke.
+let growFrame = 0;
 function growPrompt() {
-  const prompt = $("prompt");
-  prompt.style.height = "auto";
-  prompt.style.height = `${Math.min(prompt.scrollHeight, 168)}px`;
   refreshFollowupButtons();
+  if (growFrame || CSS.supports?.("field-sizing", "content")) return;
+  growFrame = requestAnimationFrame(() => {
+    growFrame = 0;
+    const prompt = $("prompt");
+    prompt.style.height = "auto";
+    prompt.style.height = `${Math.min(prompt.scrollHeight, 168)}px`;
+  });
 }
 // Send, Queue and Steer need something to send; Stop is always available while a response runs.
 function refreshFollowupButtons() {
@@ -906,14 +931,25 @@ async function followRun({ sessionId, projectId, title, requestData, attachmentN
   try {
     const result = await (NATIVE ? pollRun : readStream)(response, (event, value) => {
       if (event === "snapshot") {
+        // Native polling lands here once a second. Patch the streaming bubble in place: rebuilding every bubble
+        // (renderChat) each second froze long sessions and made the keyboard stutter on iOS.
+        const cardIds = (cards) => cards.map((card) => card.id).join();
+        const cardsChanged = cardIds(run.approvals) !== cardIds(value.approvals || []);
+        const statusChanged = (value.status || run.status) !== run.status;
         assistantMessage.content = value.content || "";
         assistantMessage.status = run.status = value.status || run.status;
-        run.live = value.live || "";
+        if (state.sheet === "live" && viewedRun() === run && value.live !== run.live) { run.live = ""; appendLive(run, value.live || ""); }
+        else run.live = value.live || "";
         run.approvals = value.approvals || [];
-        dropAnswered(sessionId, run.approvals);
-        for (const card of run.approvals) notify({ kind: "approval", sessionId, title: card.title || `Allow ${card.tool}?`, body: title, card });
-        if (viewing(sessionId)) renderChat();
-        renderRunState();
+        if (cardsChanged) {
+          dropAnswered(sessionId, run.approvals);
+          for (const card of run.approvals) notify({ kind: "approval", sessionId, title: card.title || `Allow ${card.tool}?`, body: title, card });
+        }
+        if (viewing(sessionId)) {
+          if (!patchStreamingBubble(assistantMessage)) renderMessages();
+          if (cardsChanged) renderApprovals();
+        }
+        if (cardsChanged || statusChanged) renderRunState();
         return;
       }
       if (event === "approval") {
@@ -937,16 +973,7 @@ async function followRun({ sessionId, projectId, title, requestData, attachmentN
         renderRunState();
       }
       if (!viewing(sessionId)) return;
-      const last = $("messages").lastElementChild;
-      if (event === "delta" || event === "reset") {
-        const text = last?.querySelector(".bubble-text");
-        if (text) text.textContent = assistantMessage.content;
-        const list = $("messages");
-        if (list.scrollHeight - list.scrollTop - list.clientHeight < 160) list.scrollTop = list.scrollHeight;
-      } else if (event === "status") {
-        const status = last?.querySelector(".bubble-status");
-        if (status) status.textContent = assistantMessage.status;
-      }
+      if (event === "delta" || event === "reset" || event === "status") patchStreamingBubble(assistantMessage);
     }, sessionId, requestData.requestId);
     run.status = result.route || "Completed";
     appendLive(run, `\n✓ Done${result.route ? ` · ${result.route}` : ""}\n`);
@@ -1123,8 +1150,16 @@ function openLiveSheet() {
 function renderLiveSheet() {
   const run = viewedRun();
   const body = $("sheet-body");
-  const pre = body.querySelector("pre");
+  const pre = body.querySelector("pre.live-output");
   const stick = !pre || pre.scrollHeight - pre.scrollTop - pre.clientHeight < 80;
+  // Already open: update the log and state line in place instead of rebuilding the sheet on every chunk.
+  const state0 = body.querySelector(".run-state");
+  if (pre && state0 && run) {
+    state0.replaceChildren(...[run.active ? el("i", { class: "live-dot", "aria-hidden": "true" }) : null, run.status].filter(Boolean));
+    if (pre.textContent !== run.live) pre.textContent = run.live || "";
+    if (stick) pre.scrollTop = pre.scrollHeight;
+    return;
+  }
   const route = ROUTES.find(([id]) => id === state.mode)?.[1];
   body.replaceChildren(
     el("p", { class: "run-state" }, run ? [run.active ? el("i", { class: "live-dot", "aria-hidden": "true" }) : null, run.status] : "Ready when you are."),
@@ -1269,6 +1304,118 @@ async function loadSettingsView() {
       el("label", { class: "field" }, "Fallback", select(`${role}-fallback`, settings[`${role}Fallback`], "Choose automatically")))));
   } catch (error) { $("settings-status").textContent = error.message; }
 }
+
+// ---- Marketplace (server marketplace.mjs; same sources as desktop Settings → Marketplace) --------------------
+// Skills: pick a source, Review runs the server's scan, Install adds it (pre-approved, like the desktop).
+// MCP servers: browse only. Adding one starts a command on the server PC, so that stays on the PC.
+$("open-skill-market").addEventListener("click", async () => {
+  openSheet("Skills marketplace", "skill-market", el("p", { class: "hint" }, "Loading…"));
+  let data;
+  try { data = await request("/api/marketplace"); } catch (error) { return $("sheet-body").replaceChildren(el("p", { class: "hint" }, error.message)); }
+  const source = el("select", { "aria-label": "Skill source" }, ...data.skillSources.map((entry) => el("option", { value: entry.repo }, entry.label)));
+  source.value = localStorage.getItem("ar-market-source") || data.skillSources[0]?.repo;
+  if (!source.value) source.value = data.skillSources[0]?.repo;
+  const filter = el("input", { type: "search", placeholder: "Filter skills", autocapitalize: "off", spellcheck: false });
+  const from = el("p", { class: "hint" });
+  const list = el("div", { class: "list glass" });
+  let skills = [], loadTicket = 0;
+  const installed = () => new Set(state.skills.map((skill) => String(skill.name).toLowerCase()));
+  const renderList = () => {
+    const query = filter.value.trim().toLowerCase();
+    const rows = skills.filter((skill) => !query || `${skill.name} ${skill.group}`.toLowerCase().includes(query));
+    const have = installed();
+    list.replaceChildren(...(rows.length ? rows.slice(0, 150).map((skill) => el("button", { type: "button", class: "row", onclick: () => reviewMarketSkill(skill) },
+      el("span", { class: "row-text" }, el("span", { class: "row-title" }, skill.name), el("span", { class: "row-sub" }, [skill.group, have.has(skill.name.toLowerCase()) && "Installed"].filter(Boolean).join(" · "))),
+      el("span", { class: "chevron", "aria-hidden": "true" }, "›"))) : [el("p", { class: "hint" }, skills.length ? "No skills match." : "Loading…")]));
+  };
+  const load = async () => {
+    const ticket = ++loadTicket;
+    const entry = data.skillSources.find((item) => item.repo === source.value);
+    from.textContent = entry ? `Used by ${entry.from} · ${entry.repo}` : "";
+    localStorage.setItem("ar-market-source", source.value);
+    skills = [];
+    renderList();
+    try {
+      const repo = source.value;
+      const result = await request(`/api/marketplace/skills?repo=${encodeURIComponent(repo)}`);
+      if (ticket !== loadTicket || state.sheet !== "skill-market") return;
+      skills = result.skills;
+      if (!skills.length) list.replaceChildren(el("p", { class: "hint" }, "This source has no skills."));
+      else renderList();
+    } catch (error) { if (ticket === loadTicket) list.replaceChildren(el("p", { class: "hint" }, error.message)); }
+  };
+  source.addEventListener("change", load);
+  filter.addEventListener("input", renderList);
+  $("sheet-body").replaceChildren(el("div", { class: "card glass" }, el("label", { class: "field" }, "Source", source), el("label", { class: "field" }, "Filter", filter)), from, list,
+    el("p", { class: "hint" }, "Every skill is scanned and shown to you before it is installed. Add more sources on the server PC."));
+  if (!state.skills.length) loadSkills().then(renderList).catch(() => {});
+  load();
+});
+
+async function reviewMarketSkill(skill) {
+  openSheet(skill.name, "skill-review", el("p", { class: "hint" }, "Scanning… the skill reviewers can take a minute."));
+  let scan;
+  try { scan = await request("/api/skills/scan", { method: "POST", body: JSON.stringify({ url: skill.url }) }); }
+  catch (error) { return state.sheet === "skill-review" && $("sheet-body").replaceChildren(el("p", { class: "hint" }, error.message)); }
+  if (state.sheet !== "skill-review") return;
+  const levels = { high: "High risk", medium: "Check", info: "Note" };
+  const category = el("input", { type: "text", value: "General", maxLength: 40 });
+  const install = el("button", { type: "button", class: "chip-button accent", onclick: async () => {
+    install.disabled = true;
+    try {
+      await request("/api/skills/install", { method: "POST", body: JSON.stringify({ scanId: scan.scanId, category: category.value }) });
+      await loadSkills().catch(() => {});
+      toast(`Installed ${scan.name}. It's pre-approved for every provider.`);
+      closeSheet();
+      refreshComposer();
+    } catch (error) { install.disabled = false; toastError(error); }
+  } }, "Install");
+  $("sheet-body").replaceChildren(
+    el("p", { class: "hint" }, scan.purpose || "The skill does not say what it is for. Read it before installing."),
+    el("div", { class: "group-label" }, "Skill reviewers"),
+    el("div", { class: "list glass" }, ...(scan.reviewers || []).map((reviewer) => el("div", { class: "row" }, el("span", { class: "row-text" }, el("span", { class: "row-title" }, reviewer.name),
+      el("span", { class: "row-sub" }, reviewer.status === "ok" ? `${reviewer.summary} · ${reviewer.findings.length} finding${reviewer.findings.length === 1 ? "" : "s"}` : reviewer.status === "unavailable" ? "Not installed on the server" : `Couldn't run: ${reviewer.error}`))))),
+    el("div", { class: "group-label" }, "Built-in pattern check"),
+    el("div", { class: "list glass" }, ...(scan.warnings.length ? scan.warnings.map((warning) => el("div", { class: "row" }, el("span", { class: "row-text" }, el("span", { class: "row-title" }, `${levels[warning.level] || warning.level}: ${warning.title}`), warning.example ? el("span", { class: "row-sub" }, warning.example) : null)))
+      : [el("div", { class: "row" }, el("span", { class: "row-text" }, el("span", { class: "row-title" }, "No risky patterns found"), el("span", { class: "row-sub" }, "A clean check is not a guarantee.")))])),
+    el("details", { class: "card glass" }, el("summary", {}, "Read the full skill"), el("pre", { class: "live-output" }, scan.instructions)),
+    el("div", { class: "card glass" }, el("label", { class: "field" }, "Category", category)),
+    el("div", { class: "row-buttons" }, install, el("button", { type: "button", class: "chip-button", onclick: closeSheet }, "Don't install")));
+}
+
+$("open-mcp-market").addEventListener("click", async () => {
+  openSheet("MCP servers", "mcp-market", el("p", { class: "hint" }, "Loading…"));
+  let data;
+  try { data = await request("/api/marketplace"); } catch (error) { return $("sheet-body").replaceChildren(el("p", { class: "hint" }, error.message)); }
+  const registry = el("select", { "aria-label": "Registry" }, ...data.mcpRegistries.map((entry) => el("option", { value: entry.id }, entry.label)));
+  const query = el("input", { type: "search", placeholder: "github, memory, browser…", autocapitalize: "off", spellcheck: false, enterKeyHint: "search" });
+  const from = el("p", { class: "hint" });
+  const list = el("div", { class: "list glass" });
+  const more = el("button", { type: "button", class: "chip-button", hidden: true }, "Load more");
+  let rows = [], cursor = "", searchTicket = 0;
+  const search = async (next = false) => {
+    const ticket = ++searchTicket;
+    more.hidden = true;
+    from.textContent = `Used by ${data.mcpRegistries.find((entry) => entry.id === registry.value)?.from || ""}`;
+    if (!next) { rows = []; cursor = ""; list.replaceChildren(el("p", { class: "hint" }, "Searching…")); }
+    try {
+      const result = await request(`/api/marketplace/mcp?${new URLSearchParams({ registry: registry.value, search: query.value.trim(), cursor: next ? cursor : "" })}`);
+      if (ticket !== searchTicket || state.sheet !== "mcp-market") return;
+      rows = [...rows, ...result.servers.filter((row) => !rows.some((old) => old.id === row.id))];
+      cursor = result.nextCursor;
+      list.replaceChildren(...(rows.length ? rows.map((row) => el("div", { class: "row" }, el("span", { class: "row-text" },
+        el("span", { class: "row-title" }, row.title), el("span", { class: "row-sub" }, [row.id, row.version && `v${row.version}`].filter(Boolean).join(" · ")),
+        row.description ? el("span", { class: "row-sub" }, row.description) : null,
+        row.needs.length ? el("span", { class: "row-sub" }, `Needs ${row.needs.join("; ")}`) : null))) : [el("p", { class: "hint" }, "No servers found.")]));
+      more.hidden = !cursor;
+    } catch (error) { if (ticket === searchTicket) { list.replaceChildren(el("p", { class: "hint" }, error.message)); more.hidden = !cursor; } }
+  };
+  registry.addEventListener("change", () => search());
+  const form = el("form", { class: "card glass", onsubmit: (event) => { event.preventDefault(); query.blur(); search(); } }, el("label", { class: "field" }, "Registry", registry), el("label", { class: "field" }, "Search", query));
+  more.addEventListener("click", () => search(true));
+  $("sheet-body").replaceChildren(form, from, list, more, el("p", { class: "hint" }, "Adding an MCP server runs a command on the server PC, so add them there: Settings → Marketplace → MCP servers."));
+  search();
+});
 
 $("appearance").addEventListener("change", (event) => { localStorage.setItem("ar-appearance", event.target.value); applyAppearance(); });
 $("palette").addEventListener("change", (event) => { localStorage.setItem("ar-palette", event.target.value); applyAppearance(); });

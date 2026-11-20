@@ -1,5 +1,8 @@
 # v0.37.0 cheaper models by default
 
+- Settings → Marketplace: discover public skills from Anthropic, OpenAI and Hermes sources, scan and review before installing, and browse/search public MCP registries. Add custom GitHub skill sources on the server PC.
+- Import compatible MCP JSON or LM Studio/Cursor install links. Required setup is shown before adding a server; provider approvals still apply.
+- Mobile Settings gains skill discovery, review/install and MCP browsing. Streaming updates patch the latest bubble instead of rebuilding the conversation, and composer resizing runs at most once per frame.
 - Ruflo's Claude Code host now runs on the model chosen for the Coding route (Sonnet by default) instead of Claude Code's default, Opus. Ruflo picks Haiku, Sonnet or Opus for each agent it starts.
 - Coding and UI Designer now default to Sonnet. If they were set to Opus, they move to Sonnet once; choose Opus again in Settings → Routing & models to keep it.
 - Claude Code model choices: Haiku, Sonnet, Opus plans with Sonnet building, and Opus.

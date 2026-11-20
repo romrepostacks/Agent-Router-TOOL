@@ -7,10 +7,12 @@ import { runClaudeStream, isUsageLimitError } from "./cli-runner.mjs";
 // Never launch hive-mind --claude: that path can skip provider permissions.
 // extraServers: the user's pass-through MCP servers (mcp-servers.mjs), in Claude Code's --mcp-config shape.
 // No --strict-mcp-config: Claude Code's own servers (user, project, plugins) load next to these.
-export function rufloArgs(entry, permissionMode = "default", extraServers = {}) {
-  return ["-p", "--permission-mode", permissionMode, "--mcp-config",
+// model: the host's Claude Code model alias. Without --model Claude Code uses its account default (Opus 5.5),
+// and every agent the host starts inherits it, so Ruflo's cheaper model choices were never applied.
+export function rufloArgs(entry, permissionMode = "default", extraServers = {}, model = "") {
+  return ["-p", "--permission-mode", permissionMode, ...(model ? ["--model", model] : []), "--mcp-config",
     JSON.stringify({ mcpServers: { ...extraServers, ruflo: { command: "node", args: [entry, "mcp", "start"] } } }),
-    "--append-system-prompt", "Ruflo is the sole coordinator. Before project work, discover and call Ruflo's routing tool. When the work needs more than one agent, initialize a Ruflo swarm before delegating; a single-agent plan may run without one. Let Ruflo select agents and models. Use its returned plan to drive execution with the host's Agent tool. Do not substitute your own router or claim queued tasks are completed work. If Ruflo is unavailable, stop and report the error. Respect thread access, staged copies, and provider approvals for every worker. Never launch detached workers or permission-bypassing commands. Report which agents/models actually executed, distinguishing selections from completed work."];
+    "--append-system-prompt", "Ruflo is the sole coordinator. Before project work, discover and call Ruflo's routing tool. When the work needs more than one agent, initialize a Ruflo swarm before delegating; a single-agent plan may run without one. Let Ruflo select agents and models. Use its returned plan to drive execution with the host's Agent tool. Pass every Agent call the model alias Ruflo recommends (haiku, sonnet or opus); if its plan names none, ask Ruflo's model-route tool with preferCost. Use opus only for work Ruflo rates complex. Do not substitute your own router or claim queued tasks are completed work. If Ruflo is unavailable, stop and report the error. Respect thread access, staged copies, and provider approvals for every worker. Never launch detached workers or permission-bypassing commands. Report which agents/models actually executed, distinguishing selections from completed work."];
 }
 
 export function describeRufloTool(name, input = {}) {
@@ -34,12 +36,12 @@ export async function runRufloTask(command, prompt, project, env, options = {}, 
   let swarm = false;
   let agents = 0;
   const pending = new Map();
-  options.onStatus?.("Ruflo is planning the swarm (Claude Code execution host)…");
+  options.onStatus?.(`Ruflo is planning the swarm (Claude Code execution host, ${options.model || "default model"})…`);
   options.onPrompt?.(prompt.length);
-  const content = await run(command, rufloArgs(entry, options.permissionMode || "default", options.mcpServers), project.path, env, {
+  const content = await run(command, rufloArgs(entry, options.permissionMode || "default", options.mcpServers, options.model), project.path, env, {
     signal: options.signal, prompt,
     onApproval: (card, extra) => options.onApproval?.({ ...card, ...extra }) ?? "deny",
-    onUsage: (usage) => options.onUsage?.({ ...usage, provider: "ruflo", model: "Claude Code host" }),
+    onUsage: (usage) => options.onUsage?.({ ...usage, provider: "ruflo", model: `Claude Code host (${options.model || "default"})` }),
     onText: (text) => { options.onDelta?.(`${text}\n\n`); options.onActivity?.(`${text}\n`); },
     onLine: options.onActivity,
     onTool: (name, input, id) => {

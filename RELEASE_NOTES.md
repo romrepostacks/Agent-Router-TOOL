@@ -1,3 +1,9 @@
+# v0.37.0 cheaper models by default
+
+- Ruflo's Claude Code host now runs on the model chosen for the Coding route (Sonnet by default) instead of Claude Code's default, Opus. Ruflo picks Haiku, Sonnet or Opus for each agent it starts.
+- Coding and UI Designer now default to Sonnet. If they were set to Opus, they move to Sonnet once; choose Opus again in Settings → Routing & models to keep it.
+- Claude Code model choices: Haiku, Sonnet, Opus plans with Sonnet building, and Opus.
+
 # v0.36.2 MCP approval requests
 
 - Fixed: when an MCP server such as computer use asked for your OK to act on the server PC, the request was denied without asking. It now shows an approval card: Allow lets it go ahead and Deny declines. Codex requests for extra file or network access also show a card now, and Allow grants them for the current turn only.

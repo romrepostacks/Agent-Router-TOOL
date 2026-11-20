@@ -1,4 +1,13 @@
-# Current change (v0.36.2): MCP requests to act on the server PC reach an approval card
+# Current change (v0.37.0): cheaper Claude models by default; Ruflo no longer runs everything on Opus
+
+- Problem: Ruflo ran `claude -p` without `--model`, so its host used Claude Code's account default, Opus 5.5 (per code.claude.com/docs/en/model-config). Every agent the host started inherited that model unless the Agent call named one, so Ruflo's cheaper picks were never applied. Coding and UI Designer also defaulted to `claude::opus`, and saving Settings had stored that default in every settings file.
+- `ruflo-runner.mjs`: `rufloArgs(entry, mode, servers, model)` adds `--model <alias>`. The appended system prompt now tells the host to pass Ruflo's recommended alias (haiku, sonnet or opus) on every Agent call, to ask Ruflo's model-route tool with preferCost when the plan names none, and to use opus only for work Ruflo rates complex. Usage and status show the host model.
+- `server.mjs`: `rufloHostModel()` runs the Ruflo host on the Coding route's Claude model, or Sonnet when Coding uses another provider. Coding/UI defaults and the built-in role default changed from Opus to Sonnet. Claude Code's model list is now Haiku, Sonnet, `opusplan` (Opus plans, Sonnet builds) and Opus. `readSettings()` moves a stored `claude::opus` on Coding/UI to Sonnet once (`sonnetDefaults` marker); picking Opus again afterwards sticks.
+- Research: Sonnet 5.5 is positioned for everyday coding and agents at half Opus 5.5's price ($2/$10 vs $4/$20 per MTok); Haiku 5.5 is $0.10/$0.50. Anthropic's own multi-agent research system used an Opus lead with Sonnet workers. Findings and follow-ups are in `KNOWN_PROBLEMS.md` → Cost, speed and accuracy.
+- Tests: `test/ruflo-runner.test.mjs` checks `--model` and the model instruction. `npm test` passes (132).
+- Next: run a Ruflo task and check in Activity that the host and its agents show Sonnet or Haiku; compare token use per completed task with 0.36.2.
+
+# Previous change (v0.36.2): MCP requests to act on the server PC reach an approval card
 
 - Bug: an MCP server asking the user for an OK, such as computer use asking to control an app on this PC, was refused at once. Claude Code sends these as `elicitation` control requests, and Codex sends `mcpServer/elicitation/request` and `item/permissions/requestApproval`. The runners answered all three with "Unsupported request", which both CLIs treat as cancel or deny, so no card appeared.
 - `cli-runner.mjs`: new `elicitationCard()` and `elicitationContent()`. `runClaudeStream` turns an `elicitation` request into a normal approval card (tool `mcp__<server>`, showing the server's message and URL). Allow returns `accept` with each field's default, or true for yes/no fields. Deny, no answer, or no page returns `decline`.

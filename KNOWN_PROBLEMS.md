@@ -1,6 +1,6 @@
 ﻿# Known problems and upgrade list
 
-One list for reported problems and planned upgrades. Updated for v0.20.0 (2026-11-09).
+One list for reported problems and planned upgrades. Updated for v0.37.0 (2026-11-20).
 This file replaces `UPGRADE_LIST.md`; its items are in **Upgrade list** below with their current status.
 Checked items have source fixes and automated regression coverage where noted; native-device and in-app acceptance is listed separately at the end.
 
@@ -44,6 +44,19 @@ Numbers match the old `UPGRADE_LIST.md`, which earlier `PROJECT_STATUS.md` entri
 10. [ ] **Local models on the phone (future idea, 2026-11-20).** Nothing planned yet. Answer quick questions on the phone itself, offline and free. On iPhone this means a Capacitor plugin in `mobile/` that calls Apple's on-device model through the Swift `FoundationModels` framework. It needs iOS 26 and Apple Intelligence hardware (iPhone 15 Pro and newer). Android needs its own on-device model or a fallback. The desktop router never sees these answers. Expect lower quality than the free cloud tiers: about 3B parameters with a small context window. Apple has no Siri or Apple Intelligence web API, so this can't be an `API_PROVIDERS` entry. A related, smaller idea: a Siri App Intent or Shortcut ("Hey Siri, ask Router…") that sends the question to the router's quick route.
 
 General goals from the old list (secure links between components, Tailscale compatibility, phone performance, error handling and logging, room to grow) apply to every item above.
+
+## Cost, speed and accuracy (research 2026-11-20, v0.37.0)
+
+Sources: Claude Code model configuration and subagent docs (code.claude.com/docs/en/model-config, /sub-agents), Anthropic's blog on choosing a model and effort level in Claude Code, Anthropic's multi-agent research system write-up, and model-routing/cascade write-ups (FrugalGPT-style cheap-first escalation). Prices: Opus 5.5 $4/$20, Sonnet 5.5 $2/$10, Haiku 5.5 $0.10/$0.50 per million tokens in/out.
+
+- [x] Ruflo and its agents always ran on Opus 5.5. Claude Code's `default` model is Opus on every paid plan, the Ruflo host was started without `--model`, and agents inherit the host model. Fixed in 0.37.0: the host runs on the Coding route's Claude model (Sonnet by default) and passes Ruflo's per-agent alias. Regression: `test/ruflo-runner.test.mjs`.
+- [x] Coding and UI Designer defaulted to Opus. Now Sonnet, with a one-time move of stored `claude::opus`. Haiku and `opusplan` added to the Claude Code list.
+- [ ] Ruflo's router matches weakly. `hooks_route` reports `"embedder": "hash"` and matched this task to "devops" at 0.4 confidence. Initialise real embeddings (Ruflo `embeddings_init`) in the bundled runtime and recheck the match quality.
+- [ ] Effort is never set. Claude Code takes `--effort` and `CLAUDE_CODE_SUBAGENT_EFFORT`; higher effort means more files read, more checks and more steps. Use `low` for Quick questions and read-only answers, keep the default for coding, and measure before raising anything.
+- [ ] Escalate on failure, not up front. Fallback only fires on errors and usage limits. A cheap-first cascade (run Sonnet; retry on Opus when tests fail or the model refuses) keeps quality while most work stays cheap. It only pays while the escalation rate stays below 1 − (cheap cost ÷ Opus cost), so log escalations.
+- [ ] Route planning starts a full Codex CLI agent for a one-word classification. A Haiku or local Colibri call (with `route-rules.mjs`) would be faster and cheaper; check accuracy with `evaluate-routing.mjs` first.
+- [ ] Measure cost per completed task. The token-use stats group by provider::model; compare 0.36.2 and 0.37.0 on similar tasks, counting retries, before changing more defaults.
+- [ ] Multi-agent runs cost about 15× a chat (Anthropic's figure). Keep single-agent plans for small edits (already allowed) and reserve swarms for broad work.
 
 ## Polish backlog (found by the UI test bot, 0.33.0, 2026-11-16)
 

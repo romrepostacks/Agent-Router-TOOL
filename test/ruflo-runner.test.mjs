@@ -67,3 +67,10 @@ test("Ruflo preserves a host limit response before checking coordination", async
     check: async () => {}, run: async () => "You've hit your 5-hour limit · resets 7pm",
   }), /5-hour limit/);
 });
+
+test("Ruflo's host runs on the chosen model, not Claude Code's Opus default", () => {
+  assert.ok(!rufloArgs("r.js").includes("--model"));
+  const args = rufloArgs("r.js", "default", {}, "sonnet");
+  assert.equal(args[args.indexOf("--model") + 1], "sonnet");
+  assert.match(args.at(-1), /model alias Ruflo recommends/);
+});

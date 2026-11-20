@@ -1064,7 +1064,15 @@ async function diagnostics() {
 async function readSettings() {
   try {
     const saved = JSON.parse(await readFile(SETTINGS_FILE, "utf8"));
-    const defaults = { routePlanningPrimary: "codex::", longTermPlanningPrimary: "codex::", codingPrimary: `claude::${saved.claudeModel || "opus"}`, reviewPrimary: "codex::", securityPrimary: `copilot::${saved.copilotModel || "claude-sonnet-5.5"}`, uiPrimary: `claude::${saved.claudeModel || "opus"}`, artPrimary: "codex::", githubPrimary: `copilot::${saved.copilotModel || "auto"}`, quickPrimary: `colibri::${saved.colibriModel || COLIBRI_MODEL}` };
+    // 0.37.0: Coding and UI defaulted to Opus, and saving Settings stored that default. Move it to Sonnet once;
+    // choosing Opus again afterwards sticks.
+    if (!saved.sonnetDefaults) {
+      for (const key of ["codingPrimary", "uiPrimary"]) if (saved[key] === "claude::opus") saved[key] = "claude::sonnet";
+      if (saved.claudeModel === "opus") delete saved.claudeModel;
+      saved.sonnetDefaults = true;
+      await replaceFile(SETTINGS_FILE, JSON.stringify(saved, null, 2)).catch(() => {});
+    }
+    const defaults = { routePlanningPrimary: "codex::", longTermPlanningPrimary: "codex::", codingPrimary: `claude::${saved.claudeModel || "sonnet"}`, reviewPrimary: "codex::", securityPrimary: `copilot::${saved.copilotModel || "claude-sonnet-5.5"}`, uiPrimary: `claude::${saved.claudeModel || "sonnet"}`, artPrimary: "codex::", githubPrimary: `copilot::${saved.copilotModel || "auto"}`, quickPrimary: `colibri::${saved.colibriModel || COLIBRI_MODEL}` };
     for (const [role, oldPrimary, oldFallback, provider] of [["routePlanning", "routerModel", "routerFallbackModel", "codex"], ["review", "routerModel", "routerFallbackModel", "codex"], ["longTermPlanning", "plannerModel", "plannerFallbackModel", "codex"], ["coding", "claudeModel", "claudeFallbackModel", "claude"], ["security", "copilotModel", "copilotFallbackModel", "copilot"], ["ui", "claudeModel", "claudeFallbackModel", "claude"], ["art", "codexModel", "codexFallbackModel", "codex"], ["github", "copilotModel", "copilotFallbackModel", "copilot"]]) {
       saved[`${role}Primary`] ||= saved[oldPrimary] ? `${provider}::${saved[oldPrimary]}` : defaults[`${role}Primary`];
       saved[`${role}Fallback`] ||= saved[oldFallback] ? `${provider}::${saved[oldFallback]}` : "";
@@ -1095,7 +1103,8 @@ async function availableModelCatalog(force = false) {
     if (!catalog.colibri.some((item) => item.id === model.name)) catalog.colibri.push({ id: model.name, name: model.inUse ? `${model.name} (loaded)` : `${model.name} (loads when used)` });
   }
   catalog.codex = codex;
-  if (hasClaude) catalog.claude = [{ id: "opus", name: "Opus (current)" }, { id: "sonnet", name: "Sonnet (current)" }];
+  // Claude Code aliases, cheapest first. Sonnet is the default for Coding/UI and the Ruflo host; Opus for the hardest work.
+  if (hasClaude) catalog.claude = [{ id: "haiku", name: "Haiku (fastest, simple tasks)" }, { id: "sonnet", name: "Sonnet (everyday coding)" }, { id: "opusplan", name: "Opus plans, Sonnet builds" }, { id: "opus", name: "Opus (hardest tasks)" }];
   if (hasCopilot) catalog.copilot = COPILOT_MODELS.map((id) => ({ id, name: id === "auto" ? "Auto choose" : id }));
   catalog.all = Object.entries(catalog).filter(([provider]) => provider !== "all").flatMap(([provider, models]) => models.map((model) => ({ id: `${provider}::${model.id}`, name: `${PROVIDER_NAMES[provider]} — ${model.name}` })));
   cachedModelCatalog = catalog;
@@ -1358,6 +1367,13 @@ function errorTail(error, lines = 3) {
   return String(error?.message || error).split("\n").map((line) => line.trim()).filter(Boolean).slice(-lines).join(" · ").slice(-600);
 }
 
+
+// Ruflo's Claude Code host runs on the Coding route's Claude model; Sonnet when Coding uses another provider.
+// Ruflo still picks each agent's model (the host passes its alias to the Agent tool).
+async function rufloHostModel() {
+  const { provider, model } = choiceParts((await readSettings()).codingPrimary);
+  return provider === "claude" && model ? model : "sonnet";
+}
 
 function choiceParts(choice, defaultProvider = "codex") {
   const [provider, ...model] = String(choice || "").split("::");
@@ -1667,8 +1683,8 @@ async function implementWithRole(role, task, project, skillText, options, { plan
     const prompt = `${kind === "ui" ? "Act as a UI designer and frontend engineer. Inspect the existing interface and implement the requested visual and interaction changes, matching the project's conventions." : kind === "art" ? "Create or update the requested visual assets in the project. Prefer editable SVG or existing project asset formats; if this provider cannot render raster images, create a usable vector asset or a clear asset brief rather than claiming a raster was generated." : "Inspect the project and implement the requested changes."} ${where} You may run the project's syntax checks and tests (node --check, node --test, npm test). Follow existing conventions and shared project instructions. Do not access credentials, API keys, environment variables, or secret files. Finish with what you changed in a few lines.${NEXT_STEPS_RULE}${skillText}\n\nTask:\n${task}${plan ? `\n\nPlan:\n${plan}` : ""}${options.chained ? "" : sharedHandoffSection(await readHandoff(project))}`;
     options.onStatus?.(staged ? `${role} is working in a private project copy…` : `${role} is editing the project folder…`);
     const content = role === "ruflo"
-      ? await runRufloTask(CLI.claude, prompt, workingProject, cleanClaudeEnvironment(), { ...options, mcpServers: claudeMcpServers(await userMcpServers()), permissionMode: options.permissionMode || await claudeDefaultMode() })
-      : await runRoleTask(role, role === "art" ? "codex::" : "claude::opus", prompt, workingProject, kind, { ...options, stagedCopy: staged || options.stagedCopy });
+      ? await runRufloTask(CLI.claude, prompt, workingProject, cleanClaudeEnvironment(), { ...options, model: await rufloHostModel(), mcpServers: claudeMcpServers(await userMcpServers()), permissionMode: options.permissionMode || await claudeDefaultMode() })
+      : await runRoleTask(role, role === "art" ? "codex::" : "claude::sonnet", prompt, workingProject, kind, { ...options, stagedCopy: staged || options.stagedCopy });
     if (!staged && options.chained) return { content, route: role, proposal: null };
     if (!staged) {
       const after = baseline && await workspaceFiles(project.path).catch(() => null);
@@ -1820,7 +1836,7 @@ async function runRoute(route, messages, project, skillText = "", localSkillText
         ? await implementWithRole("ruflo", task, project, skillText, rufloOptions)
         : { content: await runRufloTask(CLI.claude,
           `Thread access: read-only. Do not edit files or run project scripts. ${route === "route" ? "Plan only; do not execute the plan." : "Answer the request using Ruflo coordination."}\n${skillText}\n${messages.map((item) => `${item.role}: ${item.content}`).join("\n\n")}`,
-          project, cleanClaudeEnvironment(), { ...rufloOptions, mcpServers: claudeMcpServers(await userMcpServers()), permissionMode: "plan" }) };
+          project, cleanClaudeEnvironment(), { ...rufloOptions, model: await rufloHostModel(), mcpServers: claudeMcpServers(await userMcpServers()), permissionMode: "plan" }) };
       return { ...result, route: "Ruflo swarm", delegated: ["Ruflo", ...decisions], backend: "ruflo" };
     } catch (error) {
       if (options.signal?.aborted || !isUsageLimitError(error)) throw error;
@@ -2586,7 +2602,7 @@ async function handleRequest(req, res, fromRemote = false) {
       const saved = await readSettings();
       const skillsLimit = Number.isSafeInteger(saved.skillsLimit) ? saved.skillsLimit : -1;
       const roles = ["routePlanning", "longTermPlanning", "coding", "review", "security", "ui", "art", "github", "quick"];
-      const defaults = { routePlanningPrimary: "codex::", longTermPlanningPrimary: "codex::", codingPrimary: "claude::opus", reviewPrimary: "codex::", securityPrimary: "copilot::claude-sonnet-5.5", uiPrimary: "claude::opus", artPrimary: "codex::", githubPrimary: "copilot::auto", quickPrimary: `colibri::${saved.colibriModel || COLIBRI_MODEL}` };
+      const defaults = { routePlanningPrimary: "codex::", longTermPlanningPrimary: "codex::", codingPrimary: "claude::sonnet", reviewPrimary: "codex::", securityPrimary: "copilot::claude-sonnet-5.5", uiPrimary: "claude::sonnet", artPrimary: "codex::", githubPrimary: "copilot::auto", quickPrimary: `colibri::${saved.colibriModel || COLIBRI_MODEL}` };
       const routing = Object.fromEntries(roles.flatMap((role) => {
         const legacy = role === "routePlanning" || role === "review" ? saved.routerModel : role === "longTermPlanning" ? saved.plannerModel : role === "coding" || role === "ui" ? saved.claudeModel : role === "security" || role === "github" ? saved.copilotModel : "";
         const legacyProvider = role === "coding" || role === "ui" ? "claude" : role === "security" || role === "github" ? "copilot" : "codex";

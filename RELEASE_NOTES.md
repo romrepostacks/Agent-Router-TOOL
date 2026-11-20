@@ -3,6 +3,8 @@
 - Ruflo's Claude Code host now runs on the model chosen for the Coding route (Sonnet by default) instead of Claude Code's default, Opus. Ruflo picks Haiku, Sonnet or Opus for each agent it starts.
 - Coding and UI Designer now default to Sonnet. If they were set to Opus, they move to Sonnet once; choose Opus again in Settings → Routing & models to keep it.
 - Claude Code model choices: Haiku, Sonnet, Opus plans with Sonnet building, and Opus.
+- Changing the permission mode during a Claude Code task (for example Ask permissions to Accept edits) now switches the running task straight away. Ticking or unticking shared skills and linked folders mid-run is passed to the running task too.
+- Pushing to GitHub now also updates the GitHub release for the current version and deletes older releases. Their git tags are kept.
 
 # v0.36.2 MCP approval requests
 

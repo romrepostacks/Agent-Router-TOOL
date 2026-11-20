@@ -50,7 +50,7 @@ function renderInspector() {
     security: "The Security audit provider reads the selected project and reports risks. It cannot edit files or run commands.",
     ui: "The UI Designer provider edits the selected project directly. Ask for a staged copy to review first.",
     art: "The Art Asset provider creates assets in the selected project. Ask for a staged copy to review first.",
-    github: "The GitHub provider can read the project and run only git status, log, diff, branch, remote, push (never force) and gh issue/pr commands. Codex, local models and API-key models can only advise here.",
+    github: "The GitHub provider can read the project and run only git status, log, diff, branch, remote, push (never force) and gh issue/pr/release commands. A push also updates the GitHub release and deletes older releases (tags are kept). Codex, local models and API-key models can only advise here.",
     quick: "The Quick questions provider answers without project access. Images are sent when that provider is a local or API-key model."
   };
   $("route-label").textContent = $("mode").selectedOptions[0]?.textContent.replace(/ ·.*/, "") || "Auto";
@@ -147,7 +147,8 @@ function setRouteMenu(open) {
 function renderLinkedFolders() {
   const box = $("linked-folders");
   box.replaceChildren();
-  $("pick-folder").disabled = state.busy || state.project?.scope !== "single";
+  // Not locked while a task runs: the server tells a running Claude Code task about the change (announceLinkedChange).
+  $("pick-folder").disabled = state.project?.scope !== "single";
   if (state.project?.scope !== "single") { box.textContent = "Choose one project folder to link others."; return; }
   const projectIds = state.projects.filter((item) => item.scope === "single" && !item.parent && item.id !== state.project.id).map((item) => item.id);
   // Saved entries that aren't project names are absolute paths from the folder picker.
@@ -160,7 +161,6 @@ function renderLinkedFolders() {
     const input = document.createElement("input");
     input.type = "checkbox";
     input.checked = state.project.linked.includes(id);
-    input.disabled = state.busy;
     input.addEventListener("change", async () => {
       const next = input.checked ? [...state.project.linked, id] : state.project.linked.filter((other) => other !== id);
       try { updateLinked((await request("/api/projects/linked", { method: "POST", body: JSON.stringify({ projectId: state.project.id, linked: next }) })).linked); }
@@ -982,6 +982,8 @@ function renderSkills() {
           : state.selectedSkills.filter((id) => id !== skill.id);
         localStorage.setItem("agent-router-skills", JSON.stringify(state.selectedSkills));
         renderSkills();
+        // Mid-run: the running task is told which skills were added or removed (it shows in the live log).
+        if (viewedRun()?.active) request(`/api/runs/${encodeURIComponent(state.session.id)}/skills`, { method: "POST", body: JSON.stringify({ skillIds: [...state.selectedSkills] }) }).catch(() => {});
       });
       const text = document.createElement("span");
       text.textContent = skill.name + (always ? " · Pre-approved" : skill.description ? " — " + skill.description : "");
@@ -2235,13 +2237,15 @@ $("thread-access").addEventListener("change", async (event) => {
     alert(error.message);
   }
 });
-// Same modes as Claude desktop's picker; the server passes the mode to Claude Code as --permission-mode.
+// Same modes as Claude desktop's picker; the server passes the mode to Claude Code as --permission-mode, and a
+// running Claude Code task switches at once (`live`; the live log notes it).
 $("permission-mode").addEventListener("change", async (event) => {
   const permissionMode = event.target.value;
   try {
     if (!state.session) await newSession();
     if (!state.session) { event.target.value = state.claudeDefaultMode || "default"; return; }
-    state.session = await request(`/api/sessions/${encodeURIComponent(state.session.id)}/permission-mode`, { method: "POST", body: JSON.stringify({ permissionMode }) });
+    const { live, ...session } = await request(`/api/sessions/${encodeURIComponent(state.session.id)}/permission-mode`, { method: "POST", body: JSON.stringify({ permissionMode }) });
+    state.session = session;
   } catch (error) {
     event.target.value = state.session?.permissionMode || state.claudeDefaultMode || "default";
     alert(error.message);

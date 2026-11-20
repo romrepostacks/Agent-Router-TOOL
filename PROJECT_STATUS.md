@@ -1,4 +1,13 @@
-# Current change (v0.37.0): cheaper Claude models by default; Ruflo no longer runs everything on Opus
+# Current change (v0.37.0, same unbuilt version): live mode, skill and folder changes; push updates releases
+
+- Live permission mode: `runClaudeStream` (`cli-runner.mjs`) takes `onControl(handle)`. The handle's `setPermissionMode(mode)` sends Claude Code's `set_permission_mode` control request, and `say(text)` adds a user message. Both return false once the run has its result. `ruflo-runner.mjs` passes `onControl` through. `server.mjs` stores the handle as `run.claude`; `POST /api/sessions/<id>/permission-mode` switches a running task and returns `live`. Read-only Ruflo runs (forced Plan mode) expose only `say`, so a mode change can't make them edit.
+- Live skills and folders: `POST /api/runs/<id>/skills` `{ skillIds }` (sent by the page when skills change mid-run) and both `/api/projects/linked` endpoints (`announceLinkedChange`) tell running Claude Code/Ruflo tasks what was added or removed (`skillChangeNote`, `folderChangeNote`; folders stay read-only reference). Linked-folder controls are no longer disabled while a task runs. Codex, Copilot and chat providers get the change with the next message.
+- Push rule: `PUSH_RELEASE_RULE` is added to the push route's prompt, and to Ruflo's constraint when the mode is push or the message says push. After a successful push the provider creates or edits the `v<version>` GitHub release (notes from RELEASE_NOTES.md, matching build files) and deletes older releases with `gh release delete <tag> --yes`, keeping tags.
+- `KNOWN_PROBLEMS.md`: added the iOS keyboard stutter (since about v0.30) under Mobile app.
+- Tests: `test/live-run-changes.test.mjs`. `npm test` passes (135). Not yet tried in the app against a real Claude Code run.
+- Next: start a Claude Code task in Ask permissions, switch to Accept edits mid-run and check edits stop asking. Push so Actions builds the APK and IPA.
+
+# Previous change (v0.37.0): cheaper Claude models by default; Ruflo no longer runs everything on Opus
 
 - Problem: Ruflo ran `claude -p` without `--model`, so its host used Claude Code's account default, Opus 5.5 (per code.claude.com/docs/en/model-config). Every agent the host started inherited that model unless the Agent call named one, so Ruflo's cheaper picks were never applied. Coding and UI Designer also defaulted to `claude::opus`, and saving Settings had stored that default in every settings file.
 - `ruflo-runner.mjs`: `rufloArgs(entry, mode, servers, model)` adds `--model <alias>`. The appended system prompt now tells the host to pass Ruflo's recommended alias (haiku, sonnet or opus) on every Agent call, to ask Ruflo's model-route tool with preferCost when the plan names none, and to use opus only for work Ruflo rates complex. Usage and status show the host model.

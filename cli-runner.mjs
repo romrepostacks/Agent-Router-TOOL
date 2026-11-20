@@ -92,13 +92,22 @@ export function elicitationContent(schema) {
 }
 const allowed = (reply) => reply === true || reply === "allow" || reply === "always" || reply?.decision === "allow";
 
-export async function runClaudeStream(command, args, cwd, env, { prompt, onText, onTool, onToolResult, onLine, onApproval, onUsage, ...options } = {}) {
+// onControl(handle) hands the caller live controls for the running CLI, and onControl(null) when it ends:
+// setPermissionMode(mode) switches Claude Code's mode mid-run (the same control request Claude desktop sends);
+// say(text) adds a user message, which Claude Code reads at its next step.
+export async function runClaudeStream(command, args, cwd, env, { prompt, onText, onTool, onToolResult, onLine, onApproval, onUsage, onControl, ...options } = {}) {
   const initId = `init-${Date.now()}`;
   let io = null;
   let result = null;
   let buffer = "";
+  let controlSeq = 0;
   const send = (message) => io?.write(`${JSON.stringify(message)}
 `);
+  const live = () => Boolean(io) && !result;
+  const handle = {
+    setPermissionMode: (mode) => { if (!live()) return false; send({ type: "control_request", request_id: `mode-${++controlSeq}`, request: { subtype: "set_permission_mode", mode } }); return true; },
+    say: (text) => { if (!live()) return false; send({ type: "user", message: { role: "user", content: String(text) }, parent_tool_use_id: null }); return true; },
+  };
   const answer = async (id, request) => {
     if (request.subtype === "elicitation") {
       let reply = "deny";
@@ -165,12 +174,12 @@ export async function runClaudeStream(command, args, cwd, env, { prompt, onText,
   // answered ("Stream closed"). Keep subagents in the foreground; parallel Agent calls in one turn still run together.
   const runEnv = { ...(env || process.env), CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1" };
   try {
-    await runCli(command, fullArgs, cwd, runEnv, { ...options, onDelta: read, stdin: (handle) => { io = handle; send({ type: "control_request", request_id: initId, request: { subtype: "initialize", supportedDialogKinds: ["refusal_fallback_prompt"] } }); } });
+    await runCli(command, fullArgs, cwd, runEnv, { ...options, onDelta: read, stdin: (stdin) => { io = stdin; send({ type: "control_request", request_id: initId, request: { subtype: "initialize", supportedDialogKinds: ["refusal_fallback_prompt"] } }); onControl?.(handle); } });
     read("\n");
   } catch (error) {
     read("\n");
     throw result?.result ? new Error(result.result) : error;
-  }
+  } finally { onControl?.(null); }
   if (result?.is_error) throw new Error(result.result || "Claude Code reported an error.");
   return String(result?.result || "").trim() || "The CLI completed without a text response.";
 }

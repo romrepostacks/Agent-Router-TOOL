@@ -39,7 +39,7 @@ export async function runRufloTask(command, prompt, project, env, options = {}, 
   options.onStatus?.(`Ruflo is planning the swarm (Claude Code execution host, ${options.model || "default model"})…`);
   options.onPrompt?.(prompt.length);
   const content = await run(command, rufloArgs(entry, options.permissionMode || "default", options.mcpServers, options.model), project.path, env, {
-    signal: options.signal, prompt,
+    signal: options.signal, prompt, onControl: options.onControl,
     onApproval: (card, extra) => options.onApproval?.({ ...card, ...extra }) ?? "deny",
     onUsage: (usage) => options.onUsage?.({ ...usage, provider: "ruflo", model: `Claude Code host (${options.model || "default"})` }),
     onText: (text) => { options.onDelta?.(`${text}\n\n`); options.onActivity?.(`${text}\n`); },

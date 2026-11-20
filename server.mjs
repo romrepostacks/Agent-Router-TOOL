@@ -696,7 +696,9 @@ async function skillStats() {
 }
 
 async function selectedSkillPrompt(ids) {
-  const skills = await selectedSkills(ids);
+  return skillIndexText(await selectedSkills(ids));
+}
+function skillIndexText(skills) {
   if (!skills.length) return "";
   const lines = skills.map((skill) => {
     const file = skill.file && path.resolve(path.dirname(SKILLS_FILE), skill.file);
@@ -1422,6 +1424,7 @@ function threadBlocks(limit, route) {
 // Bypass permissions is left out on purpose (AGENTS.md: no router-side bypasses). An unset thread uses
 // permissions.defaultMode from ~/.claude/settings.json when it is one of these, else Ask permissions.
 const CLAUDE_MODES = ["default", "acceptEdits", "plan", "auto"];
+const CLAUDE_MODE_LABELS = { default: "Ask permissions", acceptEdits: "Accept edits", plan: "Plan mode", auto: "Auto" };
 async function claudeDefaultMode() {
   try {
     const mode = JSON.parse(await readFile(path.join(os.homedir(), ".claude", "settings.json"), "utf8"))?.permissions?.defaultMode;
@@ -1790,6 +1793,10 @@ async function answerProjectQuestion(messages, project, skillText = "", options 
   return runRoleTask("review", "codex::", prompt, project, "project", options); // kind "project": read access, memory as background only
 }
 
+// A push also updates the GitHub release and clears out older ones, so the Releases page shows only the current build.
+// Tags stay (no --cleanup-tag), so history and old versions can still be found. Each gh command goes through the
+// provider's own approval like any other.
+export const PUSH_RELEASE_RULE = "\n\nAfter a successful push, update the GitHub release when the repository has a release version (for example `version` in package.json): if a release for that version's tag (v<version>) exists, edit it; otherwise create it on the pushed commit with `gh release create`. Use that version's entry in RELEASE_NOTES.md (or CHANGELOG.md) as the notes, and attach build files for that exact version if they exist (for example release/*-<version>.exe). Then delete every older release with `gh release delete <tag> --yes`, keeping their git tags (never pass --cleanup-tag) and keeping the new release. Skip the release steps and say why if the push failed, the repository has no version, gh isn't signed in, or the user asked not to touch releases. Report the release you created or edited and the releases you deleted.";
 const ROUTES = ["chain", "route", "quick", "project", "longterm", "code", "review", "security", "ui", "art", "github", "push"];
 const LEGACY_MODES = { colibri: "quick", claude: "code", codex: "code", copilot: "security" };
 
@@ -1836,7 +1843,8 @@ async function runRoute(route, messages, project, skillText = "", localSkillText
         ? await implementWithRole("ruflo", task, project, skillText, rufloOptions)
         : { content: await runRufloTask(CLI.claude,
           `Thread access: read-only. Do not edit files or run project scripts. ${route === "route" ? "Plan only; do not execute the plan." : "Answer the request using Ruflo coordination."}\n${skillText}\n${messages.map((item) => `${item.role}: ${item.content}`).join("\n\n")}`,
-          project, cleanClaudeEnvironment(), { ...rufloOptions, model: await rufloHostModel(), mcpServers: claudeMcpServers(await userMcpServers()), permissionMode: "plan" }) };
+          // Read-only runs stay in Plan mode: a mid-run mode change must not turn them into editing runs.
+          project, cleanClaudeEnvironment(), { ...rufloOptions, model: await rufloHostModel(), mcpServers: claudeMcpServers(await userMcpServers()), permissionMode: "plan", onControl: (handle) => options.onControl?.(handle && { say: handle.say }) }) };
       return { ...result, route: "Ruflo swarm", delegated: ["Ruflo", ...decisions], backend: "ruflo" };
     } catch (error) {
       if (options.signal?.aborted || !isUsageLimitError(error)) throw error;
@@ -1847,7 +1855,7 @@ async function runRoute(route, messages, project, skillText = "", localSkillText
   if (route === "chain") return runChain(task, project, skillText, options);
   if (route === "project") {
     options.onStatus?.("Reading the selected project files…");
-    const content = await answerProjectQuestion(messages, project, skillText, { signal: options.signal, onDelta: options.onDelta, onActivity: options.onActivity, onApproval: options.onApproval, onPrompt: options.onPrompt, onUsage: options.onUsage });
+    const content = await answerProjectQuestion(messages, project, skillText, { signal: options.signal, onDelta: options.onDelta, onActivity: options.onActivity, onApproval: options.onApproval, onPrompt: options.onPrompt, onUsage: options.onUsage, onControl: options.onControl });
     await saveHandoff(project, { route: "Project analysis", status: "Completed", task, summary: content });
     return { content, route: label("Project analysis"), delegated: delegated("Project analysis") };
   }
@@ -1870,7 +1878,7 @@ async function runRoute(route, messages, project, skillText = "", localSkillText
     return { ...result, route: label(name), delegated: delegated(name) };
   }
   if (route === "github" || route === "push") {
-    const prompt = `Carry out only the explicit GitHub or git action the user requested. Inspect repository state first. Perform commits, pushes, or other Git changes when the user explicitly requests them; do not invent unrelated Git or remote changes. A push request alone does not authorize creating a commit. Force-push, history rewrites, and destructive Git actions require an explicit request for that specific action. Follow provider approval requests and thread access limits; never bypass them. If a provider or managed policy blocks the requested action, report the exact restriction instead of claiming Git is categorically unavailable.\n\nUser request: ${task}${skillText}`;
+    const prompt = `Carry out only the explicit GitHub or git action the user requested. Inspect repository state first. Perform commits, pushes, or other Git changes when the user explicitly requests them; do not invent unrelated Git or remote changes. A push request alone does not authorize creating a commit. Force-push, history rewrites, and destructive Git actions require an explicit request for that specific action. Follow provider approval requests and thread access limits; never bypass them. If a provider or managed policy blocks the requested action, report the exact restriction instead of claiming Git is categorically unavailable.${route === "push" ? PUSH_RELEASE_RULE : ""}\n\nUser request: ${task}${skillText}`;
     const content = await runRoleTask("github", "copilot::auto", prompt, project, "github", options);
     await saveHandoff(project, { route: "GitHub requests", status: "Completed", task, summary: content });
     return { content, route: label("GitHub requests"), delegated: delegated("GitHub requests") };
@@ -2043,6 +2051,33 @@ export function answerApproval(pending, data) {
   return { status: 200, body: { id: pending.card.id, decision, allow: decision !== "deny" } };
 }
 
+// Mid-run changes to attached skills and linked folders reach a running Claude Code task (direct or Ruflo host) as a
+// user message it reads at its next step. Other providers get them with the next message.
+function tellRun(run, text, status) {
+  if (!run || run.final || !run.claude?.say?.(text)) return false;
+  emitRun(run, "status", { status });
+  return true;
+}
+export function folderChangeNote(added, removed) {
+  return ["The user changed the linked folders while you were working. Linked folders are read-only reference: read them, never edit them.",
+    ...added.map((folder) => `- Now linked: ${folder.name} — ${folder.path}`),
+    ...removed.map((folder) => `- No longer linked, stop using it: ${folder.name} — ${folder.path}`),
+    "Continue the current task."].join("\n");
+}
+export function skillChangeNote(addedIndex, removed) {
+  return ["The user changed the attached skills while you were working.", addedIndex.trim(),
+    ...removed.map((skill) => `- No longer attached, stop following it: ${skill.name}`),
+    "Continue the current task."].filter(Boolean).join("\n");
+}
+async function announceLinkedChange(project, before) {
+  const after = await linkedProjects(project.id);
+  const added = after.filter((folder) => !before.some((item) => item.id === folder.id));
+  const removed = before.filter((folder) => !after.some((item) => item.id === folder.id));
+  if (!added.length && !removed.length) return 0;
+  const runs = [...activeRuns.values()].filter((run) => run.projectId === project.id);
+  return runs.filter((run) => tellRun(run, folderChangeNote(added, removed), "Linked folders changed; the running task was told.")).length;
+}
+
 // Recent run events for clients and phones to poll: GET /api/notifications?after=<id>. Kept in memory, so `boot`
 // changes when the server restarts and a client should start again from after=0.
 const NOTIFY_BOOT = randomUUID();
@@ -2180,7 +2215,7 @@ async function handleChat(data, options = {}) {
     options = { ...options, ruflo: true };
     const readOnly = options.accessLimit === "read" || ["project", "review", "security", "longterm", "quick", "route"].includes(mode);
     return runRoute(readOnly ? (mode === "route" ? "route" : "project") : "code", messages, project,
-      `${skillText}\nRequested workflow constraint: ${mode}.`, localSkillText, options);
+      `${skillText}\nRequested workflow constraint: ${mode}.${!readOnly && (mode === "push" || /\bpush/i.test(message)) ? PUSH_RELEASE_RULE : ""}`, localSkillText, options);
   }
   if (mode === "auto" || mode === "route") {
     options.onStatus?.("Choosing a route…");
@@ -2682,8 +2717,9 @@ async function handleRequest(req, res, fromRemote = false) {
         const allowed = path.isAbsolute(String(id)) ? previous.includes(id) : await projectFolder(id);
         if (id !== project.id && !linked.includes(id) && allowed) linked.push(id);
       }
+      const before = await linkedProjects(project.id);
       await writeSettings({ linkedFolders: { ...(saved.linkedFolders || {}), [project.id]: linked } });
-      return json(res, 200, { linked });
+      return json(res, 200, { linked, live: await announceLinkedChange(project, before) });
     }
     if (req.method === "POST" && url.pathname === "/api/projects/linked/pick") {
       const data = await bodyJson(req);
@@ -2701,7 +2737,9 @@ async function handleRequest(req, res, fromRemote = false) {
       if (!linked.includes(entry)) {
         if (linked.length >= 20) return json(res, 400, { error: "A project can link up to 20 folders." });
         linked.push(entry);
+        const before = await linkedProjects(project.id);
         await writeSettings({ linkedFolders: { ...(saved.linkedFolders || {}), [project.id]: linked } });
+        return json(res, 200, { linked, live: await announceLinkedChange(project, before) });
       }
       return json(res, 200, { linked });
     }
@@ -2827,7 +2865,11 @@ async function handleRequest(req, res, fromRemote = false) {
         if (!session) return json(res, 404, { error: "Session not found." });
         if (permissionMode) session.permissionMode = permissionMode; else delete session.permissionMode;
         await writeSessions(sessions);
-        return json(res, 200, session);
+        // A running Claude Code task switches now; other providers and read-only Ruflo runs pick it up next message.
+        const run = activeRuns.get(id);
+        const live = Boolean(run && !run.final && run.claude?.setPermissionMode?.(permissionMode || await claudeDefaultMode()));
+        if (live) emitRun(run, "status", { status: `Permission mode changed to ${CLAUDE_MODE_LABELS[permissionMode || await claudeDefaultMode()] || permissionMode}.` });
+        return json(res, 200, { ...session, live });
       });
     }
     if (req.method === "POST" && url.pathname.startsWith("/api/sessions/") && url.pathname.endsWith("/feedback")) {
@@ -2895,6 +2937,8 @@ async function handleRequest(req, res, fromRemote = false) {
           // Only tool calls (the second argument) count as skill use; answer text quoting a skill's path doesn't.
           onActivity: (text, toolText) => { if (toolText) watchSkills(toolText); emitRun(run, "activity", { text }); },
           onReset: () => emitRun(run, "reset", {}),
+          // Live controls of the Claude Code process (direct or Ruflo host), for mid-run mode, skill and folder changes.
+          onControl: (handle) => { run.claude = handle; },
           // A run without a session can't be found to answer a card, so its provider prompts are declined.
           ...(run.sessionId ? { onApproval: (request) => askApproval(run, request) } : {}),
         });
@@ -2946,6 +2990,20 @@ async function handleRequest(req, res, fromRemote = false) {
       const data = await bodyJson(req);
       const answered = answerApproval(activeRuns.get(sessionId)?.approvals.get(cardId), data);
       return json(res, answered.status, answered.body);
+    }
+    // Body: { skillIds }, the page's whole selection. Added skills' index lines and removed skills' names go to the run.
+    if (req.method === "POST" && /^\/api\/runs\/[^/]+\/skills$/.test(url.pathname)) {
+      const run = activeRuns.get(decodeURIComponent(url.pathname.split("/")[3]));
+      if (!run || run.final) return json(res, 404, { error: "That session isn't running." });
+      const ids = (await bodyJson(req)).skillIds;
+      const next = Array.isArray(ids) ? ids.filter((id) => typeof id === "string").slice(0, 100) : [];
+      const [before, after] = await Promise.all([selectedSkills(run.request.skillIds), selectedSkills(next)]);
+      run.request.skillIds = next; // Retry uses the current selection too
+      const added = after.filter((skill) => !before.some((item) => item.id === skill.id));
+      const removed = before.filter((skill) => !after.some((item) => item.id === skill.id));
+      // ponytail: skills added mid-run aren't counted in per-skill use stats; add them to the run's watcher if that matters.
+      const live = (added.length || removed.length) ? tellRun(run, skillChangeNote(skillIndexText(added), removed), "Attached skills changed; the running task was told.") : false;
+      return json(res, 200, { live });
     }
     if (req.method === "POST" && /^\/api\/runs\/[^/]+\/cancel$/.test(url.pathname)) {
       const run = activeRuns.get(decodeURIComponent(url.pathname.split("/")[3]));
